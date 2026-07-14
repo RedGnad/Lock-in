@@ -69,7 +69,7 @@ export function CreatePact() {
   }, [stakeInput, decimals]);
 
   async function writeWithTightGas(request: Parameters<typeof writeContractAsync>[0]) {
-    if (!address || !publicClient) throw new Error("Wallet ou RPC Monad indisponible");
+    if (!address || !publicClient) throw new Error("Wallet or Monad RPC unavailable");
     const estimate = await publicClient.estimateContractGas({
       ...request,
       account: address,
@@ -81,23 +81,23 @@ export function CreatePact() {
   }
 
   async function create() {
-    if (!address || !escrowAddress) return setStatus("Connecte ton wallet et configure le contrat.");
-    if (amount <= 0n || (maxStake && amount > maxStake)) return setStatus("La mise dépasse le plafond onchain.");
+    if (!address || !escrowAddress) return setStatus("Connect your wallet and configure the contract.");
+    if (amount <= 0n || (maxStake && amount > maxStake)) return setStatus("The stake exceeds the onchain cap.");
     const minDistance = Math.round(Number(distanceKm) * 1_000);
-    if (!Number.isSafeInteger(minDistance) || minDistance <= 0) return setStatus("Distance invalide.");
+    if (!Number.isSafeInteger(minDistance) || minDistance <= 0) return setStatus("Invalid distance.");
     const pactChallenge = challenge || freshChallenge();
     setChallenge(pactChallenge);
     setBusy(true);
     try {
       if (allowance < amount) {
-        setStatus(`Autorisation de ${stakeInput} ${symbol}…`);
+        setStatus(`Approving ${stakeInput} ${symbol}…`);
         const approveHash = await writeWithTightGas({ address: token, abi: erc20Abi, functionName: "approve", args: [escrowAddress, amount] });
         await waitForTransactionReceipt(config, { hash: approveHash });
         await refetchAllowance();
       }
       const startsAt = BigInt(Math.floor(Date.now() / 1_000) + 5 * 60);
       const claimDeadline = startsAt + BigInt(days * 86_400 + 3_600);
-      setStatus("Verrouillage du pacte sur Monad…");
+      setStatus("Locking the pact on Monad…");
       const hash = await writeWithTightGas({
         address: escrowAddress,
         abi: lockInAbi,
@@ -110,7 +110,7 @@ export function CreatePact() {
       if (pactId === undefined) throw new Error("PactCreated event not found");
       router.push(`/pact/${pactId}`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Transaction refusée");
+      setStatus(error instanceof Error ? error.message : "Transaction rejected");
     } finally {
       setBusy(false);
     }
@@ -118,14 +118,14 @@ export function CreatePact() {
 
   return (
     <section className="create-card" id="create">
-      <div className="card-kicker">Nouveau pacte · Strava</div>
+      <div className="card-kicker">New pact · Strava running</div>
       <div className="form-grid">
-        <label><span>Courir</span><div className="input-unit"><input value={distanceKm} onChange={(event) => setDistanceKm(event.target.value)} inputMode="decimal"/><b>km</b></div></label>
-        <label><span>Pendant</span><div className="segmented">{[1, 2, 3, 4, 5].map((value) => <button type="button" className={days === value ? "active" : ""} onClick={() => setDays(value)} key={value}>{value}j</button>)}</div></label>
-        <label><span>Verrouiller</span><div className="input-unit"><input value={stakeInput} onChange={(event) => setStakeInput(event.target.value)} inputMode="decimal"/><b>{symbol}</b></div><small>Plafond contrat : {maxStake !== undefined ? `${formatUnits(maxStake, decimals)} ${symbol}` : "—"}</small></label>
+        <label><span>Run each day</span><div className="input-unit"><input value={distanceKm} onChange={(event) => setDistanceKm(event.target.value)} inputMode="decimal"/><b>km</b></div></label>
+        <label><span>Streak</span><div className="segmented">{[1, 2, 3, 4, 5].map((value) => <button type="button" className={days === value ? "active" : ""} onClick={() => setDays(value)} key={value}>{value}d</button>)}</div></label>
+        <label><span>Stake</span><div className="input-unit"><input value={stakeInput} onChange={(event) => setStakeInput(event.target.value)} inputMode="decimal"/><b>{symbol}</b></div><small>Contract cap: {maxStake !== undefined ? `${formatUnits(maxStake, decimals)} ${symbol}` : "—"}</small></label>
       </div>
-      <div className="challenge-preview"><span>Code de course</span><code>{challenge || "généré au verrouillage"}</code></div>
-      <button className="lock-button" onClick={create} disabled={busy || !escrowAddress}>{busy ? "Confirmation…" : "LOCK IN →"}</button>
+      <div className="challenge-preview"><span>Run code</span><code>{challenge || "generated when you lock in"}</code></div>
+      <button className="lock-button" onClick={create} disabled={busy || !escrowAddress}>{busy ? "Confirming…" : "LOCK IN →"}</button>
       {status && <p className="form-status">{status}</p>}
     </section>
   );

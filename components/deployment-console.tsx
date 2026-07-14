@@ -31,7 +31,7 @@ export function DeploymentConsole() {
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("Prêt à déployer depuis le wallet configuré.");
+  const [status, setStatus] = useState("Ready to deploy from the configured wallet.");
   const [report, setReport] = useState<DeploymentReport>({});
 
   async function persist(next: DeploymentReport) {
@@ -44,7 +44,7 @@ export function DeploymentConsole() {
   }
 
   async function deployArtifact(artifact: Artifact, args: readonly unknown[] = []) {
-    if (!address || !publicClient || !walletClient) throw new Error("Wallet indisponible");
+    if (!address || !publicClient || !walletClient) throw new Error("Wallet unavailable");
     const data = encodeDeployData({ abi: artifact.abi, bytecode: artifact.bytecode, args } as never);
     const estimate = await publicClient.estimateGas({ account: address, data });
     const hash = await walletClient.deployContract({
@@ -55,23 +55,23 @@ export function DeploymentConsole() {
       gas: addMonadGasBuffer(estimate),
     } as never);
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (!receipt.contractAddress) throw new Error("La transaction de déploiement ne contient aucune adresse");
+    if (!receipt.contractAddress) throw new Error("The deployment transaction returned no contract address");
     return { hash, address: getAddress(receipt.contractAddress) };
   }
 
   async function deploy() {
-    if (!address || !publicClient || !walletClient) return setStatus("Connecte d’abord ton wallet.");
-    if (chainId !== monad.id) return setStatus("Passe le wallet sur Monad avant de continuer.");
+    if (!address || !publicClient || !walletClient) return setStatus("Connect your wallet first.");
+    if (chainId !== monad.id) return setStatus("Switch your wallet to Monad before continuing.");
     setBusy(true);
     try {
       const response = await fetch("/api/dev/deployment-artifacts", { cache: "no-store" });
       const config = await response.json() as DeploymentConfig & { error?: string };
-      if (!response.ok) throw new Error(config.error || "Artefacts indisponibles");
+      if (!response.ok) throw new Error(config.error || "Artifacts unavailable");
       if (getAddress(address) !== getAddress(config.expectedDeployer)) {
-        throw new Error(`Mauvais wallet connecté. Adresse attendue : ${config.expectedDeployer}`);
+        throw new Error(`Wrong wallet connected. Expected address: ${config.expectedDeployer}`);
       }
 
-      setStatus("1/4 — Déploiement du vérifieur Reclaim…");
+      setStatus("1/4 — Deploying the Reclaim verifier…");
       const implementation = await deployArtifact(config.artifacts.reclaim);
       let next: DeploymentReport = {
         reclaimImplementation: implementation.address,
@@ -79,7 +79,7 @@ export function DeploymentConsole() {
       };
       await persist(next);
 
-      setStatus("2/4 — Déploiement et initialisation atomique du proxy…");
+      setStatus("2/4 — Deploying and atomically initializing the proxy…");
       const initializationData = encodeFunctionData({
         abi: config.artifacts.reclaim.abi,
         functionName: "initialize",
@@ -89,7 +89,7 @@ export function DeploymentConsole() {
       next = { ...next, reclaim: proxy.address, reclaimProxyTx: proxy.hash };
       await persist(next);
 
-      setStatus("3/4 — Enregistrement du witness Reclaim officiel…");
+      setStatus("3/4 — Registering the official Reclaim witness…");
       const epochRequest = {
         account: address,
         address: proxy.address,
@@ -106,7 +106,7 @@ export function DeploymentConsole() {
       next = { ...next, reclaimEpochTx: epochHash };
       await persist(next);
 
-      setStatus("4/4 — Déploiement de l’escrow Lock In…");
+      setStatus("4/4 — Deploying the Lock In escrow…");
       const escrow = await deployArtifact(config.artifacts.escrow, [
         config.stakeToken,
         proxy.address,
@@ -115,9 +115,9 @@ export function DeploymentConsole() {
       ]);
       next = { ...next, escrow: escrow.address, escrowTx: escrow.hash };
       await persist(next);
-      setStatus("Déploiement Monad terminé et sauvegardé dans /tmp/lock-in-deployment.json.");
+      setStatus("Monad deployment completed and saved to /tmp/lock-in-deployment.json.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Déploiement interrompu");
+      setStatus(error instanceof Error ? error.message : "Deployment interrupted");
     } finally {
       setBusy(false);
     }
@@ -125,10 +125,10 @@ export function DeploymentConsole() {
 
   return (
     <main className="legal-page">
-      <p className="eyebrow"><span>LOCAL</span> Console de déploiement</p>
-      <h1>Ship,<br/><em>sans exposer la clé.</em></h1>
-      <section><h2>Principe</h2><p>Cette page n’existe qu’en développement. Le wallet connecté signe quatre transactions Monad : implémentation Reclaim, proxy atomique, epoch witness et escrow Lock In.</p></section>
-      <button className="lock-button" onClick={deploy} disabled={busy || !address}>{busy ? "Déploiement en cours…" : "DÉPLOYER SUR MONAD"}</button>
+      <p className="eyebrow"><span>LOCAL</span> Deployment console</p>
+      <h1>Ship,<br/><em>without exposing the key.</em></h1>
+      <section><h2>How it works</h2><p>This page only exists in development. The connected wallet signs four Monad transactions: Reclaim implementation, atomic proxy, witness epoch, and Lock In escrow.</p></section>
+      <button className="lock-button" onClick={deploy} disabled={busy || !address}>{busy ? "Deploying…" : "DEPLOY TO MONAD"}</button>
       <p className="form-status">{status}</p>
       {Object.keys(report).length > 0 && <pre className="deployment-report">{JSON.stringify(report, null, 2)}</pre>}
     </main>

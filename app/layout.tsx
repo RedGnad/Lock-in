@@ -6,13 +6,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Lock In — Quitters pay finishers",
-  description: "Dépose. Prouve ta mission. Les finishers prennent le pot.",
+  description: "Stake. Prove your mission. Finishers split the pool.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const repositoryUrl = process.env.NEXT_PUBLIC_REPOSITORY_URL?.trim();
   return (
-    <html lang="fr">
+    <html lang="en">
       <body>
         <Providers>
           <header className="site-header">
@@ -21,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <WalletButton />
           </header>
           {children}
-          <footer><span>LOCK IN / MONAD 2026</span><div><Link href="/privacy">Confidentialité</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
+          <footer><span>LOCK IN / MONAD 2026</span><div><Link href="/privacy">Privacy</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
         </Providers>
       </body>
     </html>

@@ -16,12 +16,12 @@ export function WalletButton() {
   if (!isConnected || !address) {
     return (
       <button className="wallet-button" onClick={() => connect({ connector: connectors[0] })} disabled={isPending}>
-        {isPending ? "Connexion…" : "Connecter le wallet"}
+        {isPending ? "Connecting…" : "Connect wallet"}
       </button>
     );
   }
   if (chainId !== monad.id) {
-    return <button className="wallet-button warning" onClick={() => switchChain({ chainId: monad.id })}>Passer sur Monad</button>;
+    return <button className="wallet-button warning" onClick={() => switchChain({ chainId: monad.id })}>Switch to Monad</button>;
   }
   return <button className="wallet-button connected" onClick={() => disconnect()}>{short(address)}</button>;
 }

@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       sessionId,
       token,
       providerVersion: STRAVA_PROVIDER_VERSION,
-      instruction: `Ajoute ${policy.challenge} au titre de ta course GPS Strava.`,
+      instruction: `Add ${policy.challenge} to the title of your Strava GPS run.`,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json(
