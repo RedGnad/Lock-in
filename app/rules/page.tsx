@@ -10,7 +10,7 @@ export default function RulesPage() {
       <section><h2>Onchain data</h2><p>The transformed Reclaim proofs and the required Strava fields listed in the privacy notice are submitted in public Monad transaction calldata. They remain permanently accessible even if the source activity is private or later deleted. Detailed GPS routes and Strava credentials are not included.</p></section>
       <section><h2>Residual risk</h2><p>zkTLS proves what an authenticated service returned; it does not make GPS spoofing, account sharing, bots, compromised devices, or service errors impossible. The contract owner may cancel a beta pact so participants can recover stakes when a provider or verifier incident makes fair settlement unreliable.</p></section>
       <section><h2>Admin powers</h2><p>The contract owner can cancel an unsettled pact and rotate the Lock In evidence signer. The owner cannot withdraw pact funds or change the immutable 1 USDC cap, token, Reclaim verifier, provider hashes, or payout formula. Cancellation still requires an onchain finalization and claim; network gas is never refunded.</p></section>
-      <section><h2>Third parties</h2><p>Lock In is independent from Strava, Moonwalk, Duolingo, Reclaim, Circle, and Monad. Their names identify external services or infrastructure and do not imply sponsorship or endorsement.</p></section>
+      <section><h2>Third parties</h2><p>Lock In is independent from Strava, Reclaim, Circle, and Monad. Their names identify external services or infrastructure and do not imply sponsorship or endorsement.</p></section>
     </main>
   );
 }

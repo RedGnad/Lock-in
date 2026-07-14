@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Lock In — Stake-backed accountability",
-  description: "Stake up to 1 USDC, verify a mission record, and settle the pact on Monad.",
+  description: "Stake up to 1 USDC, prove your Strava runs, and settle the challenge on Monad.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

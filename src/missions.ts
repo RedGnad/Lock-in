@@ -1,5 +1,3 @@
-export type MissionStatus = "live" | "next" | "blocked";
-
 export type PactTemplate = {
   id: string;
   name: string;
@@ -7,17 +5,6 @@ export type PactTemplate = {
   requiredCompletions: number;
   description: string;
   publicCompetition: boolean;
-};
-
-export type MissionDefinition = {
-  id: "strava-run" | "steps" | "duolingo-learn";
-  arena: "MOVE" | "LEARN";
-  name: string;
-  status: MissionStatus;
-  moneyEnabled: boolean;
-  source: string;
-  promise: string;
-  detail: string;
 };
 
 export const STRAVA_TEMPLATES: readonly PactTemplate[] = [
@@ -60,39 +47,6 @@ export const STRAVA_TEMPLATES: readonly PactTemplate[] = [
     requiredCompletions: 12,
     description: "Twelve runs in a month, roughly three per week.",
     publicCompetition: true,
-  },
-] as const;
-
-export const MISSIONS: readonly MissionDefinition[] = [
-  {
-    id: "strava-run",
-    arena: "MOVE",
-    name: "GPS Run",
-    status: "live",
-    moneyEnabled: true,
-    source: "Strava + Reclaim",
-    promise: "Verify a Strava record that matches the pact's GPS-run policy without exposing a detailed route.",
-    detail: "GPS, trainer, flags, timing, distance, and motion plausibility are checked.",
-  },
-  {
-    id: "steps",
-    arena: "MOVE",
-    name: "Daily Steps",
-    status: "next",
-    moneyEnabled: false,
-    source: "Fitbit API / Health Connect",
-    promise: "A lower-friction daily movement challenge inspired by crew step games.",
-    detail: "An authorized primary health-data source will be used; Moonwalk will not be the oracle.",
-  },
-  {
-    id: "duolingo-learn",
-    arena: "LEARN",
-    name: "Daily Learning",
-    status: "blocked",
-    moneyEnabled: false,
-    source: "Duolingo permission required",
-    promise: "Research concept for consistent learning days; currently unavailable.",
-    detail: "No provider and no money mode until an official API or written permission makes the integration supportable.",
   },
 ] as const;
 

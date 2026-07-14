@@ -2,7 +2,7 @@
 
 Lock in. Verify it. Miss the target, and qualifying finishers share the forfeited stake.
 
-Lock In est une app d’engagement à mise symbolique : un utilisateur verrouille au plus 1 USD, réalise une mission réelle puis présente une preuve zkTLS. Strava GPS Run est le connecteur live ; Steps est le prochain connecteur visé et Duolingo reste bloqué jusqu’à l’existence d’une API ou permission supportée.
+Lock In est une app d’engagement à mise plafonnée : un utilisateur verrouille au plus 1 USDC, réalise une mission réelle puis présente une preuve zkTLS. La surface consumer ne montre qu’une mission réellement utilisable, Strava GPS Run. Les intégrations sans preuve testée ne sont pas affichées.
 
 ## État réel du développement
 
@@ -19,7 +19,7 @@ La preuve Strava v2 est publiée et son moteur de décision est implémenté :
 
 La fixture Strava créée pendant le spike est manuelle et renvoie `has_latlng=false`. Elle sert désormais de cas négatif : la v2 la rejette. Elle n’est pas présentée comme une course réelle.
 
-Le contrat V3, l’API et l’interface responsive sont implémentés et déployés sur Monad mainnet à l’adresse `0x718faf8969e6924333d28450eaf9df6356f63ba1`. `LockInEscrow.sol` couvre les programmes 1/3/7/14/30 jours, sépare durée et nombre de runs requis, impose le plafond immuable de 1 USDC, annule les pools sous-remplis, lie une identité Strava unique à chaque participant du pool et conserve les quatre preuves Reclaim vérifiées onchain. L’UI expose la progression calendrier et les états registration/active/grace/settlement. Le runtime Vercel n’a aucune vulnérabilité connue selon `pnpm audit --prod`, les dépendances sont épinglées et les transactions utilisent une estimation de gas assortie d’une marge Monad limitée à 5 %. Il reste avant l’ouverture publique : exécuter une vraie course GPS E2E. `LockInReclaimSpike.sol` reste uniquement l’ancien spike minimal et n’est pas déployé par défaut.
+Le contrat V3, l’API et l’interface responsive sont implémentés et déployés sur Monad mainnet à l’adresse `0x718faf8969e6924333d28450eaf9df6356f63ba1`. `LockInEscrow.sol` couvre les programmes 1/3/7/14/30 jours ; l’UI consumer concentre le parcours compétitif sur 3/7/14/30 jours. Le contrat sépare durée et nombre de runs requis, impose le plafond immuable de 1 USDC, annule les pools sous-remplis, lie une identité Strava unique à chaque participant du pool et conserve les quatre preuves Reclaim vérifiées onchain. L’UI expose la progression, les états registration/active/grace/settlement et un partage d’invitation. Le runtime Vercel n’a aucune vulnérabilité connue selon `pnpm audit --prod`, les dépendances sont épinglées et les transactions utilisent une estimation de gas assortie d’une marge Monad limitée à 5 %. Il reste avant l’ouverture publique : exécuter une vraie course GPS E2E. `LockInReclaimSpike.sol` reste uniquement l’ancien spike minimal et n’est pas déployé par défaut.
 
 ## Flux V3
 

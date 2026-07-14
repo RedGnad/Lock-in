@@ -2,11 +2,11 @@
 
 ## Mission strategy
 
-Lock In is a multi-domain accountability protocol with independent proof rules per mission. The consumer surface exposes three lanes:
+Lock In can support independent proof rules per mission, but the consumer surface exposes only missions that can settle today:
 
-- **GPS Run — beta:** Strava plus a pinned Reclaim provider and onchain checks.
-- **Daily Steps — next:** an authorized primary source such as the Fitbit API; Health Connect or Apple Health require native mobile paths.
-- **Daily Learning — permission gated:** Duolingo only after an official API or written permission makes the integration supportable.
+- **GPS Run:** Strava plus a pinned Reclaim provider and onchain checks.
+
+Steps and Duolingo research remain in technical documentation, not in disabled consumer cards. Steps requires an authorized Fitbit OAuth integration or a native Health Connect/HealthKit application and a new contract adapter. The audited community Duolingo providers do not bind identity, event and completion time strongly enough for money-bearing settlement.
 
 Moonwalk validates demand for social, stake-backed fitness accountability, but it should not be Lock In's oracle. It already implements contests and settlement on Solana. See [moonwalk-evaluation.md](moonwalk-evaluation.md).
 

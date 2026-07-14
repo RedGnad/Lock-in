@@ -75,7 +75,7 @@ export function PactDashboard({ id }: { id: string }) {
     query: { enabled: token !== zeroAddress && Boolean(address) },
   });
   const decimals = Number(tokenReads.data?.[0]?.result || 6);
-  const symbol = String(tokenReads.data?.[1]?.result || "USD");
+  const symbol = String(tokenReads.data?.[1]?.result || "USDC");
   const allowance = BigInt(tokenReads.data?.[2]?.result || 0);
 
   const currentDay = useMemo(() => {
@@ -101,7 +101,7 @@ export function PactDashboard({ id }: { id: string }) {
 
   async function join() {
     if (!address || !escrowAddress || !pact) return setMessage("Connect your wallet.");
-    if (!entryAccepted) return setMessage("Accept the beta rules and public proof-data disclosure first.");
+    if (!entryAccepted) return setMessage("Accept the rules to continue.");
     try {
       setMessage("Preparing your stake…");
       if (allowance < pact[3]) {
@@ -115,7 +115,7 @@ export function PactDashboard({ id }: { id: string }) {
 
   async function prove(dayIndex: number) {
     if (!address || !escrowAddress) return setMessage("Connect your wallet.");
-    if (!privacyAccepted) return setMessage("Accept the public Strava proof-data disclosure first.");
+    if (!privacyAccepted) return setMessage("Review the proof disclosure first.");
     const popup = window.open("about:blank", "lock-in-reclaim", "popup,width=500,height=760");
     setBusyDay(dayIndex);
     try {
@@ -184,6 +184,27 @@ export function PactDashboard({ id }: { id: string }) {
     } catch (error) { setMessage(error instanceof Error ? error.message : "Transaction rejected"); }
   }
 
+  async function sharePact() {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Lock In pact #${id}`, text: "Join my Strava running challenge.", url });
+        setMessage("Invite ready to share.");
+      } else {
+        await navigator.clipboard.writeText(url);
+        setMessage("Invite link copied.");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setMessage("Invite link copied.");
+      } catch {
+        setMessage("Copy the page URL to invite a friend.");
+      }
+    }
+  }
+
   if (!escrowAddress) return <main className="pact-shell"><div className="empty-state">Contract not configured.</div></main>;
   if (!pact || pact[0] === zeroAddress) return <main className="pact-shell"><div className="empty-state">Loading pact #{id}…</div></main>;
 
@@ -204,36 +225,37 @@ export function PactDashboard({ id }: { id: string }) {
   const displayedPool = pact[14] ? pact[13] : pact[3] * BigInt(pact[5]);
   return (
     <main className="pact-shell">
-      <div className="pact-topline"><Link href="/#missions">← Mission catalog</Link><span>STRAVA RUN / #{id.padStart(4, "0")}</span></div>
+      <div className="pact-topline"><Link href="/">← Home</Link><span>STRAVA RUN / #{id.padStart(4, "0")}</span></div>
       <section className="pact-hero">
-        <div><div className="live-pill"><i /> {status}</div><h1>{pact[4] / 1_000} km<br/><em>{requiredCompletions} of {durationDays} days</em></h1><p>One qualifying run can count per day. Set the Strava title to the pact prefix plus that day&apos;s suffix, then reach the target.</p></div>
-        <div className="pot"><span>{pact[14] ? "UNCLAIMED POOL" : "TOTAL POOL"}</span><strong>{formatUnits(displayedPool, decimals)}</strong><b>{symbol}</b><small>{pact[5]} participant{pact[5] > 1 ? "s" : ""}</small></div>
+        <div><div className="live-pill"><i /> {status}</div><h1>{pact[4] / 1_000} km<br/><em>{requiredCompletions} of {durationDays} days</em></h1><p>Use the exact Strava code shown for each run. Finish the target before the proof deadline.</p></div>
+        <div className="pot"><span>{pact[14] ? "UNCLAIMED POOL" : "TOTAL POOL"}</span><strong>{formatUnits(displayedPool, decimals)}</strong><b>{symbol}</b><small>{pact[5]} player{pact[5] === 1 ? "" : "s"} · {minParticipants} needed</small></div>
       </section>
       <section className="pact-grid">
         <div className="days-card">
           <div className="section-title"><span>YOUR PROGRESS</span><b>{completed}/{requiredCompletions} REQUIRED</b></div>
           <div className="progress-track" aria-label={`${progress}% complete`}><i style={{ width: `${progress}%` }} /></div>
+          {isJoined && !targetReached && !pact[14] && !pact[15] && !underfilled && <label className="consent-row proof-consent"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)}/><span>Proof summary is public on Monad. Your GPS route is not shared. <Link href="/privacy">Privacy</Link></span></label>}
           <div className="day-list">
             {Array.from({ length: durationDays }, (_, day) => {
               const done = (bitmap & (1n << BigInt(day))) !== 0n;
               const dayState = done ? "done" : day === currentDay ? "today" : day < currentDay ? "past" : "upcoming";
-              return <div className={`day-row ${dayState}`} key={day}><div><b>D{day + 1}</b><code>+{dailyProofCode(challenge, day).slice(-3)}</code><span>{formatDate(pact[1] + BigInt(day * 86_400))}</span></div><button disabled={!isJoined || !privacyAccepted || done || !proofWindowOpen || busyDay !== null || day > currentDay} onClick={() => prove(day)}>{done ? "PROVED ✓" : targetReached ? "TARGET MET" : !proofWindowOpen ? "CLOSED" : busyDay === day ? "PROVING…" : day === currentDay ? "PROVE TODAY" : day < currentDay ? "PROVE RUN" : "LOCKED"}</button></div>;
+              return <div className={`day-row ${dayState}`} key={day}><div><b>D{day + 1}</b><code>{dailyProofCode(challenge, day)}</code><span>{formatDate(pact[1] + BigInt(day * 86_400))}</span></div><button disabled={!isJoined || !privacyAccepted || done || !proofWindowOpen || busyDay !== null || day > currentDay} onClick={() => prove(day)}>{done ? "PROVED ✓" : targetReached ? "TARGET MET" : !proofWindowOpen ? "CLOSED" : busyDay === day ? "PROVING…" : day === currentDay ? "PROVE TODAY" : day < currentDay ? "PROVE RUN" : "LOCKED"}</button></div>;
             })}
           </div>
         </div>
         <aside className="pact-details"><div><span>STRAVA CODE PREFIX</span><code>{challenge}</code></div><div><span>STAKE / PERSON</span><b>{formatUnits(pact[3], decimals)} {symbol}</b></div><div><span>REGISTRATION CLOSES</span><b>{formatDate(pact[1])}</b></div><div><span>PROGRAM ENDS</span><b>{formatDate(endsAt)}</b></div><div><span>PROOF DEADLINE</span><b>{formatDate(pact[2])}</b></div><div><span>MINIMUM CREW</span><b>{minParticipants} participants</b></div><div><span>FINISHERS</span><b>{pact[6]}</b></div></aside>
       </section>
       <div className="pact-actions">
-        {!isJoined && registration && <p>Joining may require a token approval plus the stake transaction. Gas is not refundable. Settlement follows the target, refund, UTC-window, and admin-cancellation rules linked below.</p>}
-        {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I am 18+, eligible where I live, and understand that the required Strava proof fields listed in the privacy notice—not my GPS route—will become public and permanent on Monad. <Link href="/rules">Rules</Link> · <Link href="/privacy">Privacy</Link></span></label>}
-        {isJoined && !targetReached && !pact[14] && !pact[15] && !underfilled && <label className="consent-row"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)}/><span>I understand that the required Strava fields and Reclaim proof contexts will be submitted in public, permanent Monad calldata, as described in the <Link href="/privacy">privacy policy</Link>.</span></label>}
-        {!isJoined && registration && <button className="lock-button" disabled={!entryAccepted} onClick={join}>JOIN — {formatUnits(pact[3], decimals)} {symbol}</button>}
+        {registration && <button className="secondary-button" onClick={sharePact}>INVITE A FRIEND</button>}
+        {!isJoined && registration && <p className="proof-disclosure">Proof summary is public on Monad. Your GPS route is not shared. <Link href="/privacy">Privacy</Link></p>}
+        {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
+        {!isJoined && registration && <button className="lock-button" disabled={!entryAccepted} onClick={join}>JOIN FOR {formatUnits(pact[3], decimals)} {symbol}</button>}
         {!isJoined && !registration && <p>Registration is closed for this cohort.</p>}
         {isJoined && !pact[14] && canSettle && <button className="secondary-button" onClick={() => finalizeOrClaim("finalize")}>{underfilled ? "CANCEL & ENABLE REFUNDS" : "SETTLE PACT"}</button>}
         {pact[14] && payoutEligible && !hasClaimed && <button className="lock-button" onClick={() => finalizeOrClaim("claim")}>{pact[15] || pact[6] === 0 ? "CLAIM MY REFUND" : "CLAIM MY PAYOUT"}</button>}
         {pact[14] && hasClaimed && <p>Your payout has already been claimed.</p>}
         {pact[14] && isJoined && !payoutEligible && <p>The completion target was missed, so no payout is available.</p>}
-        {message && <p>{message}</p>}
+        {message && <p className="form-status" aria-live="polite">{message}</p>}
       </div>
     </main>
   );

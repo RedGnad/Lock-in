@@ -2,9 +2,15 @@
 
 ## Current decision
 
-Duolingo is not a live Lock In mission and cannot be used for a money-bearing pact. Duolingo does not expose a supported public API for this use, and its terms restrict automated extraction. Lock In will not publish a provider or activate an escrow until an official API or written permission makes the integration supportable.
+Duolingo is not a live Lock In mission and cannot be used for a money-bearing pact. Duolingo does not expose a supported public API for this use, and its [terms](https://www.duolingo.com/Terms) restrict automated extraction. Lock In will not publish a provider or activate an escrow until an official API or written permission makes the integration supportable.
 
-The mission catalogue is intentionally informational: there is no Duolingo provider, API route, contract adapter, environment variable, or activation control in the product.
+The consumer UI does not render a disabled or coming-soon Duolingo card. There is no Duolingo provider owned by Lock In, API route, contract adapter, environment variable, or activation control in the product.
+
+## Reclaim registry audit
+
+The active Reclaim registry was checked on July 15, 2026 through the authenticated Reclaim MCP. Fourteen entries match Duolingo; all are approved community entries but none is marked verified. The most relevant expose cumulative `totalXp`, `streakData`, or a profile id. They do not prove an authenticated self identity, a lesson/event id and a server completion time together.
+
+The public XP providers accept a user id in the request URL without proving that it belongs to the logged-in account. Because Duolingo profiles expose progress statistics, this can let one account target another public profile. A cumulative XP delta also cannot identify when or how the XP was earned. Those providers are therefore unsuitable for settlement and were not connected to the escrow.
 
 ## What a future proof could establish
 

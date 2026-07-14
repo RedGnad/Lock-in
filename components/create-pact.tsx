@@ -23,6 +23,9 @@ import { escrowAddress } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { STRAVA_TEMPLATES, stravaTemplate } from "@/src/missions";
 
+const DISTANCES = ["1", "3", "5", "10"] as const;
+const PUBLIC_TEMPLATES = STRAVA_TEMPLATES.filter((item) => item.publicCompetition);
+
 function freshChallenge() {
   const bytes = new Uint8Array(10);
   crypto.getRandomValues(bytes);
@@ -97,7 +100,7 @@ export function CreatePact() {
 
   async function create() {
     if (!address || !escrowAddress || !publicClient) return setStatus("Connect your wallet and configure the contract.");
-    if (!entryAccepted) return setStatus("Accept the beta rules and public proof-data disclosure first.");
+    if (!entryAccepted) return setStatus("Accept the rules to continue.");
     if (amount <= 0n || (maxStake && amount > maxStake)) return setStatus(`Enter a stake above 0 and no more than ${maxStake ? formatUnits(maxStake, decimals) : "1"} ${symbol}.`);
     const minDistance = Math.round(Number(distanceKm) * 1_000);
     if (!Number.isSafeInteger(minDistance) || minDistance <= 0) return setStatus("Invalid distance.");
@@ -145,17 +148,26 @@ export function CreatePact() {
 
   return (
     <section className="create-card" id="create">
-      <div className="card-kicker">New pact · Strava running</div>
-      <div className="form-grid">
-        <label><span>Distance per run</span><div className="input-unit"><input value={distanceKm} onChange={(event) => setDistanceKm(event.target.value)} inputMode="decimal"/><b>km</b></div></label>
-        <label><span>Program</span><div className="segmented">{STRAVA_TEMPLATES.map((item) => <button type="button" className={durationDays === item.durationDays ? "active" : ""} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}d</button>)}</div><small>{template.name} · {template.requiredCompletions} run{template.requiredCompletions > 1 ? "s" : ""} required</small></label>
-        <label><span>Symbolic stake</span><div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); const unavailable = maxStake !== undefined && option > maxStake; return <button type="button" aria-pressed={stakeInput === value} className={stakeInput === value ? "active" : ""} disabled={unavailable} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div><small>Choose once—this beta cannot accept more than {maxStake !== undefined ? `${formatUnits(maxStake, decimals)} ${symbol}` : `1 ${symbol}`}.</small></label>
+      <div className="card-kicker">Create a running challenge</div>
+      <div className="form-stack">
+        <fieldset className="form-field">
+          <legend>Distance</legend>
+          <div className="segmented distance-options">{DISTANCES.map((value) => <button type="button" aria-pressed={distanceKm === value} className={distanceKm === value ? "active" : ""} onClick={() => setDistanceKm(value)} key={value}>{value}<small>KM</small></button>)}</div>
+        </fieldset>
+        <fieldset className="form-field">
+          <legend>Schedule</legend>
+          <div className="segmented schedule-options">{PUBLIC_TEMPLATES.map((item) => <button type="button" aria-pressed={durationDays === item.durationDays} className={durationDays === item.durationDays ? "active" : ""} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} RUNS</small></button>)}</div>
+        </fieldset>
+        <fieldset className="form-field">
+          <legend>Stake</legend>
+          <div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); const unavailable = maxStake !== undefined && option > maxStake; return <button type="button" aria-pressed={stakeInput === value} className={stakeInput === value ? "active" : ""} disabled={unavailable} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div>
+        </fieldset>
       </div>
-      <div className="template-summary"><b>{template.name}</b><span>{template.description}</span><small>{durationDays === 1 ? "Starts in 30 minutes · practice/invite mode" : "Starts at a UTC day boundary after at least 12 hours of registration · 2 participants minimum"}</small><small>Creating the pact auto-joins your wallet. Token approval may add a second transaction; network gas is never refunded.</small></div>
-      <div className="challenge-preview"><span>Daily code prefix</span><code>{challenge || "generated when you lock in"}</code></div>
-      <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I am 18+, eligible where I live, and understand that the required Strava proof fields listed in the privacy notice—not my GPS route—will become public and permanent on Monad. <Link href="/rules">Rules</Link> · <Link href="/privacy">Privacy</Link></span></label>
-      <button className="lock-button" onClick={create} disabled={busy || !escrowAddress || !entryAccepted}>{busy ? "Confirming…" : "LOCK IN →"}</button>
-      {status && <p className="form-status">{status}</p>}
+      <div className="pact-summary"><strong>{template.requiredCompletions} runs in {durationDays} days</strong><span>{distanceKm} km each · {stakeInput} {symbol} · starts in 12–36h · 2+ players</span></div>
+      <p className="proof-disclosure">Proof summary is public on Monad. Your GPS route is not shared. <Link href="/privacy">Privacy</Link></p>
+      <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>
+      <button className="lock-button" onClick={create} disabled={busy || !escrowAddress || !entryAccepted}>{busy ? "CONFIRMING…" : `STAKE ${stakeInput} ${symbol} & CREATE`}</button>
+      {status && <p className="form-status" aria-live="polite">{status}</p>}
     </section>
   );
 }
