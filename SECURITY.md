@@ -33,3 +33,4 @@ Pour le hackathon à mise maximale de 1 USD, la v2 réduit fortement la fraude o
 - Les routes API bornent la taille JSON et refusent les appels navigateur cross-origin ; les en-têtes de sécurité empêchent notamment l’embarquement de l’app dans une frame.
 - Les transactions estiment leur gas puis ajoutent seulement 5 % : sur Monad, une limite volontairement surévaluée serait directement facturée à l’utilisateur.
 - Les paquets Solidity/Foundry restent des dépendances de développement ; le graphe réellement embarqué dans Vercel passe `pnpm audit --prod` sans vulnérabilité connue au 14 juillet 2026.
+- `.vercelignore` exclut explicitement tout `.env`, fixture de preuve, session et artefact de build des uploads CLI ; les secrets de production doivent venir uniquement du coffre de variables Vercel.

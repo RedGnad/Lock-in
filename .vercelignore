@@ -1,0 +1,18 @@
+# Never upload local credentials or proof artefacts with Vercel CLI.
+.env
+.env.*
+proofs/
+sessions/
+*.proof.json
+
+# Local build and contract outputs are not needed by the production app.
+.git/
+.next/
+.vercel/
+node_modules/
+out/
+cache/
+broadcast/
+coverage/
+*.tsbuildinfo
+*.log
