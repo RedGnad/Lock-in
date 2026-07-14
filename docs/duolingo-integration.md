@@ -1,32 +1,33 @@
-# Intégration Duolingo
+# Duolingo research gate
 
-## Décision
+## Current decision
 
-Duolingo est intégrable comme second connecteur Reclaim, mais pas comme une simple copie du provider Strava. La mission recommandée est « gagner au moins N XP après le début du pacte », calculée à partir de deux états authentifiés du même compte : une baseline lors de l’engagement et un état final lors de la réclamation.
+Duolingo is not a live Lock In mission and cannot be used for a money-bearing pact. Duolingo does not expose a supported public API for this use, and its terms restrict automated extraction. Lock In will not publish a provider or activate an escrow until an official API or written permission makes the integration supportable.
 
-Un streak seul n’est pas une preuve suffisante : il peut être protégé ou réparé. Un total XP final seul ne prouve pas non plus que les XP ont été gagnés pendant le pacte.
+The mission catalogue is intentionally informational: there is no Duolingo provider, API route, contract adapter, environment variable, or activation control in the product.
 
-## Preuves requises
+## What a future proof could establish
 
-1. À la création/jonction : identité Duolingo authentifiée, identifiant de compte, total XP et horodatage de la baseline.
-2. À la réclamation : même identifiant de compte, nouveau total XP et horodatage.
-3. Politique : `finalXp - baselineXp >= targetXp`, fenêtre temporelle du pacte, preuves fraîches et versions de provider verrouillées.
-4. Nullifier : hash du provider, du compte, du pacte et de la baseline pour empêcher le rejeu ou le mélange de deux comptes.
+If the permission gate is cleared, Reclaim could prove that Duolingo credited activity to an authenticated account. It could not prove that a person learned without automation, account sharing, or outside help. Product wording must therefore say “Duolingo credited progress,” never “you learned.”
 
-La capture doit viser une réponse backend confirmée. L’interface Duolingo peut afficher une prédiction temporaire des XP avant confirmation serveur ; cette valeur client ne doit jamais servir au règlement.
+A streak alone is insufficient because it can be protected or repaired. A final XP total alone does not show when XP was earned. A future adapter would need:
 
-## Architecture
+1. A fresh authenticated baseline bound to the wallet and pact.
+2. A fresh final state from the same Duolingo account.
+3. Active-day evidence or a capped progression threshold inside the pact window.
+4. Account commitments and proof nullifiers that prevent replay and multi-wallet reuse within a pool.
 
-L’escrow Strava déployé reste volontairement immuable et spécifique à quatre preuves Strava. Duolingo utilisera un second contrat/adaptateur avec son propre provider, ses hashes et sa politique. Le frontend sélectionnera l’adaptateur selon le type de mission. Cette séparation évite qu’une mise à jour Duolingo puisse affaiblir ou casser les pactes Strava.
+Raw XP must never be used as a competitive ranking because earning rates differ by exercise, bonuses, and product mechanics.
 
-## Limite anti-triche
+## Research-only technical candidates
 
-Reclaim pourra prouver que Duolingo a confirmé les XP sur un compte authentifié. Cela ne prouve pas que la personne a appris sans bot, script, partage de compte ou aide extérieure. Pour le hackathon, la même limite de 1 USD et les contrôles de fréquence/anomalies restent obligatoires.
+Authenticated responses for the current user and daily XP summaries may be technically observable, but they are internal endpoints rather than a supported developer contract. They may be inspected only in a non-monetary research environment after confirming that the test complies with platform rules. No credentials, cookies, tokens, email addresses, or unnecessary profile fields may be retained.
 
-## Ordre d’exécution
+## Activation checklist
 
-1. Terminer une vraie course GPS E2E Strava et le déploiement Vercel.
-2. Capturer via MCP Reclaim les réponses Duolingo authentifiées de baseline et de progression.
-3. Publier et verrouiller un provider privé Duolingo après replay authentifié, rejet anonyme et preuve zkTLS.
-4. Implémenter l’adaptateur/escrow Duolingo, les tests de delta/rejeu et l’interface de choix de mission.
-5. Étendre la politique de confidentialité avant activation publique.
+1. Obtain a supported API or written permission.
+2. Complete a privacy and legal review, including the fact that Duolingo serves minors while Lock In money modes are 18+.
+3. Capture the minimum authenticated fields and prove that account A cannot submit account B’s data.
+4. Publish and pin a separate provider and adapter; never weaken the Strava verifier to accommodate it.
+5. Test replay, wrong-account, stale-state, baseline/final mixing, bot-like progression, cancellation, and refund paths.
+6. Update the privacy policy and rules before any public activation.

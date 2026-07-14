@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { dailyProofCode } from "./pact-code";
 
 export type ProofSessionToken = {
   sessionId: string;
@@ -6,6 +7,7 @@ export type ProofSessionToken = {
   pactId: string;
   dayIndex: number;
   challenge: string;
+  proofCode: string;
   startsAtMs: number;
   endsAtMs: number;
   minDistanceMeters: number;
@@ -43,11 +45,14 @@ export function verifyProofSessionToken(token: string): ProofSessionToken {
   if (
     typeof payload.sessionId !== "string" || payload.sessionId.length === 0 || payload.sessionId.length > 256 ||
     typeof payload.walletAddress !== "string" || typeof payload.pactId !== "string" ||
-    typeof payload.challenge !== "string" || !Number.isSafeInteger(payload.dayIndex) ||
+    typeof payload.challenge !== "string" || typeof payload.proofCode !== "string" || !Number.isSafeInteger(payload.dayIndex) ||
     !Number.isSafeInteger(payload.startsAtMs) || !Number.isSafeInteger(payload.endsAtMs) ||
     !Number.isSafeInteger(payload.minDistanceMeters) || !Number.isSafeInteger(payload.claimDeadlineMs)
   ) {
     throw new Error("Invalid proof session token payload");
+  }
+  if (payload.proofCode !== dailyProofCode(payload.challenge, payload.dayIndex)) {
+    throw new Error("Invalid proof session daily code");
   }
   return payload;
 }

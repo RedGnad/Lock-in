@@ -67,23 +67,46 @@ const deploymentData = encodeDeployData({
   args,
 } as never);
 const gasEstimate = await publicClient.estimateGas({ account, data: deploymentData });
-const deploymentHash = await walletClient.deployContract({
-  account,
-  abi: artifact.abi,
-  bytecode: artifact.bytecode.object,
-  args,
-  gas: addMonadGasBuffer(gasEstimate),
-} as never);
-const receipt = await publicClient.waitForTransactionReceipt({ hash: deploymentHash });
-if (!receipt.contractAddress) throw new Error("Escrow deployment returned no address");
+const gasWithMargin = addMonadGasBuffer(gasEstimate);
+const dryRun = ["1", "true"].includes((process.env.DRY_RUN || "").toLowerCase());
 
-console.log(JSON.stringify({
-  chainId: actualChainId,
-  deployer: account.address,
-  stakeToken: getAddress(token),
-  reclaim: getAddress(reclaim),
-  evidenceSigner: getAddress(evidenceSigner),
-  maxStakeAtomicUnits: maxStake.toString(),
-  escrow: receipt.contractAddress,
-  deploymentTx: deploymentHash,
-}, null, 2));
+if (dryRun) {
+  const [balance, gasPrice] = await Promise.all([
+    publicClient.getBalance({ address: account.address }),
+    publicClient.getGasPrice(),
+  ]);
+  console.log(JSON.stringify({
+    dryRun: true,
+    chainId: actualChainId,
+    deployer: account.address,
+    deployerBalanceWei: balance.toString(),
+    stakeToken: getAddress(token),
+    reclaim: getAddress(reclaim),
+    evidenceSigner: getAddress(evidenceSigner),
+    maxStakeAtomicUnits: maxStake.toString(),
+    gasEstimate: gasEstimate.toString(),
+    gasLimit: gasWithMargin.toString(),
+    estimatedMaxFeeWei: (gasWithMargin * gasPrice).toString(),
+  }, null, 2));
+} else {
+  const deploymentHash = await walletClient.deployContract({
+    account,
+    abi: artifact.abi,
+    bytecode: artifact.bytecode.object,
+    args,
+    gas: gasWithMargin,
+  } as never);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: deploymentHash });
+  if (!receipt.contractAddress) throw new Error("Escrow deployment returned no address");
+
+  console.log(JSON.stringify({
+    chainId: actualChainId,
+    deployer: account.address,
+    stakeToken: getAddress(token),
+    reclaim: getAddress(reclaim),
+    evidenceSigner: getAddress(evidenceSigner),
+    maxStakeAtomicUnits: maxStake.toString(),
+    escrow: receipt.contractAddress,
+    deploymentTx: deploymentHash,
+  }, null, 2));
+}

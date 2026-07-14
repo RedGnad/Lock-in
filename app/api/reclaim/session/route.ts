@@ -32,14 +32,14 @@ export async function POST(request: Request) {
         providerVersion: STRAVA_PROVIDER_VERSION,
         acceptTeeAttestation: true,
         canAutoSubmit: true,
-        preferredLocale: "fr",
+        preferredLocale: "en",
       },
     );
     proofRequest.setContext(
       policy.walletAddress.toLowerCase(),
       `${policy.pactId}:${policy.dayIndex}`,
     );
-    proofRequest.setParams({ context_challenge: policy.challenge });
+    proofRequest.setParams({ context_challenge: policy.proofCode });
     const sessionId = proofRequest.getSessionId();
     const token = issueProofSessionToken({ sessionId, ...policy });
 
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
       sessionId,
       token,
       providerVersion: STRAVA_PROVIDER_VERSION,
-      instruction: `Add ${policy.challenge} to the title of your Strava GPS run.`,
+      proofCode: policy.proofCode,
+      instruction: `Set the title of your Strava GPS run to exactly ${policy.proofCode}.`,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json(

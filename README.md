@@ -1,8 +1,8 @@
 # Lock In
 
-Lock in. Prove it. Or the finishers take your stake.
+Lock in. Verify it. Miss the target, and qualifying finishers share the forfeited stake.
 
-Lock In est une app d’engagement à mise symbolique : un utilisateur verrouille au plus 1 USD, réalise une mission réelle puis présente une preuve zkTLS. Strava est le premier connecteur ; Duolingo viendra après la boucle Strava complète.
+Lock In est une app d’engagement à mise symbolique : un utilisateur verrouille au plus 1 USD, réalise une mission réelle puis présente une preuve zkTLS. Strava GPS Run est le connecteur live ; Steps est le prochain connecteur visé et Duolingo reste bloqué jusqu’à l’existence d’une API ou permission supportée.
 
 ## État réel du développement
 
@@ -14,21 +14,22 @@ La preuve Strava v2 est publiée et son moteur de décision est implémenté :
 - liaison au portefeuille, pacte et session Reclaim initiée par Lock In ;
 - vérification de la configuration Reclaim exacte, TEE obligatoire par défaut, fraîcheur de dix minutes ;
 - validation SDK exacte + TEE attestée au contrat par un signataire dédié, en complément des signatures Reclaim onchain ;
-- nullifier d’activité côté serveur et onchain contre le rejeu ;
+- nullifier d’activité calculé par le serveur puis imposé globalement onchain contre le rejeu ;
 - tests TypeScript et Solidity couvrant activité manuelle, trainer, signalement Strava, cinématique impossible, mauvais sport/challenge, date/distance, autre wallet, mauvais provider, attestation absente, rejeu et Sybil.
 
 La fixture Strava créée pendant le spike est manuelle et renvoie `has_latlng=false`. Elle sert désormais de cas négatif : la v2 la rejette. Elle n’est pas présentée comme une course réelle.
 
-Le contrat quotidien, l’API et l’interface responsive sont maintenant implémentés. `LockInEscrow.sol` couvre 1 à 5 jours, USDC natif Monad, plafond immuable de 1 USDC, partage du pool, quatre preuves Reclaim vérifiées onchain, attestation SDK/TEE, hashes exacts du provider, GPS/date/distance, nullifier global et remboursement d’urgence. Le runtime Vercel n’a aucune vulnérabilité connue selon `pnpm audit --prod`, les dépendances sont épinglées et les transactions utilisent une estimation de gas assortie d’une marge Monad limitée à 5 %. Il reste avant l’ouverture publique : déployer/configurer les contrats, renseigner le contact privacy et exécuter une vraie course GPS E2E. `LockInReclaimSpike.sol` reste uniquement l’ancien spike minimal et n’est pas déployé par défaut.
+Le contrat V3, l’API et l’interface responsive sont implémentés et déployés sur Monad mainnet à l’adresse `0x718faf8969e6924333d28450eaf9df6356f63ba1`. `LockInEscrow.sol` couvre les programmes 1/3/7/14/30 jours, sépare durée et nombre de runs requis, impose le plafond immuable de 1 USDC, annule les pools sous-remplis, lie une identité Strava unique à chaque participant du pool et conserve les quatre preuves Reclaim vérifiées onchain. L’UI expose la progression calendrier et les états registration/active/grace/settlement. Le runtime Vercel n’a aucune vulnérabilité connue selon `pnpm audit --prod`, les dépendances sont épinglées et les transactions utilisent une estimation de gas assortie d’une marge Monad limitée à 5 %. Il reste avant l’ouverture publique : exécuter une vraie course GPS E2E. `LockInReclaimSpike.sol` reste uniquement l’ancien spike minimal et n’est pas déployé par défaut.
 
-## Flux v2
+## Flux V3
 
-1. Lock In crée un pacte de 1 à 5 jours, sa distance et un challenge aléatoire `LI-…`.
-2. Pour chaque jour, le backend crée une session Reclaim exactement sur le provider `1.0.2`, liée à `pactId:dayIndex`.
-3. L’utilisateur enregistre un run GPS et place le challenge dans son titre Strava.
-4. Reclaim lit quatre réponses authentifiées sans transmettre les identifiants Strava à Lock In.
-5. Le backend prévalide la version publiée, le TEE, le contexte et les règles métier, puis signe une attestation de cinq minutes sans conserver la preuve brute.
-6. Le portefeuille soumet les quatre preuves et cette attestation ; le contrat exige les deux et revérifie signatures Reclaim, hashes provider, contexte, date, distance, GPS et nullifier.
+1. Lock In crée un programme standard 1/3/7/14/30 jours, son objectif de complétions, sa distance et un challenge aléatoire `LI-…`.
+2. Pour chaque jour crédité, le backend crée une session Reclaim exactement sur le provider `1.0.2`, liée à `pactId:dayIndex`.
+3. Chaque jour reçoit un code unique et déterministe, par exemple `LI-…D01`, `LI-…D02`, jusqu’à `D30`. L’utilisateur donne exactement ce titre à l’activité ; le provider peut ainsi sélectionner chaque run même lors d’une preuve tardive, sans publier de titre libre.
+4. Reclaim lit quatre réponses authentifiées sans transmettre les identifiants de connexion ; les champs minimaux de l’activité parviennent temporairement au backend de vérification.
+5. Le backend prévalide la version publiée, le TEE, le contexte et les règles métier, puis signe une attestation de cinq minutes sans conserver la preuve brute côté serveur.
+6. Le portefeuille publie ensuite les preuves transformées dans le calldata Monad : leurs champs Strava minimisés sont publics et permanents, mais aucun tracé GPS détaillé ni identifiant de connexion n’est inclus.
+7. Le portefeuille soumet les quatre preuves et cette attestation ; le contrat exige les deux et revérifie signatures Reclaim, hashes provider, contexte, date, distance, GPS et nullifier.
 
 Le détail exact des garanties et des attaques résiduelles est dans [SECURITY.md](SECURITY.md). La politique de minimisation est dans [PRIVACY.md](PRIVACY.md).
 
@@ -49,7 +50,7 @@ Créer ensuite une session. Sans `STRAVA_CHALLENGE`, le script génère un chall
 pnpm proof:request
 ```
 
-Le résultat indique le challenge à placer dans le titre de la nouvelle course GPS. Après le flux Reclaim, placer la réponse JSON sous `proofs/` puis vérifier :
+Le résultat indique le code journalier exact à placer dans le titre de la nouvelle course GPS. Après le flux Reclaim, placer la réponse JSON sous `proofs/` puis vérifier :
 
 ```bash
 pnpm proof:inspect -- proofs/strava-v2.json
@@ -69,19 +70,19 @@ pnpm provider:check
 pnpm production:check
 ```
 
-`MAX_STAKE_ATOMIC_UNITS=1000000` impose exactement 1 USDC. Source primaire : [registre officiel Circle des adresses USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses).
+`MAX_STAKE_ATOMIC_UNITS=1000000` impose un maximum de 1 USDC. Source primaire : [registre officiel Circle des adresses USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses).
 
 ## Provider et vie privée
 
-La recette relue depuis Reclaim est conservée dans `providers/strava-date-distance.json`. Lock In ne stocke ni mot de passe/cookie Strava, ni token Strava, ni tracé GPS détaillé. L’API web est stateless : sa politique tient dans un token HMAC de vingt minutes et la preuve brute disparaît après la réponse. Le CLI local garde seulement ses fixtures ignorées par Git.
+La recette relue depuis Reclaim est conservée dans `providers/strava-date-distance.json`. Lock In ne stocke ni mot de passe/cookie Strava, ni token Strava, ni tracé GPS détaillé. L’API web est stateless : sa politique tient dans un token HMAC de vingt minutes et le serveur ne conserve pas la preuve après la réponse. Pour la vérification directe onchain, le portefeuille publie néanmoins les preuves transformées et leurs champs Strava minimisés dans le calldata public et permanent. Le CLI local garde seulement ses fixtures ignorées par Git.
 
-Le prototype ne doit pas être publié tant que l’identité et le contact du responsable de traitement ne sont pas renseignés dans `PRIVACY.md`.
+L’ouverture au-delà de la bêta expérimentale exige de compléter l’identité juridique du responsable de traitement et la revue locale du modèle de mise ; le contact opérationnel est déjà publié dans `PRIVACY.md`.
 
 ## Interface et API
 
 `pnpm dev` lance la home, la page publique `/pact/[id]`, les trois routes stateless `/api/reclaim/*` et `/api/health`. Il faut configurer `NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS`, les secrets Reclaim, `SESSION_SIGNING_SECRET`, `EVIDENCE_SIGNER_PRIVATE_KEY`, `NEXT_PUBLIC_PRIVACY_EMAIL` et l’URL publique du dépôt. Aucun secret ne doit utiliser le préfixe `NEXT_PUBLIC_`.
 
-Le polling Reclaim est exécuté dans le navigateur par requêtes courtes. Les routes Node Vercel créent la session, lisent son état et vérifient la preuve ; aucune base ni processus long n’est nécessaire. Un backend Render séparé n’est donc pas requis pour la v2.
+Le polling Reclaim est exécuté dans le navigateur par requêtes courtes. Les routes Node Vercel créent la session, lisent son état et vérifient la preuve ; aucune base ni processus long n’est nécessaire. Un backend Render séparé n’est donc pas requis pour le flux web V3 actuel.
 
 ## Mise en production
 

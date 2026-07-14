@@ -5,7 +5,7 @@
 Une acceptation v2 signifie que quatre réponses Strava authentifiées ont été attestées par Reclaim et validées contre le provider privé exact `f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.2`. Ensemble, elles établissent que :
 
 1. la session correspond au compte Strava actuellement connecté ;
-2. ce compte expose un `Run` dont le titre contient le challenge imprévisible du pacte ;
+2. ce compte expose un `Run` dont le titre est exactement le code journalier imprévisible du pacte (`challenge + D01…D30`), ce qui rend la sélection multi-jours déterministe et évite de publier un titre libre dans le calldata ;
 3. l’heure de départ est dans la fenêtre du pacte ;
 4. `distance_raw` atteint la distance minimale en mètres ;
 5. Strava renvoie `has_latlng=true`, `trainer=false` et `flagged=false` ;

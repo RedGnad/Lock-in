@@ -9,6 +9,7 @@ import {
   STRAVA_PROVIDER_ID,
   STRAVA_PROVIDER_VERSION,
 } from "../src/strava-proof-policy.js";
+import { dailyProofCode } from "../src/pact-code.js";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -30,8 +31,8 @@ if (!isAddress(rawAddress)) throw new Error("WALLET_ADDRESS is invalid");
 const pactId = process.env.PACT_ID?.trim() || "0";
 if (!/^\d+$/.test(pactId)) throw new Error("PACT_ID must be an unsigned integer");
 const dayIndex = Number(process.env.DAY_INDEX?.trim() || "0");
-if (!Number.isSafeInteger(dayIndex) || dayIndex < 0 || dayIndex > 4) {
-  throw new Error("DAY_INDEX must be an integer between 0 and 4");
+if (!Number.isSafeInteger(dayIndex) || dayIndex < 0 || dayIndex > 29) {
+  throw new Error("DAY_INDEX must be an integer between 0 and 29");
 }
 
 const providerId = process.env.PROVIDER_ID?.trim() || STRAVA_PROVIDER_ID;
@@ -43,8 +44,9 @@ if (providerId !== STRAVA_PROVIDER_ID || providerVersion !== STRAVA_PROVIDER_VER
 const challenge = process.env.STRAVA_CHALLENGE?.trim()
   || `LI-${randomBytes(12).toString("hex").toUpperCase()}`;
 if (!STRAVA_CHALLENGE_PATTERN.test(challenge)) {
-  throw new Error("STRAVA_CHALLENGE must match LI- followed by 16 to 32 uppercase letters or digits");
+  throw new Error("STRAVA_CHALLENGE must match LI- followed by 16 to 28 uppercase letters or digits");
 }
+const proofCode = dailyProofCode(challenge, dayIndex);
 
 const now = Date.now();
 const pactStartsAtMs = parseDate("PACT_STARTS_AT", now);
@@ -65,12 +67,12 @@ const request = await ReclaimProofRequest.init(
     providerVersion,
     acceptTeeAttestation: true,
     canAutoSubmit: true,
-    preferredLocale: "fr",
+    preferredLocale: "en",
   },
 );
 
 request.setContext(walletAddress, `${pactId}:${dayIndex}`);
-request.setParams({ context_challenge: challenge });
+request.setParams({ context_challenge: proofCode });
 
 const sessionId = request.getSessionId();
 const sessionsRoot = resolve("sessions");
@@ -82,7 +84,8 @@ await savePendingSession(sessionsRoot, {
   walletAddress,
   pactId,
   dayIndex,
-  challenge,
+  pactChallenge: challenge,
+  proofCode,
   startsAtMs,
   endsAtMs,
   minDistanceMeters,
@@ -111,7 +114,8 @@ console.log(JSON.stringify({
   pactId,
   dayIndex,
   challenge,
-  activityInstruction: `Record a GPS run and include ${challenge} in its Strava title.`,
+  proofCode,
+  activityInstruction: `Set the Strava title to exactly ${proofCode}.`,
   pactStartsAt: new Date(startsAtMs).toISOString(),
   pactEndsAt: new Date(endsAtMs).toISOString(),
   minDistanceMeters,

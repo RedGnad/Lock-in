@@ -46,7 +46,7 @@ export async function signCompletion(input: {
   return privateKeyToAccount(input.privateKey).signTypedData({
     domain: {
       name: "Lock In",
-      version: "2",
+      version: "3",
       chainId: input.chainId,
       verifyingContract: getAddress(input.verifyingContract),
     },

@@ -29,13 +29,15 @@ const chain = defineChain({
   rpcUrls: { default: { http: [rpcUrl] } },
 });
 const client = createPublicClient({ chain, transport: http(rpcUrl) });
-const [chainId, escrowCode, stakeToken, reclaim, evidenceSigner, maxStake] = await Promise.all([
+const [chainId, escrowCode, stakeToken, reclaim, evidenceSigner, maxStake, version, maxDays] = await Promise.all([
   client.getChainId(),
   client.getCode({ address: escrow }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "stakeToken" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "reclaim" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "evidenceSigner" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "maxStake" }),
+  client.readContract({ address: escrow, abi: lockInAbi, functionName: "VERSION" }),
+  client.readContract({ address: escrow, abi: lockInAbi, functionName: "MAX_DAYS" }),
 ]);
 const [reclaimCode, tokenCode, tokenDecimals, tokenSymbol] = await Promise.all([
   client.getCode({ address: reclaim }),
@@ -52,6 +54,8 @@ const checks = {
   nativeUsdc: getAddress(stakeToken) === EXPECTED_USDC,
   usdcMetadata: tokenDecimals === 6 && tokenSymbol === "USDC",
   oneDollarCap: maxStake === 1_000_000n,
+  contractVersion: version === 3n,
+  thirtyDayPrograms: maxDays === 30n,
   evidenceSigner: privateKeyToAccount(signerKey).address === getAddress(evidenceSigner),
 };
 if (!Object.values(checks).every(Boolean)) {

@@ -13,13 +13,15 @@ export async function GET() {
   try {
     if (!escrowAddress) throw new Error("Escrow address is not configured");
     const client = lockInPublicClient();
-    const [chainId, escrowCode, stakeToken, reclaim, evidenceSigner, maxStake] = await Promise.all([
+    const [chainId, escrowCode, stakeToken, reclaim, evidenceSigner, maxStake, version, maxDays] = await Promise.all([
       client.getChainId(),
       client.getCode({ address: escrowAddress }),
       client.readContract({ address: escrowAddress, abi: lockInAbi, functionName: "stakeToken" }),
       client.readContract({ address: escrowAddress, abi: lockInAbi, functionName: "reclaim" }),
       client.readContract({ address: escrowAddress, abi: lockInAbi, functionName: "evidenceSigner" }),
       client.readContract({ address: escrowAddress, abi: lockInAbi, functionName: "maxStake" }),
+      client.readContract({ address: escrowAddress, abi: lockInAbi, functionName: "VERSION" }),
+      client.readContract({ address: escrowAddress, abi: lockInAbi, functionName: "MAX_DAYS" }),
     ]);
     const [stakeTokenCode, reclaimCode] = await Promise.all([
       client.getCode({ address: stakeToken }),
@@ -35,6 +37,8 @@ export async function GET() {
       stakeTokenCode: Boolean(stakeTokenCode && stakeTokenCode !== "0x"),
       reclaimCode: Boolean(reclaimCode && reclaimCode !== "0x"),
       oneUsdcCap: maxStake === 1_000_000n,
+      contractVersion: version === 3n,
+      thirtyDayPrograms: maxDays === 30n,
       reclaimCredentials: Boolean(process.env.ID?.trim() && process.env.SECRET?.trim()),
       sessionSecret: Boolean((process.env.SESSION_SIGNING_SECRET?.trim().length || 0) >= 32),
       evidenceSigner: signerMatches,

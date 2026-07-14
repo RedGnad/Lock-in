@@ -1,7 +1,7 @@
 {
   "chainId": 143,
   "network": "Monad mainnet",
-  "deployedAt": "2026-07-14",
+  "deployedAt": "2026-07-15",
   "reclaim": {
     "proxy": "0x96700b1d61e0747905de96f2ba8347f738181869",
     "implementation": "0x7e6a69072dd9f411b6084e5379a5fbe58a05708d",
@@ -12,11 +12,20 @@
     "witness": "0x244897572368Eadf65bfBc5aec98D8e5443a9072"
   },
   "escrow": {
-    "address": "0xd701f09ecaabc38c23933e836bda87401474516f",
-    "deploymentTx": "0x7e10a177eace7205ebcbd3a94574b3b15909290ce23d2ae5ede14c909f73a946",
+    "version": 3,
+    "address": "0x718faf8969e6924333d28450eaf9df6356f63ba1",
+    "deploymentTx": "0x9861376d11ff165cc597485c784289888f1f7c485e8789e97e7fcf0d86ac26ff",
     "stakeToken": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
     "maxStakeAtomicUnits": "1000000",
+    "maxDays": 30,
     "evidenceSigner": "0xD81A3105eb76Ea129D68B82c445Fe94606eab211",
     "providerKey": "0x91b0a8891dcf07b6c94d36b3b23124ded3986687265eb03d831f44a08b35efb0"
-  }
+  },
+  "legacyEscrows": [
+    {
+      "version": 2,
+      "address": "0xd701f09ecaabc38c23933e836bda87401474516f",
+      "deploymentTx": "0x7e10a177eace7205ebcbd3a94574b3b15909290ce23d2ae5ede14c909f73a946"
+    }
+  ]
 }

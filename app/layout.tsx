@@ -5,8 +5,8 @@ import { WalletButton } from "@/components/wallet-button";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lock In — Quitters pay finishers",
-  description: "Stake. Prove your mission. Finishers split the pool.",
+  title: "Lock In — Stake-backed accountability",
+  description: "Stake up to 1 USDC, verify a mission record, and settle the pact on Monad.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -21,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <WalletButton />
           </header>
           {children}
-          <footer><span>LOCK IN / MONAD 2026</span><div><Link href="/privacy">Privacy</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
+          <footer><span>LOCK IN / MONAD 2026 · EXPERIMENTAL BETA · 18+</span><div><Link href="/rules">Rules</Link><Link href="/privacy">Privacy</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
         </Providers>
       </body>
     </html>

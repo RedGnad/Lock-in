@@ -17,7 +17,7 @@ interface IReclaimVerifier {
     ) external pure returns (string memory);
 }
 
-/// @notice Daily stable-token commitments settled from four direct Reclaim proofs.
+/// @notice Scheduled stable-token commitments settled from four direct Reclaim proofs.
 /// @dev The four provider hashes pin the exact private Strava provider v1.0.2.
 contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
@@ -37,7 +37,8 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     );
 
     uint256 public constant MAX_PARTICIPANTS = 100;
-    uint256 public constant MAX_DAYS = 5;
+    uint256 public constant MAX_DAYS = 30;
+    uint256 public constant VERSION = 3;
     uint256 public constant MAX_CLAIM_WINDOW = 1 days;
     uint256 public constant MAX_PROOF_AGE = 10 minutes;
 
@@ -50,7 +51,9 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint32 participantCount;
         uint32 finisherCount;
         uint32 claimedCount;
-        uint8 daysRequired;
+        uint8 durationDays;
+        uint8 requiredCompletions;
+        uint8 minParticipants;
         bytes32 challengeHash;
         bytes32 providerKey;
         uint256 remainingPool;
@@ -82,7 +85,10 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     mapping(uint256 => Pact) public pacts;
     mapping(uint256 => string) public pactChallenges;
     mapping(uint256 => mapping(address => bool)) public joined;
-    mapping(uint256 => mapping(address => uint8)) public completionBitmap;
+    mapping(uint256 => mapping(address => uint256)) public completionBitmap;
+    mapping(uint256 => mapping(address => uint8)) public completionCount;
+    mapping(uint256 => mapping(address => bytes32)) public participantIdentity;
+    mapping(uint256 => mapping(bytes32 => address)) public identityOwner;
     mapping(uint256 => mapping(address => bool)) public claimed;
     mapping(bytes32 => bool) public usedActivityNullifiers;
 
@@ -91,7 +97,9 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         address indexed creator,
         uint256 stake,
         uint32 minDistanceMeters,
-        uint8 daysRequired,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
         uint64 startsAt,
         uint64 claimDeadline,
         bytes32 providerKey,
@@ -110,6 +118,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     event PayoutClaimed(uint256 indexed pactId, address indexed account, uint256 amount);
     event PactCancelled(uint256 indexed pactId);
     event EvidenceSignerUpdated(address indexed previousSigner, address indexed newSigner);
+    event IdentityBound(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
 
     error InvalidAddress();
     error InvalidStake();
@@ -133,6 +142,11 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     error AttestationExpired();
     error InvalidEvidenceSigner();
     error SubmissionClosed();
+    error PactNotStarted();
+    error UnderfilledPact();
+    error TargetAlreadyMet();
+    error IdentityAlreadyUsed();
+    error IdentityMismatch();
     error FinalizationTooEarly();
     error AlreadyFinalized();
     error NotFinalized();
@@ -144,7 +158,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         IReclaimVerifier reclaim_,
         address evidenceSigner_,
         uint256 maxStake_
-    ) EIP712("Lock In", "2") {
+    ) EIP712("Lock In", "3") {
         if (address(stakeToken_) == address(0) || address(reclaim_) == address(0) || evidenceSigner_ == address(0)) {
             revert InvalidAddress();
         }
@@ -158,16 +172,27 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     function createPact(
         uint96 stake,
         uint32 minDistanceMeters,
-        uint8 daysRequired,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
         uint64 startsAt,
         uint64 claimDeadline,
         string calldata challenge
     ) external nonReentrant returns (uint256 pactId) {
         if (stake == 0 || stake > maxStake) revert InvalidStake();
-        if (minDistanceMeters == 0 || daysRequired == 0 || daysRequired > MAX_DAYS) {
+        if (
+            minDistanceMeters == 0 ||
+            durationDays == 0 ||
+            durationDays > MAX_DAYS ||
+            requiredCompletions == 0 ||
+            requiredCompletions > durationDays ||
+            minParticipants == 0 ||
+            (durationDays > 1 && minParticipants < 2) ||
+            minParticipants > MAX_PARTICIPANTS
+        ) {
             revert InvalidGoal();
         }
-        uint256 endsAt = uint256(startsAt) + uint256(daysRequired) * 1 days;
+        uint256 endsAt = uint256(startsAt) + uint256(durationDays) * 1 days;
         if (
             startsAt < block.timestamp ||
             claimDeadline < endsAt ||
@@ -183,7 +208,9 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         pact.stake = stake;
         pact.minDistanceMeters = minDistanceMeters;
         pact.participantCount = 1;
-        pact.daysRequired = daysRequired;
+        pact.durationDays = durationDays;
+        pact.requiredCompletions = requiredCompletions;
+        pact.minParticipants = minParticipants;
         pact.challengeHash = keccak256(bytes(challenge));
         pact.providerKey = STRAVA_PROVIDER_KEY;
         pactChallenges[pactId] = challenge;
@@ -195,7 +222,9 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
             msg.sender,
             stake,
             minDistanceMeters,
-            daysRequired,
+            durationDays,
+            requiredCompletions,
+            minParticipants,
             startsAt,
             claimDeadline,
             STRAVA_PROVIDER_KEY,
@@ -227,10 +256,13 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (pact.finalized || pact.cancelled || block.timestamp > pact.claimDeadline) {
             revert SubmissionClosed();
         }
+        if (block.timestamp < pact.startsAt) revert PactNotStarted();
+        if (pact.participantCount < pact.minParticipants) revert UnderfilledPact();
         if (!joined[pactId][msg.sender]) revert NotParticipant();
-        if (dayIndex >= pact.daysRequired) revert InvalidDay();
-        uint8 dayMask = uint8(uint256(1) << dayIndex);
-        uint8 previousBitmap = completionBitmap[pactId][msg.sender];
+        if (completionCount[pactId][msg.sender] >= pact.requiredCompletions) revert TargetAlreadyMet();
+        if (dayIndex >= pact.durationDays) revert InvalidDay();
+        uint256 dayMask = uint256(1) << dayIndex;
+        uint256 previousBitmap = completionBitmap[pactId][msg.sender];
         if (previousBitmap & dayMask != 0) revert DayAlreadyProved();
         if (keccak256(bytes(challenge)) != pact.challengeHash) revert InvalidChallenge();
 
@@ -258,12 +290,24 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
             ) != evidenceSigner
         ) revert InvalidEvidenceSigner();
         if (usedActivityNullifiers[activityNullifier]) revert ActivityAlreadyUsed();
+        bytes32 identityHash = keccak256(abi.encode(STRAVA_PROVIDER_KEY, fields.athleteMarker));
+        bytes32 boundIdentity = participantIdentity[pactId][msg.sender];
+        if (boundIdentity == bytes32(0)) {
+            address boundOwner = identityOwner[pactId][identityHash];
+            if (boundOwner != address(0) && boundOwner != msg.sender) revert IdentityAlreadyUsed();
+            participantIdentity[pactId][msg.sender] = identityHash;
+            identityOwner[pactId][identityHash] = msg.sender;
+            emit IdentityBound(pactId, msg.sender, identityHash);
+        } else if (boundIdentity != identityHash) {
+            revert IdentityMismatch();
+        }
         usedActivityNullifiers[activityNullifier] = true;
 
-        uint8 updatedBitmap = previousBitmap | dayMask;
+        uint256 updatedBitmap = previousBitmap | dayMask;
         completionBitmap[pactId][msg.sender] = updatedBitmap;
-        uint8 requiredBitmap = uint8((uint256(1) << pact.daysRequired) - 1);
-        if (updatedBitmap == requiredBitmap) ++pact.finisherCount;
+        uint8 updatedCount = completionCount[pactId][msg.sender] + 1;
+        completionCount[pactId][msg.sender] = updatedCount;
+        if (updatedCount == pact.requiredCompletions) ++pact.finisherCount;
         emit DayProved(pactId, msg.sender, dayIndex, activityNullifier, distance, activityTime);
     }
 
@@ -320,7 +364,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
             !_equal(fields.hasLatLng, "true") ||
             !_equal(fields.trainer, "false") ||
             !_equal(fields.flagged, "false") ||
-            !_contains(fields.activityName, challenge)
+            !_equal(fields.activityName, _dailyProofCode(challenge, dayIndex))
         ) revert InvalidStravaEvidence();
 
         uint256 activityId = _parseUint(fields.activityId);
@@ -353,6 +397,10 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     function finalizePact(uint256 pactId) public {
         Pact storage pact = _pact(pactId);
         if (pact.finalized) revert AlreadyFinalized();
+        if (!pact.cancelled && block.timestamp >= pact.startsAt && pact.participantCount < pact.minParticipants) {
+            pact.cancelled = true;
+            emit PactCancelled(pactId);
+        }
         if (!pact.cancelled && block.timestamp <= pact.claimDeadline) revert FinalizationTooEarly();
         pact.finalized = true;
         pact.remainingPool = uint256(pact.stake) * pact.participantCount;
@@ -366,11 +414,10 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (!joined[pactId][msg.sender]) revert NotParticipant();
 
         uint256 eligibleCount;
-        uint8 requiredBitmap = uint8((uint256(1) << pact.daysRequired) - 1);
         if (pact.cancelled || pact.finisherCount == 0) {
             eligibleCount = pact.participantCount;
         } else {
-            if (completionBitmap[pactId][msg.sender] != requiredBitmap) revert NotEligible();
+            if (completionCount[pactId][msg.sender] < pact.requiredCompletions) revert NotEligible();
             eligibleCount = pact.finisherCount;
         }
 
@@ -418,7 +465,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
 
     function pactEndsAt(uint256 pactId) external view returns (uint256) {
         Pact storage pact = _pact(pactId);
-        return uint256(pact.startsAt) + uint256(pact.daysRequired) * 1 days;
+        return uint256(pact.startsAt) + uint256(pact.durationDays) * 1 days;
     }
 
     function _expectedProviderHash(uint256 index) private pure returns (bytes32) {
@@ -439,7 +486,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
 
     function _isValidChallenge(string calldata challenge) private pure returns (bool) {
         bytes calldata value = bytes(challenge);
-        if (value.length < 19 || value.length > 35 || value[0] != "L" || value[1] != "I" || value[2] != "-") {
+        if (value.length < 19 || value.length > 31 || value[0] != "L" || value[1] != "I" || value[2] != "-") {
             return false;
         }
         for (uint256 i = 3; i < value.length; ++i) {
@@ -447,6 +494,13 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
             if (!((c >= "A" && c <= "Z") || (c >= "0" && c <= "9"))) return false;
         }
         return true;
+    }
+
+    function _dailyProofCode(string calldata challenge, uint8 dayIndex) private pure returns (string memory) {
+        uint256 dayNumber = uint256(dayIndex) + 1;
+        return dayNumber < 10
+            ? string.concat(challenge, "D0", _uintToString(dayNumber))
+            : string.concat(challenge, "D", _uintToString(dayNumber));
     }
 
     function _parseStravaTimestamp(string memory value) private pure returns (uint256) {
@@ -525,18 +579,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (b.length > a.length) return false;
         for (uint256 i; i < b.length; ++i) if (a[i] != b[i]) return false;
         return true;
-    }
-
-    function _contains(string memory value, string memory needle) private pure returns (bool) {
-        bytes memory a = bytes(value);
-        bytes memory b = bytes(needle);
-        if (b.length == 0 || b.length > a.length) return false;
-        for (uint256 i; i <= a.length - b.length; ++i) {
-            bool matches = true;
-            for (uint256 j; j < b.length; ++j) if (a[i + j] != b[j]) { matches = false; break; }
-            if (matches) return true;
-        }
-        return false;
     }
 
     function _equal(string memory a, string memory b) private pure returns (bool) {

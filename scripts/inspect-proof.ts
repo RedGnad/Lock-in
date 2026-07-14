@@ -58,7 +58,7 @@ const evidence = validateStravaEvidence(result.data, {
   walletAddress: pending.walletAddress,
   pactId: pending.pactId,
   dayIndex: pending.dayIndex,
-  challenge: pending.challenge,
+  challenge: pending.proofCode,
   expectedSessionId: pending.sessionId,
   startsAtMs: pending.startsAtMs,
   endsAtMs: pending.endsAtMs,

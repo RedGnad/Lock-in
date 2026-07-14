@@ -16,7 +16,9 @@ Pour vérifier un pacte Strava, Lock In traite uniquement :
 - les temps de mouvement/écoulé et le dénivelé nécessaires aux contrôles de plausibilité ;
 - le résultat de validation, un nullifier cryptographique et, après déploiement, la transaction onchain.
 
-Lock In ne demande, ne reçoit et ne stocke ni mot de passe Strava, ni cookie Strava, ni jeton d’accès Strava, ni tracé GPS détaillé. La connexion s’effectue dans le flux isolé de Reclaim. Le titre de l’activité reste soumis aux réglages de confidentialité choisis par l’utilisateur sur Strava.
+Lock In ne demande, ne reçoit et ne stocke ni mot de passe Strava, ni cookie Strava, ni jeton d’accès Strava, ni tracé GPS détaillé. La connexion s’effectue dans le flux isolé de Reclaim.
+
+Pour permettre la vérification onchain, le portefeuille soumet toutefois les preuves Reclaim transformées dans le calldata d’une transaction Monad. Le contexte public de ces preuves contient le marqueur du compte athlète, l’identifiant et le titre de l’activité, le sport, l’heure de départ, la distance, les booléens GPS/trainer/flag, les temps de mouvement et écoulé, le dénivelé, le pacte et les métadonnées de preuve. Ces données deviennent publiques et permanentes. Les réglages de confidentialité Strava ne masquent pas la copie publiée dans le calldata.
 
 ## Finalités et base
 
@@ -27,7 +29,7 @@ Ces données servent exclusivement à créer le pacte, vérifier que ses conditi
 - L’API web encode la politique de session dans un token HMAC qui expire après vingt minutes et n’est pas inscrit dans une base utilisateur.
 - La preuve brute est vérifiée en mémoire et n’est pas conservée par le backend applicatif.
 - Après acceptation, le backend web ne conserve pas l’identifiant de session ni la preuve ; le bitmap et le nullifier onchain empêchent la réutilisation de l’activité.
-- Les données inscrites sur une blockchain publique — adresse, identifiant/hash de pacte, nullifier et transaction — sont publiques et ne peuvent pas être supprimées par Lock In.
+- Les preuves transformées et leurs champs minimisés sont ensuite publiés par le portefeuille dans le calldata Monad. L’adresse, le pacte, les champs listés ci-dessus, le nullifier et la transaction sont publics et ne peuvent pas être supprimés par Lock In.
 
 Les scripts CLI de développement peuvent créer des fichiers locaux sous `sessions/` et `proofs/`. Ils sont ignorés par Git, automatiquement élagués pour les sessions et doivent être supprimés après les tests.
 

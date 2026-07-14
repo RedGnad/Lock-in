@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     assertFreshProofTimestamps(proofs.map((proof) => Number(proof.claimData.timestampS)));
     const evidence = validateStravaEvidence(result.data, {
       ...policy,
+      challenge: policy.proofCode,
       expectedSessionId: token.sessionId,
     });
     if (!escrowAddress) throw new Error("NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS is not configured");

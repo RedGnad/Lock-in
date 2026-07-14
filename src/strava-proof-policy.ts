@@ -6,6 +6,7 @@ import {
   parseAbiParameters,
   stringToHex,
 } from "viem";
+import { STRAVA_DAILY_PROOF_CODE_PATTERN, STRAVA_PACT_CHALLENGE_PATTERN } from "./pact-code";
 
 export const STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
 export const STRAVA_PROVIDER_VERSION = "1.0.2";
@@ -16,7 +17,7 @@ export const STRAVA_PROVIDER_HASHES = [
   "0x0bf30795f8148a6ec4d8609a71b7b6f7962f265169f6626e5b36b1f842460e27",
   "0x26f22ca533a47f4af000231fd0a4de10b055985f2a32126bf2407de878a22040",
 ] as const;
-export const STRAVA_CHALLENGE_PATTERN = /^LI-[A-Z0-9]{16,32}$/;
+export const STRAVA_CHALLENGE_PATTERN = STRAVA_PACT_CHALLENGE_PATTERN;
 
 const REQUIRED_FIELDS = [
   "marker",
@@ -141,11 +142,11 @@ function assertSharedContext(
   if (!/^\d+$/.test(policy.pactId)) {
     reject("INVALID_POLICY", "The pact ID must be an unsigned integer");
   }
-  if (!Number.isSafeInteger(policy.dayIndex) || policy.dayIndex < 0 || policy.dayIndex > 4) {
-    reject("INVALID_POLICY", "The day index must be between 0 and 4");
+  if (!Number.isSafeInteger(policy.dayIndex) || policy.dayIndex < 0 || policy.dayIndex > 29) {
+    reject("INVALID_POLICY", "The day index must be between 0 and 29");
   }
-  if (!STRAVA_CHALLENGE_PATTERN.test(policy.challenge)) {
-    reject("INVALID_POLICY", "The challenge must match LI- followed by 16 to 32 uppercase letters or digits");
+  if (!STRAVA_DAILY_PROOF_CODE_PATTERN.test(policy.challenge)) {
+    reject("INVALID_POLICY", "The daily proof code must be the pact challenge followed by D01 through D30");
   }
   if (!Number.isSafeInteger(policy.minDistanceMeters) || policy.minDistanceMeters <= 0) {
     reject("INVALID_POLICY", "The minimum distance must be a positive integer number of meters");
@@ -184,8 +185,8 @@ export function validateStravaEvidence(
   if (!athleteMatch) reject("INVALID_ATHLETE", "The signed Strava athlete marker is invalid");
   if (!/^\d+$/.test(fields.id)) reject("INVALID_ACTIVITY", "The signed Strava activity ID is invalid");
   if (fields.type !== "Run") reject("WRONG_SPORT", "The activity is not a run");
-  if (!fields.name.includes(policy.challenge)) {
-    reject("WRONG_CHALLENGE", "The activity title does not contain this pact's challenge");
+  if (fields.name !== policy.challenge) {
+    reject("WRONG_CHALLENGE", "The activity title must be exactly this pact's challenge");
   }
   if (fields.latlng !== "true") {
     reject("NO_GPS", "Strava reports no GPS trace for this activity");

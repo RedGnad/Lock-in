@@ -14,7 +14,8 @@
     "minAverageSpeedMetersPerSecond": 0.5,
     "maxElapsedToMovingRatio": 4,
     "maxAdditionalPauseSeconds": 900,
-    "titleMustContain": "{{context_challenge}}",
+    "titleMustEqualRuntimePolicy": "{{context_challenge}}",
+    "dailyCodeFormat": "<pactChallenge>D01 through <pactChallenge>D30",
     "distanceField": "distance_raw",
     "timeField": "start_time",
     "providerVersionMustEqual": "1.0.2"

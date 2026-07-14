@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatUnits, zeroAddress, type Address, type Hash } from "viem";
 import { useAccount, useConfig, usePublicClient, useReadContracts, useWriteContract } from "wagmi";
@@ -8,14 +8,15 @@ import { waitForTransactionReceipt } from "wagmi/actions";
 import { erc20Abi, lockInAbi } from "@/src/lock-in-abi";
 import { escrowAddress } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
+import { dailyProofCode } from "@/src/pact-code";
 
 type PactTuple = readonly [
   Address, bigint, bigint, bigint, number, number, number, number, number,
-  Hash, Hash, bigint, boolean, boolean,
+  number, number, Hash, Hash, bigint, boolean, boolean,
 ];
 
 function formatDate(seconds: bigint) {
-  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(Number(seconds) * 1_000);
+  return new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" }).format(Number(seconds) * 1_000);
 }
 
 export function PactDashboard({ id }: { id: string }) {
@@ -28,6 +29,23 @@ export function PactDashboard({ id }: { id: string }) {
   const [message, setMessage] = useState("");
   const [busyDay, setBusyDay] = useState<number | null>(null);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [entryAccepted, setEntryAccepted] = useState(false);
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1_000));
+
+  useEffect(() => {
+    let alive = true;
+    async function syncChainClock() {
+      try {
+        const block = await publicClient?.getBlock({ blockTag: "latest" });
+        if (alive && block) setNowSeconds(Number(block.timestamp));
+      } catch {
+        if (alive) setNowSeconds(Math.floor(Date.now() / 1_000));
+      }
+    }
+    void syncChainClock();
+    const timer = window.setInterval(() => void syncChainClock(), 30_000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [publicClient]);
 
   const reads = useReadContracts({
     contracts: [
@@ -35,6 +53,8 @@ export function PactDashboard({ id }: { id: string }) {
       { address: contract, abi: lockInAbi, functionName: "pactChallenges", args: [pactId] },
       { address: contract, abi: lockInAbi, functionName: "joined", args: [pactId, address || zeroAddress] },
       { address: contract, abi: lockInAbi, functionName: "completionBitmap", args: [pactId, address || zeroAddress] },
+      { address: contract, abi: lockInAbi, functionName: "completionCount", args: [pactId, address || zeroAddress] },
+      { address: contract, abi: lockInAbi, functionName: "claimed", args: [pactId, address || zeroAddress] },
       { address: contract, abi: lockInAbi, functionName: "stakeToken" },
     ],
     query: { enabled: Boolean(escrowAddress && pactId > 0n) },
@@ -42,8 +62,10 @@ export function PactDashboard({ id }: { id: string }) {
   const pact = reads.data?.[0]?.result as PactTuple | undefined;
   const challenge = (reads.data?.[1]?.result as string | undefined) || "";
   const isJoined = Boolean(reads.data?.[2]?.result);
-  const bitmap = Number(reads.data?.[3]?.result || 0);
-  const token = (reads.data?.[4]?.result as Address | undefined) || zeroAddress;
+  const bitmap = BigInt(reads.data?.[3]?.result || 0);
+  const completed = Number(reads.data?.[4]?.result || 0);
+  const hasClaimed = Boolean(reads.data?.[5]?.result);
+  const token = (reads.data?.[6]?.result as Address | undefined) || zeroAddress;
   const tokenReads = useReadContracts({
     contracts: [
       { address: token, abi: erc20Abi, functionName: "decimals" },
@@ -57,9 +79,9 @@ export function PactDashboard({ id }: { id: string }) {
   const allowance = BigInt(tokenReads.data?.[2]?.result || 0);
 
   const currentDay = useMemo(() => {
-    if (!pact) return 0;
-    return Math.max(0, Math.min(pact[8] - 1, Math.floor((Date.now() / 1_000 - Number(pact[1])) / 86_400)));
-  }, [pact]);
+    if (!pact || nowSeconds < Number(pact[1])) return -1;
+    return Math.min(pact[8], Math.floor((nowSeconds - Number(pact[1])) / 86_400));
+  }, [nowSeconds, pact]);
 
   async function send(request: Parameters<typeof writeContractAsync>[0]) {
     if (!address || !publicClient) throw new Error("Wallet or Monad RPC unavailable");
@@ -79,6 +101,7 @@ export function PactDashboard({ id }: { id: string }) {
 
   async function join() {
     if (!address || !escrowAddress || !pact) return setMessage("Connect your wallet.");
+    if (!entryAccepted) return setMessage("Accept the beta rules and public proof-data disclosure first.");
     try {
       setMessage("Preparing your stake…");
       if (allowance < pact[3]) {
@@ -92,7 +115,7 @@ export function PactDashboard({ id }: { id: string }) {
 
   async function prove(dayIndex: number) {
     if (!address || !escrowAddress) return setMessage("Connect your wallet.");
-    if (!privacyAccepted) return setMessage("Accept the minimal Strava data processing first.");
+    if (!privacyAccepted) return setMessage("Accept the public Strava proof-data disclosure first.");
     const popup = window.open("about:blank", "lock-in-reclaim", "popup,width=500,height=760");
     setBusyDay(dayIndex);
     try {
@@ -106,7 +129,7 @@ export function PactDashboard({ id }: { id: string }) {
       if (!sessionResponse.ok) throw new Error(session.error || "Reclaim session rejected");
       if (popup) popup.location.href = session.requestUrl;
       else window.location.href = session.requestUrl;
-      setMessage(`Connect Strava and confirm day ${dayIndex + 1}.`);
+      setMessage(session.instruction || `Set the day ${dayIndex + 1} Strava title, then confirm the proof.`);
 
       let proofs: unknown = null;
       for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -164,32 +187,52 @@ export function PactDashboard({ id }: { id: string }) {
   if (!escrowAddress) return <main className="pact-shell"><div className="empty-state">Contract not configured.</div></main>;
   if (!pact || pact[0] === zeroAddress) return <main className="pact-shell"><div className="empty-state">Loading pact #{id}…</div></main>;
 
-  const daysRequired = pact[8];
-  const endsAt = pact[1] + BigInt(daysRequired * 86_400);
+  const durationDays = pact[8];
+  const requiredCompletions = pact[9];
+  const minParticipants = pact[10];
+  const endsAt = pact[1] + BigInt(durationDays * 86_400);
+  const registration = nowSeconds < Number(pact[1]);
+  const underfilled = !registration && pact[5] < minParticipants && !pact[14] && !pact[15];
+  const active = !registration && nowSeconds < Number(endsAt) && !underfilled && !pact[14] && !pact[15];
+  const grace = nowSeconds >= Number(endsAt) && nowSeconds <= Number(pact[2]) && !pact[14] && !pact[15];
+  const canSettle = pact[15] || underfilled || nowSeconds > Number(pact[2]);
+  const status = pact[15] ? (pact[14] ? "REFUNDS OPEN" : "CANCELLED") : pact[14] ? "SETTLED" : registration ? "REGISTRATION" : underfilled ? "UNDERFILLED" : active ? "ACTIVE" : grace ? "PROOF GRACE" : "SETTLEMENT READY";
+  const targetReached = completed >= requiredCompletions;
+  const payoutEligible = isJoined && (pact[15] || pact[6] === 0 || targetReached);
+  const proofWindowOpen = !registration && nowSeconds <= Number(pact[2]) && !underfilled && !pact[14] && !pact[15] && !targetReached;
+  const progress = Math.min(100, Math.round((completed / requiredCompletions) * 100));
+  const displayedPool = pact[14] ? pact[13] : pact[3] * BigInt(pact[5]);
   return (
     <main className="pact-shell">
-      <div className="pact-topline"><Link href="/">← All pacts</Link><span>PUBLIC PACT / #{id.padStart(4, "0")}</span></div>
+      <div className="pact-topline"><Link href="/#missions">← Mission catalog</Link><span>STRAVA RUN / #{id.padStart(4, "0")}</span></div>
       <section className="pact-hero">
-        <div><div className="live-pill"><i /> {pact[12] ? "SETTLED" : pact[13] ? "REFUNDED" : "LIVE"}</div><h1>{pact[4] / 1_000} km<br/><em>× {daysRequired} day{daysRequired > 1 ? "s" : ""}</em></h1><p>Complete one run every day. Finishers split the entire pool.</p></div>
-        <div className="pot"><span>CURRENT POOL</span><strong>{formatUnits(pact[3] * BigInt(pact[5]), decimals)}</strong><b>{symbol}</b><small>{pact[5]} participant{pact[5] > 1 ? "s" : ""}</small></div>
+        <div><div className="live-pill"><i /> {status}</div><h1>{pact[4] / 1_000} km<br/><em>{requiredCompletions} of {durationDays} days</em></h1><p>One qualifying run can count per day. Set the Strava title to the pact prefix plus that day&apos;s suffix, then reach the target.</p></div>
+        <div className="pot"><span>{pact[14] ? "UNCLAIMED POOL" : "TOTAL POOL"}</span><strong>{formatUnits(displayedPool, decimals)}</strong><b>{symbol}</b><small>{pact[5]} participant{pact[5] > 1 ? "s" : ""}</small></div>
       </section>
       <section className="pact-grid">
         <div className="days-card">
-          <div className="section-title"><span>PROGRESS</span><b>{bitmap.toString(2).split("1").length - 1}/{daysRequired}</b></div>
+          <div className="section-title"><span>YOUR PROGRESS</span><b>{completed}/{requiredCompletions} REQUIRED</b></div>
+          <div className="progress-track" aria-label={`${progress}% complete`}><i style={{ width: `${progress}%` }} /></div>
           <div className="day-list">
-            {Array.from({ length: daysRequired }, (_, day) => {
-              const done = (bitmap & (1 << day)) !== 0;
-              return <div className={`day-row ${done ? "done" : ""}`} key={day}><div><b>D{day + 1}</b><span>{formatDate(pact[1] + BigInt(day * 86_400))}</span></div><button disabled={!isJoined || !privacyAccepted || done || busyDay !== null || day > currentDay} onClick={() => prove(day)}>{done ? "PROVED ✓" : busyDay === day ? "PROVING…" : "PROVE"}</button></div>;
+            {Array.from({ length: durationDays }, (_, day) => {
+              const done = (bitmap & (1n << BigInt(day))) !== 0n;
+              const dayState = done ? "done" : day === currentDay ? "today" : day < currentDay ? "past" : "upcoming";
+              return <div className={`day-row ${dayState}`} key={day}><div><b>D{day + 1}</b><code>+{dailyProofCode(challenge, day).slice(-3)}</code><span>{formatDate(pact[1] + BigInt(day * 86_400))}</span></div><button disabled={!isJoined || !privacyAccepted || done || !proofWindowOpen || busyDay !== null || day > currentDay} onClick={() => prove(day)}>{done ? "PROVED ✓" : targetReached ? "TARGET MET" : !proofWindowOpen ? "CLOSED" : busyDay === day ? "PROVING…" : day === currentDay ? "PROVE TODAY" : day < currentDay ? "PROVE RUN" : "LOCKED"}</button></div>;
             })}
           </div>
         </div>
-        <aside className="pact-details"><div><span>STRAVA CODE</span><code>{challenge}</code></div><div><span>STAKE / PERSON</span><b>{formatUnits(pact[3], decimals)} {symbol}</b></div><div><span>PACT ENDS</span><b>{formatDate(endsAt)}</b></div><div><span>FINISHERS</span><b>{pact[6]}</b></div></aside>
+        <aside className="pact-details"><div><span>STRAVA CODE PREFIX</span><code>{challenge}</code></div><div><span>STAKE / PERSON</span><b>{formatUnits(pact[3], decimals)} {symbol}</b></div><div><span>REGISTRATION CLOSES</span><b>{formatDate(pact[1])}</b></div><div><span>PROGRAM ENDS</span><b>{formatDate(endsAt)}</b></div><div><span>PROOF DEADLINE</span><b>{formatDate(pact[2])}</b></div><div><span>MINIMUM CREW</span><b>{minParticipants} participants</b></div><div><span>FINISHERS</span><b>{pact[6]}</b></div></aside>
       </section>
       <div className="pact-actions">
-        {isJoined && !pact[12] && !pact[13] && <label className="consent-row"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)}/><span>I agree to the temporary processing of the Strava fields required for proof, as described in the <Link href="/privacy">privacy policy</Link>.</span></label>}
-        {!isJoined && <button className="lock-button" onClick={join}>JOIN — {formatUnits(pact[3], decimals)} {symbol}</button>}
-        {isJoined && !pact[12] && <button className="secondary-button" onClick={() => finalizeOrClaim("finalize")}>Settle after the deadline</button>}
-        {pact[12] && <button className="lock-button" onClick={() => finalizeOrClaim("claim")}>CLAIM MY PAYOUT</button>}
+        {!isJoined && registration && <p>Joining may require a token approval plus the stake transaction. Gas is not refundable. Settlement follows the target, refund, UTC-window, and admin-cancellation rules linked below.</p>}
+        {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I am 18+, eligible where I live, and understand that the required Strava proof fields listed in the privacy notice—not my GPS route—will become public and permanent on Monad. <Link href="/rules">Rules</Link> · <Link href="/privacy">Privacy</Link></span></label>}
+        {isJoined && !targetReached && !pact[14] && !pact[15] && !underfilled && <label className="consent-row"><input type="checkbox" checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)}/><span>I understand that the required Strava fields and Reclaim proof contexts will be submitted in public, permanent Monad calldata, as described in the <Link href="/privacy">privacy policy</Link>.</span></label>}
+        {!isJoined && registration && <button className="lock-button" disabled={!entryAccepted} onClick={join}>JOIN — {formatUnits(pact[3], decimals)} {symbol}</button>}
+        {!isJoined && !registration && <p>Registration is closed for this cohort.</p>}
+        {isJoined && !pact[14] && canSettle && <button className="secondary-button" onClick={() => finalizeOrClaim("finalize")}>{underfilled ? "CANCEL & ENABLE REFUNDS" : "SETTLE PACT"}</button>}
+        {pact[14] && payoutEligible && !hasClaimed && <button className="lock-button" onClick={() => finalizeOrClaim("claim")}>{pact[15] || pact[6] === 0 ? "CLAIM MY REFUND" : "CLAIM MY PAYOUT"}</button>}
+        {pact[14] && hasClaimed && <p>Your payout has already been claimed.</p>}
+        {pact[14] && isJoined && !payoutEligible && <p>The completion target was missed, so no payout is available.</p>}
         {message && <p>{message}</p>}
       </div>
     </main>

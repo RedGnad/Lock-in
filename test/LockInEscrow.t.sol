@@ -81,7 +81,7 @@ contract LockInEscrowTest {
         vm.prank(ALICE);
         (bool ok,) = address(escrow).call(abi.encodeCall(
             escrow.createPact,
-            (uint96(ONE_USD + 1), 1_000, 1, uint64(JUL_14_2026), uint64(JUL_15_2026() + 1 hours), CHALLENGE)
+            (uint96(ONE_USD + 1), 1_000, 1, 1, 1, uint64(JUL_14_2026), uint64(JUL_15_2026() + 1 hours), CHALLENGE)
         ));
         require(!ok, "stake above cap accepted");
     }
@@ -227,7 +227,7 @@ contract LockInEscrowTest {
         _join(pactId, BOB);
         _join(pactId, CAROL);
         require(token.balanceOf(address(escrow)) == 3 * ONE_USD, "each identity did not fund equal stake");
-        (, , , uint96 stake, , uint32 participantCount, , , , , , , , ) = escrow.pacts(pactId);
+        (, , , uint96 stake, , uint32 participantCount, , , , , , , , , , ) = escrow.pacts(pactId);
         require(stake == ONE_USD && participantCount == 3, "payout weights diverged from stake");
     }
 
@@ -242,11 +242,159 @@ contract LockInEscrowTest {
         require(escrow.claim(pactId) == ONE_USD, "bob refund wrong");
     }
 
-    function _createPact(uint8 daysRequired) private returns (uint256 pactId) {
-        uint64 deadline = uint64(JUL_14_2026 + uint256(daysRequired) * 1 days + 1 hours);
+    function testThirtyDayPactUsesWideBitmapAndFlexibleTarget() public {
+        uint256 pactId = _createPactWithPolicy(30, 2, 2);
+        _join(pactId, BOB);
+
+        vm.warp(JUL_14_2026 + 14 hours);
+        _submit(ALICE, pactId, 0, "800", 800, "2026-07-14T13:04:46+0000", "1000");
+
+        vm.warp(JUL_14_2026 + 29 days + 14 hours);
+        _submit(ALICE, pactId, 29, "801", 801, "2026-08-12T13:04:46+0000", "1000");
+
+        uint256 bitmap = escrow.completionBitmap(pactId, ALICE);
+        require(bitmap & 1 == 1, "day zero missing");
+        require(bitmap & (uint256(1) << 29) != 0, "day twenty-nine missing");
+        require(escrow.completionCount(pactId, ALICE) == 2, "completion target not counted");
+
+        vm.warp(JUL_14_2026 + 30 days + 2 hours);
+        escrow.finalizePact(pactId);
+        vm.prank(ALICE);
+        require(escrow.claim(pactId) == 2 * ONE_USD, "flexible-target finisher did not receive pool");
+        vm.prank(BOB);
+        (bool loserClaimed,) = address(escrow).call(abi.encodeCall(escrow.claim, (pactId)));
+        require(!loserClaimed, "non-finisher claimed flexible-target pool");
+    }
+
+    function testUnderfilledPactCancelsAndRefundsAtStart() public {
+        uint256 pactId = _createPactWithPolicy(3, 3, 2);
+        vm.warp(JUL_14_2026);
+        escrow.finalizePact(pactId);
+        (, , , , , , , , , , , , , , bool finalized, bool cancelled) = escrow.pacts(pactId);
+        require(finalized && cancelled, "underfilled pact stayed active");
+        vm.prank(ALICE);
+        require(escrow.claim(pactId) == ONE_USD, "underfilled creator not refunded");
+    }
+
+    function testSameStravaIdentityCannotBackTwoWalletsInOnePact() public {
+        uint256 pactId = _createPact(1);
+        _join(pactId, BOB);
+        vm.warp(JUL_14_2026 + 14 hours);
+        _submit(ALICE, pactId, 0, "900", 900, "2026-07-14T13:04:46+0000", "1000");
+
+        string memory aliceMarker = _athleteMarker(ALICE);
+        Reclaim.Proof[4] memory proofs = _proofs(
+            BOB, pactId, 0, "901", "2026-07-14T13:05:46+0000", "1000", true, false
+        );
+        proofs[0].claimInfo.context = _context(
+            BOB,
+            pactId,
+            0,
+            IDENTITY_HASH,
+            string.concat('"marker":"', aliceMarker, '"')
+        );
+        (uint64 expiresAt, bytes memory signature) = _attestationForMarker(
+            pactId, BOB, 0, 901, aliceMarker
+        );
+        vm.prank(BOB);
+        (bool ok,) = address(escrow).call(abi.encodeCall(
+            escrow.submitStravaProofs,
+            (pactId, 0, CHALLENGE, proofs, expiresAt, signature)
+        ));
+        require(!ok, "one Strava identity backed two wallets");
+    }
+
+    function testMultiDayPactCannotBeConfiguredAsSolo() public {
+        vm.prank(ALICE);
+        (bool ok,) = address(escrow).call(abi.encodeCall(
+            escrow.createPact,
+            (uint96(ONE_USD), 1_000, 3, 1, 1, uint64(JUL_14_2026), uint64(JUL_14_2026 + 3 days + 1 hours), CHALLENGE)
+        ));
+        require(!ok, "multi-day solo pact accepted");
+    }
+
+    function testProofCannotStartEarlyOrInUnderfilledPact() public {
+        uint256 pactId = _createPactWithPolicy(3, 1, 2);
+        (uint64 earlyExpiry, bytes memory earlySignature) = _attestation(pactId, ALICE, 0, 910);
+        vm.prank(ALICE);
+        (bool earlyOk,) = address(escrow).call(abi.encodeCall(
+            escrow.submitStravaProofs,
+            (pactId, 0, CHALLENGE, _proofs(ALICE, pactId, 0, "910", "2026-07-14T00:00:00+0000", "1000", true, false), earlyExpiry, earlySignature)
+        ));
+        require(!earlyOk, "proof accepted before start");
+
+        vm.warp(JUL_14_2026);
+        (uint64 expiry, bytes memory signature) = _attestation(pactId, ALICE, 0, 911);
+        vm.prank(ALICE);
+        (bool underfilledOk,) = address(escrow).call(abi.encodeCall(
+            escrow.submitStravaProofs,
+            (pactId, 0, CHALLENGE, _proofs(ALICE, pactId, 0, "911", "2026-07-14T00:00:00+0000", "1000", true, false), expiry, signature)
+        ));
+        require(!underfilledOk, "proof accepted in underfilled pact");
+    }
+
+    function testJoinClosesAtStart() public {
+        uint256 pactId = _createPactWithPolicy(3, 1, 2);
+        vm.warp(JUL_14_2026);
+        vm.prank(BOB);
+        (bool ok,) = address(escrow).call(abi.encodeCall(escrow.joinPact, (pactId)));
+        require(!ok, "join accepted at pact start");
+    }
+
+    function testAdditionalProofIsRejectedAfterTarget() public {
+        uint256 pactId = _createPactWithPolicy(3, 1, 2);
+        _join(pactId, BOB);
+        vm.warp(JUL_14_2026 + 14 hours);
+        _submit(ALICE, pactId, 0, "920", 920, "2026-07-14T13:04:46+0000", "1000");
+
+        vm.warp(JUL_15_2026() + 14 hours);
+        (uint64 expiry, bytes memory signature) = _attestation(pactId, ALICE, 1, 921);
+        vm.prank(ALICE);
+        (bool ok,) = address(escrow).call(abi.encodeCall(
+            escrow.submitStravaProofs,
+            (pactId, 1, CHALLENGE, _proofs(ALICE, pactId, 1, "921", "2026-07-15T13:04:46+0000", "1000", true, false), expiry, signature)
+        ));
+        require(!ok, "extra proof consumed after target");
+        require(escrow.completionCount(pactId, ALICE) == 1, "completion count changed after target");
+    }
+
+    function testWalletCannotSwitchStravaIdentityAcrossDays() public {
+        uint256 pactId = _createPactWithPolicy(2, 2, 2);
+        _join(pactId, BOB);
+        vm.warp(JUL_14_2026 + 14 hours);
+        _submit(ALICE, pactId, 0, "930", 930, "2026-07-14T13:04:46+0000", "1000");
+
+        vm.warp(JUL_15_2026() + 14 hours);
+        string memory bobMarker = _athleteMarker(BOB);
+        Reclaim.Proof[4] memory proofs = _proofs(
+            ALICE, pactId, 1, "931", "2026-07-15T13:04:46+0000", "1000", true, false
+        );
+        proofs[0].claimInfo.context = _context(
+            ALICE, pactId, 1, IDENTITY_HASH, string.concat('"marker":"', bobMarker, '"')
+        );
+        (uint64 expiry, bytes memory signature) = _attestationForMarker(pactId, ALICE, 1, 931, bobMarker);
+        vm.prank(ALICE);
+        (bool ok,) = address(escrow).call(abi.encodeCall(
+            escrow.submitStravaProofs,
+            (pactId, 1, CHALLENGE, proofs, expiry, signature)
+        ));
+        require(!ok, "wallet switched Strava identity");
+    }
+
+    function _createPact(uint8 durationDays) private returns (uint256 pactId) {
+        return _createPactWithPolicy(durationDays, durationDays, durationDays > 1 ? 2 : 1);
+    }
+
+    function _createPactWithPolicy(
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants
+    ) private returns (uint256 pactId) {
+        uint64 deadline = uint64(JUL_14_2026 + uint256(durationDays) * 1 days + 1 hours);
         vm.prank(ALICE);
         pactId = escrow.createPact(
-            uint96(ONE_USD), 1_000, daysRequired, uint64(JUL_14_2026), deadline, CHALLENGE
+            uint96(ONE_USD), 1_000, durationDays, requiredCompletions, minParticipants,
+            uint64(JUL_14_2026), deadline, CHALLENGE
         );
     }
 
@@ -288,8 +436,18 @@ contract LockInEscrowTest {
         uint8 dayIndex,
         uint256 activityId
     ) private returns (uint64 expiresAt, bytes memory signature) {
+        return _attestationForMarker(pactId, account, dayIndex, activityId, _athleteMarker(account));
+    }
+
+    function _attestationForMarker(
+        uint256 pactId,
+        address account,
+        uint8 dayIndex,
+        uint256 activityId,
+        string memory athleteMarker
+    ) private returns (uint64 expiresAt, bytes memory signature) {
         bytes32 nullifier = keccak256(abi.encode(
-            escrow.STRAVA_PROVIDER_KEY(), "userId: 1815502280", activityId
+            escrow.STRAVA_PROVIDER_KEY(), athleteMarker, activityId
         ));
         bytes32 setHash = keccak256(abi.encode(
             bytes32(0), bytes32(0), bytes32(0), bytes32(0)
@@ -347,7 +505,7 @@ contract LockInEscrowTest {
             pactId,
             dayIndex,
             IDENTITY_HASH,
-            '"marker":"userId: 1815502280"'
+            string.concat('"marker":"', _athleteMarker(account), '"')
         ));
         proofs[1] = _proof(_context(
             account,
@@ -356,7 +514,7 @@ contract LockInEscrowTest {
             CORE_HASH,
             string.concat(
                 '"id":"', activityId,
-                '","name":"Morning Run ', CHALLENGE,
+                '","name":"', _proofCode(dayIndex),
                 '","raw":"', distance,
                 '","time":"', startTime,
                 '","type":"Run","flagged":"', flagged,
@@ -401,6 +559,17 @@ contract LockInEscrowTest {
             '},"providerHash":"', uint256(providerHash).toHexString(32),
             '","reclaimSessionId":"session-test"}'
         );
+    }
+
+    function _athleteMarker(address account) private pure returns (string memory) {
+        return string.concat("userId: ", uint256(uint160(account)).toString());
+    }
+
+    function _proofCode(uint8 dayIndex) private pure returns (string memory) {
+        uint256 dayNumber = uint256(dayIndex) + 1;
+        return dayNumber < 10
+            ? string.concat(CHALLENGE, "D0", dayNumber.toString())
+            : string.concat(CHALLENGE, "D", dayNumber.toString());
     }
 
     function JUL_15_2026() private pure returns (uint256) { return JUL_14_2026 + 1 days; }
