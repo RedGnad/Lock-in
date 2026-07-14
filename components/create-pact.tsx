@@ -34,7 +34,7 @@ export function CreatePact() {
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
   const [distanceKm, setDistanceKm] = useState("1");
-  const [days, setDays] = useState(1);
+  const [days, setDays] = useState(3);
   const [stakeInput, setStakeInput] = useState("1");
   const [challenge, setChallenge] = useState("");
   const [status, setStatus] = useState("");
@@ -121,7 +121,7 @@ export function CreatePact() {
       <div className="card-kicker">New pact · Strava running</div>
       <div className="form-grid">
         <label><span>Run each day</span><div className="input-unit"><input value={distanceKm} onChange={(event) => setDistanceKm(event.target.value)} inputMode="decimal"/><b>km</b></div></label>
-        <label><span>Streak</span><div className="segmented">{[1, 2, 3, 4, 5].map((value) => <button type="button" className={days === value ? "active" : ""} onClick={() => setDays(value)} key={value}>{value}d</button>)}</div></label>
+        <label><span>Streak</span><div className="segmented">{[1, 2, 3, 4, 5].map((value) => <button type="button" className={days === value ? "active" : ""} onClick={() => setDays(value)} key={value}>{value}d</button>)}</div><small>3 days recommended · 1 day is for demos and practice</small></label>
         <label><span>Stake</span><div className="input-unit"><input value={stakeInput} onChange={(event) => setStakeInput(event.target.value)} inputMode="decimal"/><b>{symbol}</b></div><small>Contract cap: {maxStake !== undefined ? `${formatUnits(maxStake, decimals)} ${symbol}` : "—"}</small></label>
       </div>
       <div className="challenge-preview"><span>Run code</span><code>{challenge || "generated when you lock in"}</code></div>

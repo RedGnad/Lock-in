@@ -14,7 +14,7 @@ export default function Home() {
         <div className="proof-strip"><span>STRAVA</span><b>zkTLS</b><span>MONAD</span><i>DIRECT ONCHAIN</i></div>
       </section>
       <section className="mechanic">
-        <div><b>01</b><h2>Lock</h2><p>Choose a distance, a 1–5 day streak, and a symbolic stake.</p></div>
+        <div><b>01</b><h2>Lock</h2><p>Choose a daily distance and stake up to $1. Three days is the recommended streak.</p></div>
         <div><b>02</b><h2>Move</h2><p>Record one GPS run per day. Your unique code binds each activity to the pact.</p></div>
         <div><b>03</b><h2>Prove</h2><p>Four Reclaim proofs are verified directly on Monad.</p></div>
       </section>
