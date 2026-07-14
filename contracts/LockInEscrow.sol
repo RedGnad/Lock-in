@@ -18,20 +18,20 @@ interface IReclaimVerifier {
 }
 
 /// @notice Daily stable-token commitments settled from four direct Reclaim proofs.
-/// @dev The four provider hashes pin the exact private Strava provider v1.0.1.
+/// @dev The four provider hashes pin the exact private Strava provider v1.0.2.
 contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 
     bytes32 public constant STRAVA_PROVIDER_KEY =
-        keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.1");
+        keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.2");
     bytes32 public constant STRAVA_IDENTITY_HASH =
         0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67;
     bytes32 public constant STRAVA_CORE_HASH =
-        0x5c93d136e5aa70f1b170f12a0eda9720f3e7c3436b0956e9bd59a85059d1db24;
+        0x2ef5ed61f33aa62f83c1ebf18c191b1b897db0d4a959368a365fff0c036dab2b;
     bytes32 public constant STRAVA_GPS_HASH =
-        0xacaa6d30e913b76499b4f06db6c7feca367c0c925c4d5ef55fb836f27922e1d0;
+        0x0bf30795f8148a6ec4d8609a71b7b6f7962f265169f6626e5b36b1f842460e27;
     bytes32 public constant STRAVA_TRAINER_HASH =
-        0x5c82d40177d4abaf29329b0c9dccb8eb06a8eb4882ea2b736d3ac5a9631521bf;
+        0x26f22ca533a47f4af000231fd0a4de10b055985f2a32126bf2407de878a22040;
     bytes32 public constant COMPLETION_TYPEHASH = keccak256(
         "Completion(uint256 pactId,address account,uint8 dayIndex,bytes32 activityNullifier,bytes32 proofSetHash,uint64 expiresAt)"
     );
@@ -65,6 +65,10 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         string sportType;
         string startTime;
         string distanceRaw;
+        string flagged;
+        string movingTimeRaw;
+        string elapsedTimeRaw;
+        string elevationGainRaw;
         string hasLatLng;
         string trainer;
     }
@@ -296,6 +300,10 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         fields.sportType = _extract(proofs[1].claimInfo.context, '"type":"');
         fields.startTime = _extract(proofs[1].claimInfo.context, '"time":"');
         fields.distanceRaw = _extract(proofs[1].claimInfo.context, '"raw":"');
+        fields.flagged = _extract(proofs[1].claimInfo.context, '"flagged":"');
+        fields.movingTimeRaw = _extract(proofs[1].claimInfo.context, '"moving":"');
+        fields.elapsedTimeRaw = _extract(proofs[1].claimInfo.context, '"elapsed":"');
+        fields.elevationGainRaw = _extract(proofs[1].claimInfo.context, '"elevation":"');
         fields.hasLatLng = _extract(proofs[2].claimInfo.context, '"latlng":"');
         fields.trainer = _extract(proofs[3].claimInfo.context, '"trainer":"');
     }
@@ -311,6 +319,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
             !_equal(fields.sportType, "Run") ||
             !_equal(fields.hasLatLng, "true") ||
             !_equal(fields.trainer, "false") ||
+            !_equal(fields.flagged, "false") ||
             !_contains(fields.activityName, challenge)
         ) revert InvalidStravaEvidence();
 
@@ -318,6 +327,21 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (activityId == 0) revert InvalidStravaEvidence();
         distance = _parseUint(fields.distanceRaw);
         if (distance < pact.minDistanceMeters) revert DistanceTooShort();
+        if (
+            bytes(fields.movingTimeRaw).length == 0 ||
+            bytes(fields.elapsedTimeRaw).length == 0 ||
+            bytes(fields.elevationGainRaw).length == 0
+        ) revert InvalidStravaEvidence();
+        uint256 movingTime = _parseUint(fields.movingTimeRaw);
+        uint256 elapsedTime = _parseUint(fields.elapsedTimeRaw);
+        _parseUint(fields.elevationGainRaw);
+        if (
+            movingTime == 0 ||
+            elapsedTime < movingTime ||
+            distance > movingTime * 9 ||
+            distance * 2 < movingTime ||
+            elapsedTime > movingTime * 4 + 15 minutes
+        ) revert InvalidStravaEvidence();
         activityTime = _parseStravaTimestamp(fields.startTime);
         uint256 dayStart = uint256(pact.startsAt) + uint256(dayIndex) * 1 days;
         if (activityTime < dayStart || activityTime >= dayStart + 1 days) {

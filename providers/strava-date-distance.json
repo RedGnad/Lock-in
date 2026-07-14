@@ -1,18 +1,23 @@
 {
   "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "name": "Lock In Strava authenticated GPS activity",
   "status": "published-private",
   "loginUrl": "https://www.strava.com/athlete/training",
-  "description": "Proves a logged-in Strava athlete and a challenge-bound Run using canonical activity id, title, UTC start time, distance in metres, GPS presence, and trainer status.",
+  "description": "Proves a logged-in Strava athlete and a challenge-bound Run using canonical activity id, title, UTC start time, distance, GPS, trainer, Strava flag, and signed motion metrics.",
   "runtimePolicy": {
     "requiredSportType": "Run",
     "requiredHasLatLng": true,
     "requiredTrainer": false,
+    "requiredFlagged": false,
+    "maxAverageSpeedMetersPerSecond": 9,
+    "minAverageSpeedMetersPerSecond": 0.5,
+    "maxElapsedToMovingRatio": 4,
+    "maxAdditionalPauseSeconds": 900,
     "titleMustContain": "{{context_challenge}}",
     "distanceField": "distance_raw",
     "timeField": "start_time",
-    "providerVersionMustEqual": "1.0.1"
+    "providerVersionMustEqual": "1.0.2"
   },
   "requestData": [
     {
@@ -42,14 +47,22 @@
         { "type": "contains", "value": "\"name\":\"{{name}}\"" },
         { "type": "contains", "value": "\"sport_type\":\"{{type}}\"" },
         { "type": "contains", "value": "\"start_time\":\"{{time}}\"" },
-        { "type": "contains", "value": "\"distance_raw\":{{raw}}" }
+        { "type": "contains", "value": "\"distance_raw\":{{raw}}" },
+        { "type": "contains", "value": "\"flagged\":{{flagged}}" },
+        { "type": "contains", "value": "\"moving_time_raw\":{{moving}}" },
+        { "type": "contains", "value": "\"elapsed_time_raw\":{{elapsed}}" },
+        { "type": "contains", "value": "\"elevation_gain_raw\":{{elevation}}" }
       ],
       "responseRedactions": [
         { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
         { "jsonPath": "$.models[0].name", "regex": "\"name\":\"(?<name>[^\"<>\\n]+)\"" },
         { "jsonPath": "$.models[0].sport_type", "regex": "\"sport_type\":\"(?<type>[A-Za-z0-9_-]+)\"" },
         { "jsonPath": "$.models[0].start_time", "regex": "\"start_time\":\"(?<time>[^\"<>\\n]+)\"" },
-        { "jsonPath": "$.models[0].distance_raw", "regex": "\"distance_raw\":(?<raw>\\d+)" }
+        { "jsonPath": "$.models[0].distance_raw", "regex": "\"distance_raw\":(?<raw>\\d+)" },
+        { "jsonPath": "$.models[0].flagged", "regex": "\"flagged\":(?<flagged>true|false)" },
+        { "jsonPath": "$.models[0].moving_time_raw", "regex": "\"moving_time_raw\":(?<moving>\\d+)" },
+        { "jsonPath": "$.models[0].elapsed_time_raw", "regex": "\"elapsed_time_raw\":(?<elapsed>\\d+)" },
+        { "jsonPath": "$.models[0].elevation_gain_raw", "regex": "\"elevation_gain_raw\":(?<elevation>\\d+)" }
       ]
     },
     {
@@ -62,7 +75,7 @@
         { "type": "contains", "value": "\"has_latlng\":{{latlng}}" }
       ],
       "responseRedactions": [
-        { "jsonPath": "$.models[0].has_latlng", "regex": "\"has_latlng\":(?<latlng>[A-Za-z0-9_-]+)" }
+        { "jsonPath": "$.models[0].has_latlng", "regex": "\"has_latlng\":(?<latlng>true|false)" }
       ]
     },
     {
@@ -75,7 +88,7 @@
         { "type": "contains", "value": "\"trainer\":{{trainer}}" }
       ],
       "responseRedactions": [
-        { "jsonPath": "$.models[0].trainer", "regex": "\"trainer\":(?<trainer>[A-Za-z0-9_-]+)" }
+        { "jsonPath": "$.models[0].trainer", "regex": "\"trainer\":(?<trainer>true|false)" }
       ]
     }
   ],
@@ -85,6 +98,9 @@
     "anonymousReplayRejected": true,
     "manualFixtureHasLatLng": false,
     "manualFixtureRejectedByRuntimePolicy": true,
+    "antiCheatCoreProofVerified": true,
+    "antiCheatAuthenticatedReplaySucceeded": true,
+    "antiCheatAnonymousReplayRejected": true,
     "liveConfigurationReadBackViaMcp": true
   }
 }

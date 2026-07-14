@@ -15,7 +15,7 @@ const rpcUrl = process.env.MONAD_RPC_URL?.trim() || "https://rpc.monad.xyz";
 const rawEscrow = required("NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS");
 if (!isAddress(rawEscrow)) throw new Error("NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS is invalid");
 const escrow = getAddress(rawEscrow);
-const signerKey = required("EVIDENCE_SIGNER_PRIVATE_KEY") as Hex;
+const signerKey = (process.env.EVIDENCE_SIGNER_PRIVATE_KEY?.trim() || required("RECLAIM_PRIVATE_KEY")) as Hex;
 if (required("SESSION_SIGNING_SECRET").length < 32) throw new Error("SESSION_SIGNING_SECRET is too short");
 required("ID");
 required("SECRET");

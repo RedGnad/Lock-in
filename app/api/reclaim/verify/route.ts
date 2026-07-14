@@ -59,7 +59,10 @@ export async function POST(request: Request) {
       expectedSessionId: token.sessionId,
     });
     if (!escrowAddress) throw new Error("NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS is not configured");
-    const signerPrivateKey = process.env.EVIDENCE_SIGNER_PRIVATE_KEY?.trim() as Hex | undefined;
+    const signerPrivateKey = (
+      process.env.EVIDENCE_SIGNER_PRIVATE_KEY?.trim() ||
+      process.env.RECLAIM_PRIVATE_KEY?.trim()
+    ) as Hex | undefined;
     if (!signerPrivateKey) throw new Error("EVIDENCE_SIGNER_PRIVATE_KEY is not configured");
     await assertConfiguredEvidenceSigner(signerPrivateKey, escrowAddress);
     const expiresAt = BigInt(Math.min(
@@ -86,6 +89,10 @@ export async function POST(request: Request) {
       evidence: {
         distanceMeters: evidence.distanceMeters,
         startTime: evidence.startTime,
+        flagged: evidence.flagged,
+        movingTimeSeconds: evidence.movingTimeSeconds,
+        elapsedTimeSeconds: evidence.elapsedTimeSeconds,
+        elevationGainMeters: evidence.elevationGainMeters,
         hasGps: evidence.hasGps,
         trainer: evidence.trainer,
       },

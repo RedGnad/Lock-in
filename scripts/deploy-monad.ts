@@ -23,6 +23,16 @@ function required(name: string): string {
   return value;
 }
 
+function deployerPrivateKey(): Hex {
+  const raw = process.env.DEPLOYER_PRIVATE_KEY?.trim() || process.env.PRIVATE_KEY?.trim();
+  if (!raw) throw new Error("Missing DEPLOYER_PRIVATE_KEY or PRIVATE_KEY in .env");
+  const value = raw.startsWith("0x") ? raw : `0x${raw}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error("Deployment private key must be a 32-byte hex value");
+  }
+  return value as Hex;
+}
+
 async function artifact(path: string): Promise<{ abi: Abi; bytecode: Hex }> {
   const json = JSON.parse(await readFile(path, "utf8"));
   return { abi: json.abi, bytecode: json.bytecode.object as Hex };
@@ -35,7 +45,7 @@ const chain = defineChain({
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
   rpcUrls: { default: { http: [rpcUrl] } },
 });
-const account = privateKeyToAccount(required("DEPLOYER_PRIVATE_KEY") as Hex);
+const account = privateKeyToAccount(deployerPrivateKey());
 const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
 const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) });
 

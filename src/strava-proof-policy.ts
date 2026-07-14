@@ -8,13 +8,13 @@ import {
 } from "viem";
 
 export const STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-export const STRAVA_PROVIDER_VERSION = "1.0.1";
+export const STRAVA_PROVIDER_VERSION = "1.0.2";
 export const STRAVA_PROVIDER_KEY = keccak256(stringToHex(`${STRAVA_PROVIDER_ID}@${STRAVA_PROVIDER_VERSION}`));
 export const STRAVA_PROVIDER_HASHES = [
   "0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67",
-  "0x5c93d136e5aa70f1b170f12a0eda9720f3e7c3436b0956e9bd59a85059d1db24",
-  "0xacaa6d30e913b76499b4f06db6c7feca367c0c925c4d5ef55fb836f27922e1d0",
-  "0x5c82d40177d4abaf29329b0c9dccb8eb06a8eb4882ea2b736d3ac5a9631521bf",
+  "0x2ef5ed61f33aa62f83c1ebf18c191b1b897db0d4a959368a365fff0c036dab2b",
+  "0x0bf30795f8148a6ec4d8609a71b7b6f7962f265169f6626e5b36b1f842460e27",
+  "0x26f22ca533a47f4af000231fd0a4de10b055985f2a32126bf2407de878a22040",
 ] as const;
 export const STRAVA_CHALLENGE_PATTERN = /^LI-[A-Z0-9]{16,32}$/;
 
@@ -25,6 +25,10 @@ const REQUIRED_FIELDS = [
   "type",
   "time",
   "raw",
+  "flagged",
+  "moving",
+  "elapsed",
+  "elevation",
   "latlng",
   "trainer",
 ] as const;
@@ -55,6 +59,10 @@ export type StravaEvidence = {
   startTime: string;
   startTimeMs: number;
   distanceMeters: number;
+  movingTimeSeconds: number;
+  elapsedTimeSeconds: number;
+  elevationGainMeters: number;
+  flagged: false;
   hasGps: true;
   trainer: false;
   sessionId: string;
@@ -185,11 +193,39 @@ export function validateStravaEvidence(
   if (fields.trainer !== "false") {
     reject("TRAINER_ACTIVITY", "Indoor/trainer activities are not accepted");
   }
+  if (fields.flagged !== "false") {
+    reject("FLAGGED_ACTIVITY", "Activities flagged by Strava are not accepted");
+  }
 
   if (!/^\d+$/.test(fields.raw)) reject("INVALID_DISTANCE", "Strava distance_raw is not an integer");
   const distanceMeters = Number(fields.raw);
   if (!Number.isSafeInteger(distanceMeters) || distanceMeters < policy.minDistanceMeters) {
     reject("DISTANCE_TOO_SHORT", "The signed distance does not satisfy the pact");
+  }
+
+  if (!/^\d+$/.test(fields.moving) || !/^\d+$/.test(fields.elapsed) || !/^\d+$/.test(fields.elevation)) {
+    reject("INVALID_MOTION", "Strava motion metrics are not unsigned integers");
+  }
+  const movingTimeSeconds = Number(fields.moving);
+  const elapsedTimeSeconds = Number(fields.elapsed);
+  const elevationGainMeters = Number(fields.elevation);
+  if (
+    !Number.isSafeInteger(movingTimeSeconds) ||
+    !Number.isSafeInteger(elapsedTimeSeconds) ||
+    !Number.isSafeInteger(elevationGainMeters) ||
+    movingTimeSeconds <= 0 ||
+    elapsedTimeSeconds < movingTimeSeconds
+  ) {
+    reject("INVALID_MOTION", "Strava motion metrics are inconsistent");
+  }
+  if (distanceMeters > movingTimeSeconds * 9) {
+    reject("IMPLAUSIBLE_SPEED", "The signed average speed exceeds the running limit");
+  }
+  if (distanceMeters * 2 < movingTimeSeconds) {
+    reject("IMPLAUSIBLE_PACE", "The signed activity is too slow to count as a run");
+  }
+  if (elapsedTimeSeconds > movingTimeSeconds * 4 + 15 * 60) {
+    reject("IMPLAUSIBLE_ELAPSED_TIME", "The signed elapsed/moving time ratio is implausible");
   }
 
   const startTimeMs = parseUtcTimestamp(fields.time);
@@ -210,6 +246,10 @@ export function validateStravaEvidence(
     startTime: fields.time,
     startTimeMs,
     distanceMeters,
+    movingTimeSeconds,
+    elapsedTimeSeconds,
+    elevationGainMeters,
+    flagged: false,
     hasGps: true,
     trainer: false,
     sessionId: policy.expectedSessionId,

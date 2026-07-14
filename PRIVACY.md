@@ -12,7 +12,8 @@ Pour vérifier un pacte Strava, Lock In traite uniquement :
 - l’identifiant de session Reclaim ;
 - l’identifiant du compte athlète et de l’activité Strava ;
 - le titre, le type de sport, l’heure de départ et la distance en mètres ;
-- les booléens Strava `has_latlng` et `trainer` ;
+- les booléens Strava `has_latlng`, `trainer` et `flagged` ;
+- les temps de mouvement/écoulé et le dénivelé nécessaires aux contrôles de plausibilité ;
 - le résultat de validation, un nullifier cryptographique et, après déploiement, la transaction onchain.
 
 Lock In ne demande, ne reçoit et ne stocke ni mot de passe Strava, ni cookie Strava, ni jeton d’accès Strava, ni tracé GPS détaillé. La connexion s’effectue dans le flux isolé de Reclaim. Le titre de l’activité reste soumis aux réglages de confidentialité choisis par l’utilisateur sur Strava.

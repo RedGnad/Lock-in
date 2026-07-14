@@ -1,0 +1,22 @@
+{
+  "chainId": 143,
+  "network": "Monad mainnet",
+  "deployedAt": "2026-07-14",
+  "reclaim": {
+    "proxy": "0x96700b1d61e0747905de96f2ba8347f738181869",
+    "implementation": "0x7e6a69072dd9f411b6084e5379a5fbe58a05708d",
+    "implementationDeployTx": "0xd0fee95ba9149e6a8dad25a7169ab4b09bfaed3645218510ae23f0c6b34871e2",
+    "proxyDeployTx": "0xa2b370f1e7f196f1e7ab06cc238db500a1244e2711dc341ea684b18be6609867",
+    "epochTx": "0xbfaf5ea5c9843730557a09077010612801ea94ffd3ec7b3cbf06cc3e5a6288ce",
+    "currentEpoch": 1,
+    "witness": "0x244897572368Eadf65bfBc5aec98D8e5443a9072"
+  },
+  "escrow": {
+    "address": "0xd701f09ecaabc38c23933e836bda87401474516f",
+    "deploymentTx": "0x7e10a177eace7205ebcbd3a94574b3b15909290ce23d2ae5ede14c909f73a946",
+    "stakeToken": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+    "maxStakeAtomicUnits": "1000000",
+    "evidenceSigner": "0xD81A3105eb76Ea129D68B82c445Fe94606eab211",
+    "providerKey": "0x91b0a8891dcf07b6c94d36b3b23124ded3986687265eb03d831f44a08b35efb0"
+  }
+}

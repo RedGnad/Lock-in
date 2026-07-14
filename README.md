@@ -8,14 +8,14 @@ Lock In est une app d’engagement à mise symbolique : un utilisateur verrouill
 
 La preuve Strava v2 est publiée et son moteur de décision est implémenté :
 
-- provider Reclaim privé `f3ec8292-d8f3-487c-a79d-f53f482f88e2`, version verrouillée `1.0.1` ;
-- preuve du compte Strava connecté, de l’activité recherchée par challenge, de `has_latlng` et de `trainer` ;
-- contrôles du titre/challenge, sport `Run`, fenêtre temporelle, distance entière en mètres, GPS présent et trainer absent ;
+- provider Reclaim privé `f3ec8292-d8f3-487c-a79d-f53f482f88e2`, version verrouillée `1.0.2` ;
+- preuve du compte Strava connecté, de l’activité recherchée par challenge, de `has_latlng`, `trainer`, `flagged` et des métriques de mouvement ;
+- contrôles du titre/challenge, sport `Run`, fenêtre temporelle, distance entière en mètres, GPS présent, trainer absent, activité non signalée et cinématique plausible ;
 - liaison au portefeuille, pacte et session Reclaim initiée par Lock In ;
 - vérification de la configuration Reclaim exacte, TEE obligatoire par défaut, fraîcheur de dix minutes ;
 - validation SDK exacte + TEE attestée au contrat par un signataire dédié, en complément des signatures Reclaim onchain ;
 - nullifier d’activité côté serveur et onchain contre le rejeu ;
-- onze tests TypeScript et dix tests Solidity, dont activité manuelle, trainer, mauvais sport/challenge, date/distance, autre wallet, mauvais provider, attestation absente, rejeu et Sybil.
+- tests TypeScript et Solidity couvrant activité manuelle, trainer, signalement Strava, cinématique impossible, mauvais sport/challenge, date/distance, autre wallet, mauvais provider, attestation absente, rejeu et Sybil.
 
 La fixture Strava créée pendant le spike est manuelle et renvoie `has_latlng=false`. Elle sert désormais de cas négatif : la v2 la rejette. Elle n’est pas présentée comme une course réelle.
 
@@ -24,7 +24,7 @@ Le contrat quotidien, l’API et l’interface responsive sont maintenant implé
 ## Flux v2
 
 1. Lock In crée un pacte de 1 à 5 jours, sa distance et un challenge aléatoire `LI-…`.
-2. Pour chaque jour, le backend crée une session Reclaim exactement sur le provider `1.0.1`, liée à `pactId:dayIndex`.
+2. Pour chaque jour, le backend crée une session Reclaim exactement sur le provider `1.0.2`, liée à `pactId:dayIndex`.
 3. L’utilisateur enregistre un run GPS et place le challenge dans son titre Strava.
 4. Reclaim lit quatre réponses authentifiées sans transmettre les identifiants Strava à Lock In.
 5. Le backend prévalide la version publiée, le TEE, le contexte et les règles métier, puis signe une attestation de cinq minutes sans conserver la preuve brute.
