@@ -2,7 +2,7 @@
 
 Version du 14 juillet 2026.
 
-Cette politique décrit le prototype Lock In limité à des engagements symboliques d’au plus 1 USD. L’identité du responsable et la valeur publique `NEXT_PUBLIC_PRIVACY_EMAIL` doivent être renseignées avant toute mise en ligne publique : **[responsable à renseigner]**.
+Cette politique décrit le prototype Lock In limité à des engagements symboliques d’au plus 1 USD. Le contact public du responsable du prototype est **mookipstore@hotmail.com**.
 
 ## Données traitées
 
