@@ -1,0 +1,90 @@
+{
+  "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
+  "version": "1.0.1",
+  "name": "Lock In Strava authenticated GPS activity",
+  "status": "published-private",
+  "loginUrl": "https://www.strava.com/athlete/training",
+  "description": "Proves a logged-in Strava athlete and a challenge-bound Run using canonical activity id, title, UTC start time, distance in metres, GPS presence, and trainer status.",
+  "runtimePolicy": {
+    "requiredSportType": "Run",
+    "requiredHasLatLng": true,
+    "requiredTrainer": false,
+    "titleMustContain": "{{context_challenge}}",
+    "distanceField": "distance_raw",
+    "timeField": "start_time",
+    "providerVersionMustEqual": "1.0.1"
+  },
+  "requestData": [
+    {
+      "purpose": "Bind evidence to the currently authenticated Strava athlete",
+      "url": "https://www.strava.com/athlete/training",
+      "urlType": "CONSTANT",
+      "method": "GET",
+      "credentials": "include",
+      "responseMatches": [
+        { "type": "contains", "value": "\",\n   {{marker}},\n   " }
+      ],
+      "responseRedactions": [
+        {
+          "xPath": "/html[1]/head[1]/script[5]",
+          "regex": "\",\\s*(?<marker>[^\"<>\\n]+),\\s*"
+        }
+      ]
+    },
+    {
+      "purpose": "Extract the challenge-bound run identity, title, sport, start and integer metres",
+      "url": "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
+      "urlType": "TEMPLATE",
+      "method": "GET",
+      "credentials": "include",
+      "responseMatches": [
+        { "type": "contains", "value": "\"id\":{{id}}" },
+        { "type": "contains", "value": "\"name\":\"{{name}}\"" },
+        { "type": "contains", "value": "\"sport_type\":\"{{type}}\"" },
+        { "type": "contains", "value": "\"start_time\":\"{{time}}\"" },
+        { "type": "contains", "value": "\"distance_raw\":{{raw}}" }
+      ],
+      "responseRedactions": [
+        { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
+        { "jsonPath": "$.models[0].name", "regex": "\"name\":\"(?<name>[^\"<>\\n]+)\"" },
+        { "jsonPath": "$.models[0].sport_type", "regex": "\"sport_type\":\"(?<type>[A-Za-z0-9_-]+)\"" },
+        { "jsonPath": "$.models[0].start_time", "regex": "\"start_time\":\"(?<time>[^\"<>\\n]+)\"" },
+        { "jsonPath": "$.models[0].distance_raw", "regex": "\"distance_raw\":(?<raw>\\d+)" }
+      ]
+    },
+    {
+      "purpose": "Prove that Strava reports a GPS trace",
+      "url": "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
+      "urlType": "TEMPLATE",
+      "method": "GET",
+      "credentials": "include",
+      "responseMatches": [
+        { "type": "contains", "value": "\"has_latlng\":{{latlng}}" }
+      ],
+      "responseRedactions": [
+        { "jsonPath": "$.models[0].has_latlng", "regex": "\"has_latlng\":(?<latlng>[A-Za-z0-9_-]+)" }
+      ]
+    },
+    {
+      "purpose": "Prove that Strava does not mark the activity as trainer/indoor",
+      "url": "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
+      "urlType": "TEMPLATE",
+      "method": "GET",
+      "credentials": "include",
+      "responseMatches": [
+        { "type": "contains", "value": "\"trainer\":{{trainer}}" }
+      ],
+      "responseRedactions": [
+        { "jsonPath": "$.models[0].trainer", "regex": "\"trainer\":(?<trainer>[A-Za-z0-9_-]+)" }
+      ]
+    }
+  ],
+  "authoringEvidence": {
+    "publishedAt": "2026-07-14",
+    "authenticatedReplaySucceeded": true,
+    "anonymousReplayRejected": true,
+    "manualFixtureHasLatLng": false,
+    "manualFixtureRejectedByRuntimePolicy": true,
+    "liveConfigurationReadBackViaMcp": true
+  }
+}

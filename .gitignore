@@ -1,0 +1,37 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+cache/
+*.tsbuildinfo
+
+# Solidity toolchains
+artifacts/
+cache_hardhat/
+broadcast/
+typechain-types/
+
+# Local deployment and generated proof data
+deployments/local/
+proofs/
+sessions/
+*.proof.json
+
+# Logs and editor/OS files
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Hosting
+.vercel/
+.vercel
