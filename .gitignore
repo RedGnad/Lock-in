@@ -24,6 +24,8 @@ deployments/local/
 proofs/
 sessions/
 *.proof.json
+reclaim-*-proof.json
+raw-proof*.json
 
 # Logs and editor/OS files
 *.log

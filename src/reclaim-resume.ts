@@ -1,10 +1,10 @@
-export const RECLAIM_RESUME_VERSION = 1;
+export const RECLAIM_RESUME_SCHEMA_ID = 1;
 export const RECLAIM_RESUME_MAX_AGE_MS = 20 * 60 * 1_000;
 
 const CLOCK_SKEW_MS = 60 * 1_000;
 
 export type ReclaimResumeSession = {
-  version: typeof RECLAIM_RESUME_VERSION;
+  schemaId: typeof RECLAIM_RESUME_SCHEMA_ID;
   token: string;
   sessionId: string;
   dayIndex: number;
@@ -97,7 +97,7 @@ export function createReclaimResumeSession(input: {
   if (!claims) return null;
   const { durationDays, ...sessionInput } = input;
   const session: ReclaimResumeSession = {
-    version: RECLAIM_RESUME_VERSION,
+    schemaId: RECLAIM_RESUME_SCHEMA_ID,
     ...sessionInput,
     pactId: canonicalPactId(input.pactId) || input.pactId,
     walletAddress: input.walletAddress.toLowerCase(),
@@ -121,7 +121,7 @@ export function validateReclaimResumeSession(
   if (!isRecord(value)) return { ok: false, reason: "malformed" };
   const session = value as Partial<ReclaimResumeSession>;
   if (
-    session.version !== RECLAIM_RESUME_VERSION ||
+    session.schemaId !== RECLAIM_RESUME_SCHEMA_ID ||
     typeof session.token !== "string" ||
     typeof session.sessionId !== "string" ||
     typeof session.pactId !== "string" ||

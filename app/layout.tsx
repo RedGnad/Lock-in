@@ -35,7 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <WalletButton />
           </header>
           {children}
-          <footer><span>LOCK IN / MONAD 2026 · EXPERIMENTAL BETA · 18+</span><div><Link href="/rules">Rules</Link><Link href="/privacy">Privacy</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
+          <footer><span>LOCK IN / MONAD 2026 · 18+</span><div><Link href="/rules">Rules</Link><Link href="/privacy">Privacy</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
         </Providers>
       </body>
     </html>

@@ -15,7 +15,7 @@ The public Reclaim registry contained 20,368 active providers when checked and h
 - Accessible daily step goals alongside higher-friction GPS running goals.
 - Invite and crew-based social accountability.
 - Progress that is visible throughout the challenge rather than only at settlement.
-- User-local day boundaries as a future consumer improvement; V3 deliberately uses displayed UTC boundaries for deterministic beta settlement.
+- User-local day boundaries as a future consumer improvement; the unreleased build uses displayed UTC boundaries for deterministic settlement.
 - Explicit registration, active, grace, and claim states.
 - Fitness data sourced from an established health platform rather than from the accountability app itself.
 
@@ -27,4 +27,4 @@ The public Reclaim registry contained 20,368 active providers when checked and h
 
 ## Product positioning
 
-Moonwalk validates the demand for social financial accountability. Lock In must differentiate through multi-domain missions, minimized proof fields with explicit onchain-data disclosure, Monad settlement, a strict one-dollar cap during beta, and independently verifiable mission adapters.
+Moonwalk validates demand for social financial accountability. Lock In differentiates through multi-domain missions, minimized proof fields with explicit onchain-data disclosure, Monad settlement, a strict one-dollar cap during controlled testing, and independently verifiable mission adapters.

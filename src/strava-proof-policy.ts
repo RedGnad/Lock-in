@@ -6,6 +6,7 @@ import {
   parseAbiParameters,
   stringToHex,
 } from "viem";
+import type { Proof } from "@reclaimprotocol/js-sdk";
 import { STRAVA_DAILY_PROOF_CODE_PATTERN, STRAVA_PACT_CHALLENGE_PATTERN } from "./pact-code";
 
 export const STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
@@ -81,6 +82,34 @@ export class StravaPolicyError extends Error {
   }
 }
 
+export function canonicalizeStravaProofs(proofs: readonly Proof[]): Proof[] {
+  if (proofs.length !== STRAVA_PROVIDER_HASHES.length) {
+    reject("WRONG_PROOF_COUNT", "The Strava provider must return exactly four proofs");
+  }
+  const byProviderHash = new Map<string, Proof>();
+  for (const proof of proofs) {
+    let providerHash: unknown;
+    try {
+      const context = JSON.parse(proof.claimData.context) as Record<string, unknown>;
+      providerHash = context.providerHash;
+    } catch {
+      reject("INVALID_CONTEXT", "A Strava proof contains malformed signed context");
+    }
+    if (typeof providerHash !== "string" || !STRAVA_PROVIDER_HASHES.includes(providerHash as typeof STRAVA_PROVIDER_HASHES[number])) {
+      reject("WRONG_PROOF_SCHEMA", "A Strava proof does not match a pinned request schema");
+    }
+    if (byProviderHash.has(providerHash)) {
+      reject("DUPLICATE_PROOF_SCHEMA", "The Strava proof set repeats a request schema");
+    }
+    byProviderHash.set(providerHash, proof);
+  }
+  return STRAVA_PROVIDER_HASHES.map((hash) => {
+    const proof = byProviderHash.get(hash);
+    if (!proof) return reject("MISSING_PROOF_SCHEMA", "The Strava proof set is incomplete");
+    return proof;
+  });
+}
+
 function reject(code: string, message: string): never {
   throw new StravaPolicyError(code, message);
 }
@@ -133,6 +162,15 @@ function parseUtcTimestamp(value: string): number {
   return timestamp;
 }
 
+function canonicalUint(value: string, maxDigits: number, maximum: bigint, field: string): bigint {
+  if (!/^(?:0|[1-9]\d*)$/.test(value) || value.length > maxDigits) {
+    reject(field, `The signed ${field.toLowerCase()} is not a canonical unsigned integer`);
+  }
+  const parsed = BigInt(value);
+  if (parsed > maximum) reject(field, `The signed ${field.toLowerCase()} is outside the accepted range`);
+  return parsed;
+}
+
 function assertSharedContext(
   data: readonly ReclaimTrustedData[],
   policy: StravaPactPolicy,
@@ -182,9 +220,9 @@ export function validateStravaEvidence(
   assertSharedContext(data, policy);
   const fields = collectFields(data);
 
-  const athleteMatch = /^userId:\s*(\d+)$/.exec(fields.marker);
+  const athleteMatch = /^userId: (0|[1-9]\d{0,19})$/.exec(fields.marker);
   if (!athleteMatch) reject("INVALID_ATHLETE", "The signed Strava athlete marker is invalid");
-  if (!/^\d+$/.test(fields.id)) reject("INVALID_ACTIVITY", "The signed Strava activity ID is invalid");
+  canonicalUint(fields.id, 20, (1n << 64n) - 1n, "INVALID_ACTIVITY");
   if (fields.type !== "Run") reject("WRONG_SPORT", "The activity is not a run");
   if (fields.name !== policy.challenge) {
     reject("WRONG_CHALLENGE", "The activity title must be exactly this pact's challenge");
@@ -199,18 +237,14 @@ export function validateStravaEvidence(
     reject("FLAGGED_ACTIVITY", "Activities flagged by Strava are not accepted");
   }
 
-  if (!/^\d+$/.test(fields.raw)) reject("INVALID_DISTANCE", "Strava distance_raw is not an integer");
-  const distanceMeters = Number(fields.raw);
+  const distanceMeters = Number(canonicalUint(fields.raw, 10, 1_000_000_000n, "INVALID_DISTANCE"));
   if (!Number.isSafeInteger(distanceMeters) || distanceMeters < policy.minDistanceMeters) {
     reject("DISTANCE_TOO_SHORT", "The signed distance does not satisfy the pact");
   }
 
-  if (!/^\d+$/.test(fields.moving) || !/^\d+$/.test(fields.elapsed) || !/^\d+$/.test(fields.elevation)) {
-    reject("INVALID_MOTION", "Strava motion metrics are not unsigned integers");
-  }
-  const movingTimeSeconds = Number(fields.moving);
-  const elapsedTimeSeconds = Number(fields.elapsed);
-  const elevationGainMeters = Number(fields.elevation);
+  const movingTimeSeconds = Number(canonicalUint(fields.moving, 10, 1_000_000_000n, "INVALID_MOTION"));
+  const elapsedTimeSeconds = Number(canonicalUint(fields.elapsed, 10, 1_000_000_000n, "INVALID_MOTION"));
+  const elevationGainMeters = Number(canonicalUint(fields.elevation, 10, 1_000_000_000n, "INVALID_MOTION"));
   if (
     !Number.isSafeInteger(movingTimeSeconds) ||
     !Number.isSafeInteger(elapsedTimeSeconds) ||
@@ -275,5 +309,8 @@ export function assertFreshProofTimestamps(
     if (!Number.isSafeInteger(timestamp)) reject("INVALID_PROOF_TIME", "A proof timestamp is invalid");
     if (timestamp > nowSeconds + 60) reject("PROOF_FROM_FUTURE", "A proof timestamp is in the future");
     if (nowSeconds - timestamp > maxAgeSeconds) reject("STALE_PROOF", "The proof is too old");
+  }
+  if (Math.max(...timestampSeconds) - Math.min(...timestampSeconds) > 2 * 60) {
+    reject("PROOF_SET_TOO_SPREAD_OUT", "The Strava proof set was not produced in one verification window");
   }
 }

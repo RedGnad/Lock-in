@@ -38,7 +38,7 @@ if (!Number.isSafeInteger(dayIndex) || dayIndex < 0 || dayIndex > 29) {
 const providerId = process.env.PROVIDER_ID?.trim() || STRAVA_PROVIDER_ID;
 const providerVersion = process.env.PROVIDER_VERSION?.trim() || STRAVA_PROVIDER_VERSION;
 if (providerId !== STRAVA_PROVIDER_ID || providerVersion !== STRAVA_PROVIDER_VERSION) {
-  throw new Error(`Strava v2 requires provider ${STRAVA_PROVIDER_ID} exactly at ${STRAVA_PROVIDER_VERSION}`);
+  throw new Error(`Lock In requires Strava provider ${STRAVA_PROVIDER_ID} exactly at ${STRAVA_PROVIDER_VERSION}`);
 }
 
 const challenge = process.env.STRAVA_CHALLENGE?.trim()

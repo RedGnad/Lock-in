@@ -34,7 +34,7 @@ const sessionsRoot = resolve(process.env.PROOF_SESSION_DIR?.trim() || "sessions"
 await pruneSessionStore(sessionsRoot);
 const pending = await loadPendingSession(sessionsRoot, sessionId);
 if (pending.providerId !== STRAVA_PROVIDER_ID || pending.providerVersion !== STRAVA_PROVIDER_VERSION) {
-  throw new Error("The pending session does not use the locked Strava v2 provider");
+  throw new Error("The pending session does not use the locked Strava provider release");
 }
 
 const requireTee = process.env.REQUIRE_TEE_ATTESTATION?.trim().toLowerCase() !== "false";

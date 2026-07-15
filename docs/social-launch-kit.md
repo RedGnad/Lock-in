@@ -1,14 +1,14 @@
-# Lock In V5 social launch kit
+# Lock In social launch kit
 
-Status: approved working copy for the limited tester cohort. The production product is currently paused. Replace every bracketed placeholder before publishing.
+Status: pre-launch working copy. Lock In is not open to participants; the current test deployment is paused. Replace every bracketed placeholder before publishing.
 
-**Release rule:** while production is paused, social content may collect interest or point to release status, rules, and demos only. Do not say access, registration, or pact creation is open. Transactional CTAs may be published only after every required provider canary passes, the production health check is green, and new-pact creation is intentionally unpaused.
+**Release rule:** while production is paused, social content may collect interest or point to release status, rules, and demos only. Do not say access, registration, or Lock creation is open. Transactional CTAs may be published only after the full release gate passes, including provider and two-wallet canaries, independent review, KMS-backed signing, multisig ownership, green production health, and intentional onchain and website opening.
 
 ## Positioning
 
 ### Category
 
-Lock In is **competitive, stake-backed accountability**. Friends enter the same time-boxed pact, put down the same small stake, and try to complete enough days. The group creates momentum; the pool creates consequences.
+Lock In is **competitive, stake-backed accountability**. Friends enter the same time-boxed Lock, put down the same small stake, and try to complete enough days. The group creates momentum; the pool creates consequences.
 
 It is both cooperative and PvP:
 
@@ -26,21 +26,21 @@ It is both cooperative and PvP:
 
 **Headline:** Lock in. Or pay the crew.
 
-**Body:** Start a 3–30 day pact with friends. Everyone stakes the same amount—up to 1 USDC each. Complete enough days and the finishers split the pool.
+**Body:** Start a 3–30 day Lock with friends. Everyone stakes the same amount—up to 1 USDC each. Complete enough days and the finishers split the pool.
 
 **Pre-launch primary CTA:** VIEW RELEASE STATUS
 
 **Pre-launch secondary CTA:** READ THE RULES
 
-**Open-state CTA, only after canaries pass and creation is unpaused:** START A PACT
+**Open-state CTA, only after the full release gate passes and admission is intentionally opened:** START A LOCK
 
-**Support line:** Run or learn. Adult beta with real USDC and gas. Currently paused pending release canaries.
+**Support line:** Run or learn. Unreleased and closed; real USDC and gas only after the release gate.
 
 ### Message pillars
 
-1. **Tiny stake, real consequence.** The beta caps each participant at 1 USDC per pact.
-2. **Your friends are the feature.** A shared pact creates visible progress, encouragement, and competitive pressure.
-3. **Rules settle the outcome.** Mission records are checked against the published pact rules; settlement is recorded on Monad mainnet.
+1. **Tiny stake, real consequence.** Controlled testing caps each participant at 1 USDC per Lock.
+2. **Your friends are the feature.** A shared Lock creates visible progress, encouragement, and competitive pressure.
+3. **Rules settle the outcome.** Mission records are checked against the published Lock rules; settlement is recorded on Monad mainnet.
 4. **No fake certainty.** Lock In verifies qualifying service records, not biological movement, comprehension, or human intent.
 
 ### Audience
@@ -48,7 +48,7 @@ It is both cooperative and PvP:
 - Small friend groups that already run, learn, or build habits together.
 - Crypto-native users who understand wallets, USDC, gas, and public onchain activity.
 - Competitive users who find solo streak counters too easy to ignore.
-- Early testers willing to use an experimental product and give specific feedback.
+- Early testers willing to use an unreleased service and give specific feedback.
 
 ### Voice
 
@@ -56,7 +56,7 @@ It is both cooperative and PvP:
 - Use verbs: start, invite, stake, show up, finish, split.
 - Pair the PvP hook with a cooperative image: crew, friends, together, shared streak.
 - Explain money with exact outcomes, never implied returns.
-- Say “beta” plainly. Confidence should come from clarity, not inflated claims.
+- Say “unreleased” and “closed” plainly. Confidence should come from clarity, not inflated claims.
 
 ## Copy bank
 
@@ -64,7 +64,7 @@ It is both cooperative and PvP:
 
 - **Accountability that pays.**
 - **Lock in. Or pay the crew.**
-- **Keep the pact. Split the pool.**
+- **Keep your Lock. Split the pool.**
 - **Tiny stakes. Real consequences.**
 - **Your word. Locked in.**
 - **Show up together. Finish for yourself.**
@@ -82,11 +82,11 @@ These are campaign shorthand. Use them only when the destination or nearby copy 
 
 ### Supporting lines
 
-- Everyone enters with the same stake. Everyone plays by the same pact.
+- Everyone enters with the same stake. Everyone plays by the same Lock.
 - Complete the target and stay in the winner pool.
 - If everyone finishes, everyone gets their stake back. If some quit, finishers split the full pool. If nobody finishes, everyone is refunded.
-- Every pact is its own pool. Different missions and durations never compete with each other.
-- Up to 1 USDC per participant, per pact. Network gas is separate.
+- Every Lock is its own pool. Different missions and durations never compete with each other.
+- Up to 1 USDC per participant, per Lock. Network gas is separate.
 
 ### CTA labels
 
@@ -97,11 +97,11 @@ While production is paused:
 - READ THE RULES
 - WATCH THE DEMO
 
-Only after canaries pass and new-pact creation is intentionally unpaused:
+Only after the full release gate passes and admission is intentionally opened:
 
-- START A PACT
+- START A LOCK
 - INVITE YOUR CREW
-- JOIN THIS PACT
+- JOIN THIS LOCK
 - SEE THE PROOF MODEL
 
 ### Avoid
@@ -112,7 +112,7 @@ Do not publish any of the following:
 - “Lock In proves you ran” or “Lock In proves you learned.”
 - “Guaranteed payout,” “guaranteed returns,” “free money,” “risk-free,” or “earn by exercising.”
 - “Winner takes all” unless a specific one-finisher outcome genuinely produces that result.
-- “Only 1 USDC of risk” without adding **per participant, per pact; gas is separate**.
+- “Only 1 USDC of risk” without adding **per participant, per Lock; gas is separate**.
 - “Official,” “partnered with,” “approved by,” “sponsored by,” or “endorsed by” any external service.
 - “Verified by Strava/Duolingo/Monad.” The services expose records or provide infrastructure; they do not certify Lock In’s product claims.
 - Screenshots with fabricated participants, completions, balances, payouts, testimonials, or transaction status.
@@ -123,9 +123,9 @@ Do not publish any of the following:
 
 > Accountability that pays.
 >
-> 3–30 day pacts with friends. Stake up to 1 USDC each. Finishers split quitters’ stakes; zero finishers are refunded.
+> 3–30 day Locks with friends. Stake up to 1 USDC each. Finishers split quitters’ stakes; zero finishers are refunded.
 >
-> Currently paused. A small cohort starts only after canaries pass and creation is unpaused.
+> Currently closed. A small cohort starts only after the full release gate passes and admission is intentionally opened.
 >
 > Get the update ↓
 > [STATUS LINK]
@@ -134,20 +134,20 @@ Do not publish any of the following:
 
 > Lock in. Or pay the crew.
 >
-> Pick a running or learning pact. Invite friends. Stake up to 1 USDC each. Complete enough days to stay in the winner pool.
+> Pick a running or learning Lock. Invite friends. Stake up to 1 USDC each. Complete enough days to stay in the winner pool.
 >
-> Real funds. Public rules. Adult beta—currently paused pending release canaries.
+> Real funds after the release gate. Public rules. Unreleased adult service—currently closed.
 > [STATUS LINK]
 
 ### Social alternative
 
 > Solo streaks are easy to ignore.
 >
-> A pact with friends—and 1 USDC on the line—is harder.
+> A Lock with friends—and 1 USDC on the line—is harder.
 >
 > Show up together. Finishers split the pool.
 >
-> Lock In V5 is currently paused. Follow the release checks ↓
+> Lock In is not open yet. Follow the release checks ↓
 > [STATUS LINK]
 
 ## X launch thread
@@ -158,7 +158,7 @@ Do not publish any of the following:
 >
 > Lock In turns a promise between friends into a competitive streak with a shared USDC pool.
 >
-> Keep the pact. Stay in the winner pool. 🧵
+> Keep your Lock. Stay in the winner pool. 🧵
 
 ### Post 2 — how it works
 
@@ -176,30 +176,30 @@ Do not publish any of the following:
 
 ### Post 4 — current missions
 
-> V5 starts with two mission records:
+> Lock In starts with two mission records:
 >
 > • qualifying Strava GPS runs
 > • new Duolingo XP above a fresh baseline
 >
-> Each pact has its own target, timeline, participants, and pool.
+> Each Lock has its own target, timeline, participants, and pool.
 
 ### Post 5 — honest proof
 
-> Proof boundary: Lock In checks service responses against the pact rules and rejects obvious, stale, mismatched, or replayed records.
+> Proof boundary: Lock In checks service responses against the Lock rules and rejects obvious, stale, mismatched, or replayed records.
 >
 > It does not prove physical movement or human learning, or eliminate spoofing, account sharing, bots, modified devices, or upstream errors.
 
-### Post 6 — beta boundary
+### Post 6 — release boundary
 
-> This is a limited tester cohort for an 18+ hackathon beta using real USDC and real Monad gas.
+> This is limited controlled testing for adults using real USDC and real Monad gas.
 >
-> Production is currently paused. Tester access begins only after release canaries pass and new-pact creation is intentionally unpaused.
+> The public release is currently closed. Tester access begins only after the full release gate passes and admission is intentionally opened.
 
 ### Post 7 — CTA
 
-> We are preparing a small adult tester cohort for after the release canaries pass and production is unpaused.
+> We are preparing a small adult tester cohort for after the full release gate passes and admission is intentionally opened.
 >
-> Bring one friend. Start with 0.1 USDC. Complete one 3-day pact. Tell us exactly where the experience breaks.
+> Bring one friend. Start with 0.1 USDC. Complete one 3-day Lock. Tell us exactly where the experience breaks.
 >
 > Get the launch update: [STATUS LINK]
 
@@ -213,9 +213,9 @@ Do not publish any of the following:
 
 > Accountability that pays.
 >
-> 3–30 day pacts. Friends stake up to 1 USDC each. Finishers split quitters’ stakes; zero finishers are refunded.
+> 3–30 day Locks. Friends stake up to 1 USDC each. Finishers split quitters’ stakes; zero finishers are refunded.
 >
-> Currently paused. A small adult cohort starts only after canaries pass and creation is unpaused.
+> Currently closed. A small adult cohort starts only after the full release gate passes and admission is intentionally opened.
 >
 > Get the update ↓
 > [STATUS LINK]
@@ -228,33 +228,33 @@ Do not publish any of the following:
 >
 > PvP consequences. Cooperative momentum. 1 USDC max each.
 >
-> Currently paused. A small adult cohort starts only after canaries pass and creation is unpaused.
+> Currently closed. A small adult cohort starts only after the full release gate passes and admission is intentionally opened.
 > [STATUS LINK]
 
 ### Follow-up cast
 
-> Honest proof boundary: Lock In verifies that external services returned records matching the pact rules. It does not prove physical movement or human learning, and it does not make sophisticated fraud impossible.
+> Honest proof boundary: Lock In verifies that external services returned records matching the Lock rules. It does not prove physical movement or human learning, and it does not make sophisticated fraud impossible.
 >
-> Beta details and rules: [RULES LINK]
+> Testing details and rules: [RULES LINK]
 
 ## Discord and Telegram
 
 ### Announcement
 
-> **LOCK IN V5 — LIMITED TESTER COHORT PLANNED**
+> **LOCK IN — LIMITED TESTER COHORT PLANNED**
 >
-> Accountability that pays: create a 3–30 day running or learning pact with friends, put the same small USDC stake behind it, and complete enough days to stay in the winner pool.
+> Accountability that pays: create a 3–30 day running or learning Lock with friends, put the same small USDC stake behind it, and complete enough days to stay in the winner pool.
 >
 > **How settlement works**
-> • Maximum 1 USDC per participant, per pact
+> • Maximum 1 USDC per participant, per Lock
 > • Finishers split the full pool when others do not finish
 > • If everyone finishes, everyone gets their stake back
-> • If nobody finishes—or the pact is cancelled or underfilled—participants are refunded
+> • If nobody finishes—or the Lock is cancelled or underfilled—participants are refunded
 > • Monad gas is separate
 >
-> We are collecting interest from small adult crews who can bring at least one friend, start with **0.1 USDC**, complete a 3-day pact, and send candid feedback once testing begins.
+> We are collecting interest from small adult crews who can bring at least one friend, start with **0.1 USDC**, complete a 3-day Lock, and send candid feedback once testing begins.
 >
-> Production is currently paused. Testing begins only after release canaries pass, the health check is green, and new-pact creation is intentionally unpaused. When it opens, the beta will use real funds and public onchain transactions.
+> The public release is currently closed. Testing begins only after the full release gate passes and admission is intentionally opened. When it opens, the cohort will use real funds and public onchain transactions.
 >
 > **Launch status:** [STATUS LINK]
 > **Rules:** [RULES LINK]
@@ -264,15 +264,15 @@ Do not publish any of the following:
 
 > **Lock in. Or pay the crew.**
 >
-> 3–30 day pacts · friends stake equally · 1 USDC max each · finishers split the pool · zero finishers refunded.
+> 3–30 day Locks · friends stake equally · 1 USDC max each · finishers split the pool · zero finishers refunded.
 >
-> Production is currently paused. We are collecting interest for a small adult cohort that starts only after canaries pass: [STATUS LINK]
+> The public release is currently closed. We are collecting interest for a small adult cohort that starts only after the full release gate passes: [STATUS LINK]
 
 ### Direct outreach
 
-> Hey — I’m putting together a small adult cohort to test Lock In V5 after its release checks pass. It turns a running or learning streak into a shared pact: everyone stakes the same amount, up to 1 USDC, and finishers split the pool if others quit.
+> Hey — I’m putting together a small adult cohort to test Lock In after its release checks pass. It turns a running or learning streak into a shared Lock: everyone stakes the same amount, up to 1 USDC, and finishers split the pool if others quit.
 >
-> Production is currently paused, so this is not an access link. Once the canaries pass and creation is unpaused, would you join me for one 3-day, 0.1 USDC test? It will use real USDC and gas, and I need honest product feedback—not promotion.
+> The public release is currently closed, so this is not an access link. Once the full release gate passes and admission is intentionally opened, would you join me for one 3-day, 0.1 USDC test? It will use real USDC and gas, and I need honest product feedback—not promotion.
 >
 > [STATUS / INTEREST LINK]
 
@@ -282,21 +282,21 @@ Do not publish any of the following:
 
 **Bring one friend. Stake ten cents. Break the product.**
 
-We are collecting interest from a small group of adult testers for one complete V5 cycle. Production is currently paused; participation begins only after canaries pass, the health check is green, and new-pact creation is intentionally unpaused.
+We are collecting interest from a small group of adult testers for one complete Lock cycle. Participation begins only after the full release gate passes and admission is intentionally opened.
 
 - Join with a friend or small crew.
-- Use the suggested 0.1 USDC stake; never more than 1 USDC per participant per pact.
-- Complete or intentionally miss a 3-day pact so both settlement paths are tested.
+- Use the suggested 0.1 USDC stake; never more than 1 USDC per participant per Lock.
+- Complete or intentionally miss a 3-day Lock so both settlement paths are tested.
 - Record confusing copy, failed states, transaction friction, and proof friction.
 - Submit feedback with screenshots and transaction links, but never share private keys, recovery phrases, cookies, or access tokens.
 
 **CTA WHILE PAUSED:** GET LAUNCH UPDATES
 
-**CTA AFTER CANARIES PASS AND CREATION IS UNPAUSED:** START A TEST PACT
+**CTA AFTER THE FULL RELEASE GATE PASSES AND ADMISSION IS OPENED:** START A TEST LOCK
 
 ### Eligibility line
 
-> 18+ only. Participate only where stake-based challenges are permitted. Real USDC and gas are used; the beta cap does not create a legal exemption.
+> 18+ only. Participate only where stake-based challenges are permitted. Real USDC and gas are used; the one-dollar cap does not create a legal exemption.
 
 ### Suggested form fields
 
@@ -307,6 +307,7 @@ We are collecting interest from a small group of adult testers for one complete 
 - Friend or crew confirmed: yes / no
 - Prior Monad wallet experience: none / some / frequent
 - Consent to use real USDC and gas: yes / no
+- Consent to the named Reclaim proof fields becoming public and permanent Monad transaction calldata: yes / no
 - Agreement to rules and privacy notice: yes / no
 - Optional accessibility needs
 
@@ -314,27 +315,27 @@ Do not request private keys, seed phrases, Strava credentials, Duolingo credenti
 
 ## 30-second demo script
 
-Use a real rehearsed pact or a screen clearly labelled **DEMO DATA**. Never stage a fake mainnet transaction or testimonial.
+Use a real rehearsed Lock or a screen clearly labelled **DEMO DATA**. Never stage a fake mainnet transaction or testimonial.
 
 | Time | Visual | Voiceover / on-screen copy |
 |---|---|---|
 | 0–3s | Landing hero, fast cut to crew progress | **“Accountability that pays.”** |
-| 3–7s | Select mission, target, and 3-day duration | “Pick a running or learning pact.” |
+| 3–7s | Select mission, target, and 3-day duration | “Pick a running or learning Lock.” |
 | 7–11s | Set 0.1 USDC and review | “Put a tiny stake behind it—never more than 1 USDC each.” |
 | 11–15s | Share invite; second wallet joins | “Bring your crew. Everyone enters on equal terms.” |
 | 15–21s | Day progress and proof flow | “Complete enough days to stay in the winner pool.” |
-| 21–26s | Pact ends; settlement transaction confirms | “Finishers split the pool when others quit. Zero finishers are refunded.” |
-| 26–30s | Crew card, CTA, URL | **“Lock in. Or pay the crew. Follow the V5 release.”** |
+| 21–26s | Lock ends; settlement transaction confirms | “Finishers split the pool when others quit. Zero finishers are refunded.” |
+| 26–30s | Crew card, CTA, URL | **“Lock in. Or pay the crew. Follow the launch.”** |
 
 ### Demo caption
 
-> Lock In checks service records against pact rules; it does not prove physical movement or human learning. 18+ beta, currently paused pending release canaries. When open, it uses real USDC and Monad gas, with a maximum of 1 USDC per participant, per pact. [STATUS LINK] [RULES LINK]
+> Lock In checks service records against Lock rules; it does not prove physical movement or human learning. Unreleased adult service, currently closed. If the full release gate passes and controlled testing opens, it uses real USDC and Monad gas, with a maximum of 1 USDC per participant, per Lock. [STATUS LINK] [RULES LINK]
 
 ## Publishing cadence
 
 ### Seven-day launch sequence
 
-T0 is conditional, not a scheduled promise. Stay at T−1 while production is paused. Move to T0 only after every required canary passes, the production health check is green, and new-pact creation is intentionally unpaused.
+T0 is conditional, not a scheduled promise. Stay at T−1 while the public release is closed. Move to T0 only after the full release gate passes, production health is green, and admission is intentionally opened.
 
 | Day | Goal | Primary post | Supporting action |
 |---|---|---|---|
@@ -344,14 +345,14 @@ T0 is conditional, not a scheduled promise. Stay at T−1 while production is pa
 | T0 | Conditional opening | Publish the open-state X thread, demo, and Farcaster cast only after the release gate | Pin the open-state announcement in Discord/Telegram |
 | T+1 | Reduce friction | Three-step create/join/prove guide | Answer recurring questions publicly |
 | T+2 | Build trust | Honest proof/security explainer | Share known issues and fixes, not hype |
-| T+3 | Show real use | Anonymized cohort progress or completed pact | Obtain explicit consent before quoting testers |
+| T+3 | Show real use | Anonymized cohort progress or completed Lock | Obtain explicit consent before quoting testers |
 | T+7 | Close the loop | Results: starts, joins, completions, failures, refunds | Publish what changes before the next cohort |
 
 ### Ongoing weekly rhythm
 
-This rhythm begins only after conditional T0. While production is paused, replace “Start a pact” recruitment with release-status updates and do not direct anyone into a transaction flow.
+This rhythm begins only after conditional T0. While production is paused, replace “Start a Lock” recruitment with release-status updates and do not direct anyone into a transaction flow.
 
-- Monday: “Start a pact” crew recruitment.
+- Monday: “Start a Lock” crew recruitment.
 - Wednesday: progress snapshot with real, consented data.
 - Friday: finishers/refunds recap and one product lesson.
 - One proof/security education post per week.
@@ -367,7 +368,7 @@ Do not manufacture daily volume. A small real cohort is stronger than repetitive
 - [ ] 1200×630 Open Graph image with “ACCOUNTABILITY THAT PAYS,” product name, and 1 USDC max.
 - [ ] 1:1 or 4:5 social card showing the create → invite → complete → split flow.
 - [ ] Clean landing screenshot with no developer controls, placeholder copy, fake balances, or wallet errors.
-- [ ] Pact detail screenshot showing crew progress and the exact settlement state.
+- [ ] Lock detail screenshot showing crew progress and the exact settlement state.
 - [ ] Mobile screenshots at a readable scale.
 - [ ] Plain-text logo and orange “IN” favicon assets on light and dark backgrounds.
 - [ ] Rules, privacy, support, and status links tested from mobile.
@@ -375,13 +376,13 @@ Do not manufacture daily volume. A small real cohort is stronger than repetitive
 
 ### Trust and safety checks
 
-- [ ] Every money reference says **up to 1 USDC per participant, per pact** where space permits.
-- [ ] Gas is identified as separate and non-refundable by the pact.
-- [ ] Assets say **beta** and do not imply audited, insured, risk-free, or guaranteed.
+- [ ] Every money reference says **up to 1 USDC per participant, per Lock** where space permits.
+- [ ] Gas is identified as separate and non-refundable by the Lock.
+- [ ] Assets say **UNRELEASED · CLOSED** and do not imply audited, insured, risk-free, or guaranteed.
 - [ ] No third-party logo lockups or wording that implies a partnership.
 - [ ] Mission names are functional labels, not endorsements.
-- [ ] Wallet addresses, usernames, profile data, and transaction links have tester consent before promotion.
-- [ ] No GPS route, credential, cookie, token, private key, seed phrase, or internal proof payload is visible.
+- [ ] Every tester accepted that the privacy notice's transformed proof fields become public transaction calldata; separate consent exists before using wallet addresses, usernames, profile data, or transaction links in promotion.
+- [ ] No complete SDK proof object, top-level TEE JWT, GPS route, credential, cookie, access token, API key, secret, private key, or seed phrase is reproduced in an asset.
 - [ ] Testnet or mocked screens are visibly labelled; mainnet screens use real transaction state.
 - [ ] “Funded by quitters” appears with, or links directly to, the exact zero-finisher/refund rule.
 
@@ -397,7 +398,7 @@ Do not manufacture daily volume. A small real cohort is stronger than repetitive
 
 ### Consumer-short
 
-> Lock In checks qualifying service records against the pact rules and prevents several obvious, stale, mismatched, or replayed records. No consumer proof can guarantee who performed an activity or eliminate every form of fraud.
+> Lock In checks qualifying service records against the Lock rules and prevents several obvious, stale, mismatched, or replayed records. No consumer proof can guarantee who performed an activity or eliminate every form of fraud.
 
 ### Product-detail
 
@@ -405,11 +406,11 @@ Do not manufacture daily volume. A small real cohort is stronger than repetitive
 
 ### Onchain wording
 
-> Monad records pact settings, participation, accepted completions, settlement, and claims. Onchain execution makes those rules and transfers inspectable; it does not make an offchain activity physically true.
+> Monad records Lock settings, participation, accepted completions, settlement, and claims. A proof transaction also publishes the Reclaim-transformed signed parameters, context, claim metadata, and witness signatures as permanent calldata; depending on the mission, this can include the named Duolingo profile fields or Strava activity fields disclosed in the privacy notice. Lock In does not request the Strava GPS route, and the top-level TEE JWT stays offchain. Public execution makes the rules and transfers inspectable; it does not make an offchain activity physically true.
 
 ### Money wording
 
-> Every participant stakes the same amount, up to 1 USDC per pact. If at least one participant finishes, finishers split the full pool. If everyone finishes, each participant effectively receives their stake back. If nobody finishes, all participants are eligible for a refund. Gas is separate. Lock In charges no protocol fee in this beta.
+> Every participant stakes the same amount, up to 1 USDC per Lock. If at least one participant finishes, finishers split the full pool. If everyone finishes, each participant effectively receives their stake back. If nobody finishes, all participants are eligible for a refund. Gas is separate. Lock In charges no protocol fee during controlled testing.
 
 ### Independence wording
 
@@ -417,15 +418,19 @@ Do not manufacture daily volume. A small real cohort is stronger than repetitive
 
 ### Security status
 
-> Lock In V5 is experimental hackathon software and has not been represented as independently audited. Use only the amount you are prepared to lock or lose under the published rules, never more than 1 USDC per participant per pact, plus gas.
+> Lock In is not open yet. The unreleased build is experimental hackathon software and has not been independently audited. If the controlled cohort opens after every release check passes, use only the amount you are prepared to lock or lose under the published rules, never more than 1 USDC per participant per Lock, plus gas.
 
 ## Final pre-publish gate
 
 Do not publish the launch CTA until all of the following are true:
 
 - The production health check is green.
-- New-pact creation is intentionally unpaused.
-- At least one complete two-wallet rehearsal has passed for every enabled mission.
+- Current live proof schemas, TEE and witness binding, direct-verifier outputs, and secret-free signed headers are confirmed for every enabled mission.
+- Evidence and admission signing run through the reviewed KMS-backed production path.
+- Contract ownership is the verified, tested multisig.
+- The direct parsers and verifiers, escrow, oracle boundary, signer services, and deployment have passed independent review.
+- New-Lock creation is intentionally unpaused.
+- At least one complete two-wallet hybrid-proof rehearsal, including calldata size, gas and mobile-wallet handoff, has passed for every enabled mission.
 - Success, underfilled refund, zero-finisher refund, emergency refund, and claim paths have been rehearsed.
 - Support can respond during the first cohort.
 - Rules and privacy copy match the deployed contract and enabled product flags.

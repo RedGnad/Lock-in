@@ -8,7 +8,11 @@ import { monad } from "@/src/chain";
 
 const config = createConfig({
   chains: [monad],
-  connectors: [injected()],
+  connectors: [
+    injected({ target: "phantom" }),
+    injected({ target: "metaMask" }),
+    injected(),
+  ],
   transports: { [monad.id]: http(monad.rpcUrls.default.http[0]) },
   ssr: true,
 });

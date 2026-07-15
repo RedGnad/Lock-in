@@ -5,6 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   assertFreshProofTimestamps,
+  canonicalizeStravaProofs,
+  STRAVA_PROVIDER_HASHES,
   validateStravaEvidence,
   type ReclaimTrustedData,
   type StravaPactPolicy,
@@ -80,6 +82,24 @@ test("accepts a challenge-bound Strava GPS-run record", () => {
   assert.match(evidence.nullifier, /^0x[0-9a-f]{64}$/);
 });
 
+test("canonicalizes the four Strava proofs by their pinned request schema", () => {
+  const fake = (providerHash: string) => ({
+    claimData: { context: JSON.stringify({ providerHash }) },
+  });
+  const shuffled = [
+    fake(STRAVA_PROVIDER_HASHES[2]),
+    fake(STRAVA_PROVIDER_HASHES[0]),
+    fake(STRAVA_PROVIDER_HASHES[3]),
+    fake(STRAVA_PROVIDER_HASHES[1]),
+  ];
+  const canonical = canonicalizeStravaProofs(shuffled as never);
+  assert.deepEqual(canonical, [shuffled[1], shuffled[3], shuffled[0], shuffled[2]]);
+  assert.throws(
+    () => canonicalizeStravaProofs([shuffled[0], shuffled[0], shuffled[1], shuffled[2]] as never),
+    /repeats a request schema/,
+  );
+});
+
 test("derives deterministic, non-overlapping daily proof codes", () => {
   assert.equal(dailyProofCode(pactChallenge, 0), `${pactChallenge}D01`);
   assert.equal(dailyProofCode(pactChallenge, 9), `${pactChallenge}D10`);
@@ -87,7 +107,7 @@ test("derives deterministic, non-overlapping daily proof codes", () => {
   assert.notEqual(dailyProofCode(pactChallenge, 0), dailyProofCode(pactChallenge, 9));
 });
 
-test("derives a V5 activity code accepted by the Strava verifier", () => {
+test("derives a release activity code accepted by the Strava verifier", () => {
   const dayOne = stravaActivityCode("42", walletAddress, 0);
   const dayTwo = stravaActivityCode("42", walletAddress, 1);
   assert.match(dayOne, STRAVA_DAILY_PROOF_CODE_PATTERN);
@@ -128,6 +148,11 @@ for (const [name, overrides, code] of [
   ["short distance", { raw: "999" }, "DISTANCE_TOO_SHORT"],
   ["activity outside the pact window", { time: "2026-07-14T12:59:59+0000" }, "OUTSIDE_PACT_WINDOW"],
   ["activity exactly at the exclusive end", { time: "2026-07-14T14:00:00+0000" }, "OUTSIDE_PACT_WINDOW"],
+  ["non-canonical athlete marker spacing", { marker: "userId:   1815502280" }, "INVALID_ATHLETE"],
+  ["zero-padded activity id", { id: "019309163477" }, "INVALID_ACTIVITY"],
+  ["activity id above uint64", { id: "18446744073709551616" }, "INVALID_ACTIVITY"],
+  ["zero-padded distance", { raw: "01000" }, "INVALID_DISTANCE"],
+  ["zero-padded motion metric", { moving: "0600" }, "INVALID_MOTION"],
 ] as const) {
   test(`rejects ${name}`, () => {
     assert.throws(
@@ -158,6 +183,10 @@ test("rejects stale proof timestamps", () => {
   assert.throws(
     () => assertFreshProofTimestamps([Math.floor(nowMs / 1_000) - 601], nowMs),
     /too old/,
+  );
+  assert.throws(
+    () => assertFreshProofTimestamps([Math.floor(nowMs / 1_000) - 121, Math.floor(nowMs / 1_000)], nowMs),
+    /one verification window/,
   );
 });
 

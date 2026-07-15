@@ -9,9 +9,9 @@ import {
 } from "viem";
 import type { ReclaimTrustedData } from "./strava-proof-policy";
 
-export const DUOLINGO_PROVIDER_VERSION = "1.0.0";
+export const DUOLINGO_PROVIDER_VERSION = "1.0.3";
 export const DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-export const DUOLINGO_PROVIDER_HASH = "0xeee21aafba194b3d8e48a5a538d8920c69aac0924ab04c63a408571f8291f61a";
+export const DUOLINGO_PROVIDER_HASH = "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80";
 
 export type DuolingoPolicy = {
   walletAddress: string;
@@ -55,7 +55,14 @@ export function duolingoOwnershipCode(walletAddress: string): string {
     parseAbiParameters("string namespace, uint256 chainId, address account"),
     ["LOCK_IN_DUOLINGO", 143n, getAddress(walletAddress)],
   ));
-  return `LI-${digest.slice(2, 34).toUpperCase()}`;
+  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  let value = BigInt(digest) >> 206n;
+  let encoded = "";
+  for (let index = 0; index < 10; index += 1) {
+    encoded = alphabet[Number(value & 31n)] + encoded;
+    value >>= 5n;
+  }
+  return `LOCK-${encoded.slice(0, 5)}-${encoded.slice(5)}`;
 }
 
 function contextString(context: Record<string, unknown>, key: string): string {
@@ -83,6 +90,9 @@ export function validateDuolingoEvidence(input: {
   policy: DuolingoPolicy;
 }): DuolingoEvidence {
   const { data, timestamps, providerId, policy } = input;
+  if (providerId !== DUOLINGO_PROVIDER_ID) {
+    reject("WRONG_PROVIDER", "The proof does not use the pinned Duolingo provider");
+  }
   if (data.length !== 1) reject("WRONG_PROOF_COUNT", "The Duolingo provider must return one proof");
   if (timestamps.length !== 1 || !Number.isSafeInteger(timestamps[0])) {
     reject("INVALID_PROOF_TIME", "The Duolingo proof timestamp is invalid");
@@ -90,7 +100,7 @@ export function validateDuolingoEvidence(input: {
   if (!isAddress(policy.walletAddress) || !/^\d+$/.test(policy.pactId)) {
     reject("INVALID_POLICY", "The expected wallet or pact is invalid");
   }
-  if (!/^LI-[0-9A-F]{32}$/.test(policy.expectedOwnershipCode)) {
+  if (!/^LOCK-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}$/.test(policy.expectedOwnershipCode)) {
     reject("INVALID_POLICY", "The ownership code is invalid");
   }
 
@@ -112,14 +122,16 @@ export function validateDuolingoEvidence(input: {
 
   const profileId = oneField(data, "id");
   const username = oneField(data, "username");
-  const bio = oneField(data, "bio").trim();
+  const displayName = oneField(data, "name");
   const totalXpRaw = oneField(data, "totalXp");
-  if (!/^\d{1,20}$/.test(profileId)) reject("INVALID_PROFILE", "The Duolingo profile id is invalid");
-  if (!/^[A-Za-z0-9._-]{1,64}$/.test(username)) reject("INVALID_USERNAME", "The Duolingo username is invalid");
-  if (bio !== policy.expectedOwnershipCode) {
-    reject("ACCOUNT_NOT_OWNED", `Set the Duolingo bio to exactly ${policy.expectedOwnershipCode}`);
+  if (!/^[1-9]\d{0,19}$/.test(profileId) || BigInt(profileId) > (1n << 64n) - 1n) {
+    reject("INVALID_PROFILE", "The Duolingo profile id is invalid");
   }
-  if (!/^\d{1,10}$/.test(totalXpRaw)) reject("INVALID_XP", "The signed Duolingo XP is invalid");
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(username)) reject("INVALID_USERNAME", "The Duolingo username is invalid");
+  if (displayName !== policy.expectedOwnershipCode) {
+    reject("ACCOUNT_NOT_OWNED", `Set the Duolingo Name to exactly ${policy.expectedOwnershipCode}`);
+  }
+  if (!/^(?:0|[1-9]\d{0,9})$/.test(totalXpRaw)) reject("INVALID_XP", "The signed Duolingo XP is invalid");
   const totalXp = Number(totalXpRaw);
   if (!Number.isSafeInteger(totalXp) || totalXp > 2_000_000_000) {
     reject("INVALID_XP", "The signed Duolingo XP is outside the accepted range");

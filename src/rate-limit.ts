@@ -131,6 +131,7 @@ export function clientIpFromRequest(request: Request): string {
 }
 
 export const reclaimRateLimitPolicies = {
+  access: { limit: 10, windowMs: 10 * 60_000, maxEntries: 5_000 },
   session: { limit: 30, windowMs: 10 * 60_000, maxEntries: 5_000 },
   status: { limit: 180, windowMs: 10 * 60_000, maxEntries: 10_000 },
   verify: { limit: 10, windowMs: 10 * 60_000, maxEntries: 5_000 },
@@ -139,6 +140,7 @@ export const reclaimRateLimitPolicies = {
 export type ReclaimRateLimitKind = keyof typeof reclaimRateLimitPolicies;
 
 const reclaimLimiters: Record<ReclaimRateLimitKind, FixedWindowRateLimiter> = {
+  access: new FixedWindowRateLimiter(reclaimRateLimitPolicies.access),
   session: new FixedWindowRateLimiter(reclaimRateLimitPolicies.session),
   status: new FixedWindowRateLimiter(reclaimRateLimitPolicies.status),
   verify: new FixedWindowRateLimiter(reclaimRateLimitPolicies.verify),

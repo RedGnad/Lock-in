@@ -2,12 +2,17 @@ import { NextResponse } from "next/server";
 import { ReclaimProofRequest } from "@reclaimprotocol/js-sdk";
 import { readJsonBody } from "@/src/api-guard";
 import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
-import { loadProofPolicyV5 } from "@/src/pact-server-v5";
-import { issueProofSessionV5 } from "@/src/proof-session-v5";
+import { loadProofPolicy } from "@/src/pact-server";
+import { issueProofSession } from "@/src/proof-session";
 import { DUOLINGO_PROVIDER_VERSION, duolingoProviderId } from "@/src/duolingo-proof-policy";
 import { STRAVA_PROVIDER_ID, STRAVA_PROVIDER_VERSION } from "@/src/strava-proof-policy";
 import { DUOLINGO_XP_MISSION } from "@/src/lock-in-abi";
 import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
+import {
+  requireWalletAuthSession,
+  walletAuthErrorStatus,
+  walletAuthPublicMessage,
+} from "@/src/wallet-auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,15 +25,17 @@ function required(name: string): string {
 }
 
 export async function POST(request: Request) {
-  const rateLimit = checkReclaimRateLimit("session", request);
-  if (!rateLimit.allowed) {
-    return NextResponse.json({ error: "Too many proof sessions. Try again later." }, {
-      status: 429,
-      headers: rateLimitResponseHeaders(rateLimit),
-    });
-  }
   try {
     const body = await readJsonBody<Record<string, unknown>>(request, 16 * 1_024);
+    const walletAddress = String(body.walletAddress || "");
+    const walletSession = requireWalletAuthSession(request, walletAddress);
+    const rateLimit = checkReclaimRateLimit("session", request, walletSession.walletAddress);
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ error: "Too many proof sessions. Try again later." }, {
+        status: 429,
+        headers: rateLimitResponseHeaders(rateLimit),
+      });
+    }
     const phase = body.phase === "baseline" ? "baseline" : body.phase === "completion" ? "completion" : null;
     if (!phase) throw new Error("Invalid proof phase");
     const intent = body.intent === "create" || body.intent === "join" ? body.intent : undefined;
@@ -38,8 +45,8 @@ export async function POST(request: Request) {
         headers: { "Cache-Control": "no-store" },
       });
     }
-    const policy = await loadProofPolicyV5({
-      walletAddress: String(body.walletAddress || ""),
+    const policy = await loadProofPolicy({
+      walletAddress: walletSession.walletAddress,
       pactId: String(body.pactId || ""),
       phase,
       intent,
@@ -66,7 +73,7 @@ export async function POST(request: Request) {
       proofRequest.setParams({ context_challenge: policy.proofCode });
     }
     const sessionId = proofRequest.getSessionId();
-    const token = issueProofSessionV5({
+    const token = issueProofSession({
       sessionId,
       walletAddress: policy.walletAddress,
       pactId: policy.pactId,
@@ -91,12 +98,17 @@ export async function POST(request: Request) {
       ownershipCode: policy.ownershipCode,
       proofCode: policy.proofCode,
       instruction: isDuolingo
-        ? `Set your Duolingo bio to exactly ${policy.ownershipCode} before continuing.`
+        ? `Set your Duolingo Name to exactly ${policy.ownershipCode} before continuing.`
         : `Set the title of your Strava GPS run to exactly ${policy.proofCode}.`,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not create proof session" }, {
-      status: 400,
+    const authStatus = walletAuthErrorStatus(error);
+    return NextResponse.json({
+      error: authStatus
+        ? walletAuthPublicMessage(error)
+        : error instanceof Error ? error.message : "Could not create proof session",
+    }, {
+      status: authStatus || 400,
       headers: { "Cache-Control": "no-store" },
     });
   }

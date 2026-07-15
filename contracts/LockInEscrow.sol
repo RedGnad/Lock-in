@@ -1,152 +1,227 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity 0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {Reclaim} from "@reclaimprotocol/solidity-sdk/contracts/Reclaim.sol";
+import {ILockInDuolingoVerifier, ILockInStravaVerifier, LockInProofTypes} from "./verifiers/LockInProofTypes.sol";
 
-interface IReclaimVerifier {
-    function verifyProof(Reclaim.Proof calldata proof) external returns (bool);
-    function extractFieldFromContext(
-        string calldata data,
-        string calldata target
-    ) external pure returns (string memory);
-}
-
-/// @notice Scheduled stable-token commitments settled from four direct Reclaim proofs.
-/// @dev The four provider hashes pin the exact private Strava provider v1.0.2.
+/// @notice Fixed-stake social pacts settled only when a direct Reclaim proof and a short-lived
+///         mission-specific backend attestation independently agree on every settlement field.
 contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 
-    bytes32 public constant STRAVA_PROVIDER_KEY =
-        keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.2");
-    bytes32 public constant STRAVA_IDENTITY_HASH =
-        0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67;
-    bytes32 public constant STRAVA_CORE_HASH =
-        0x2ef5ed61f33aa62f83c1ebf18c191b1b897db0d4a959368a365fff0c036dab2b;
-    bytes32 public constant STRAVA_GPS_HASH =
-        0x0bf30795f8148a6ec4d8609a71b7b6f7962f265169f6626e5b36b1f842460e27;
-    bytes32 public constant STRAVA_TRAINER_HASH =
-        0x26f22ca533a47f4af000231fd0a4de10b055985f2a32126bf2407de878a22040;
-    bytes32 public constant COMPLETION_TYPEHASH = keccak256(
-        "Completion(uint256 pactId,address account,uint8 dayIndex,bytes32 activityNullifier,bytes32 proofSetHash,uint64 expiresAt)"
+    uint8 public constant MISSION_STRAVA_RUN = 1;
+    uint8 public constant MISSION_DUOLINGO_XP = 2;
+    bytes32 public constant POLICY_TYPEHASH =
+        keccak256("MissionPolicy(uint256 chainId,uint8 missionType,address verifier,bytes32 verifierCodeHash)");
+    bytes32 public constant BASELINE_TYPEHASH = keccak256(
+        "Baseline(uint256 pactId,address account,uint8 missionType,bytes32 policyHash,bytes32 sessionIdHash,bytes32 identityHash,uint64 metric,bytes32 proofSetHash,uint64 observedAt,uint64 issuedAt,uint64 expiresAt)"
     );
+    bytes32 public constant COMPLETION_TYPEHASH = keccak256(
+        "Completion(uint256 pactId,address account,uint8 dayIndex,uint8 missionType,bytes32 policyHash,bytes32 sessionIdHash,bytes32 identityHash,bytes32 eventNullifier,uint64 metric,bytes32 proofSetHash,uint64 occurredAt,uint32 oldestProofTimestamp,uint32 newestProofTimestamp,uint64 movingTimeSeconds,uint64 elapsedTimeSeconds,uint64 elevationGainMeters,uint64 issuedAt,uint64 expiresAt)"
+    );
+    bytes32 public constant ACCESS_TYPEHASH = keccak256(
+        "Access(address account,uint8 action,uint256 pactId,bytes32 configHash,bytes32 nonce,uint64 issuedAt,uint64 expiresAt)"
+    );
+    uint8 public constant ACCESS_CREATE = 1;
+    uint8 public constant ACCESS_JOIN = 2;
 
-    uint256 public constant MAX_PARTICIPANTS = 100;
-    uint256 public constant MAX_DAYS = 30;
-    uint256 public constant VERSION = 3;
-    uint256 public constant MAX_CLAIM_WINDOW = 1 days;
-    uint256 public constant MAX_PROOF_AGE = 10 minutes;
+    uint8 public constant MIN_DURATION_DAYS = 3;
+    uint8 public constant MAX_DURATION_DAYS = 30;
+    uint8 public constant MIN_PARTICIPANTS = 2;
+    uint8 public constant MAX_PARTICIPANTS = 100;
+    uint32 public constant MIN_STRAVA_DISTANCE_METERS = 500;
+    uint32 public constant MAX_STRAVA_DISTANCE_METERS = 20_000;
+    uint32 public constant MIN_DUOLINGO_XP = 5;
+    uint32 public constant MAX_DUOLINGO_XP = 200;
+    uint256 public constant MIN_STAKE = 100_000;
+    uint256 public constant MAX_STAKE = 1_000_000;
+    uint256 public constant MAX_ATTESTATION_AGE = 10 minutes;
+    uint256 public constant MAX_CLOCK_SKEW = 1 minutes;
+    uint256 public constant MAX_START_DELAY = 3 hours;
+    uint256 public constant SUBMISSION_GRACE_PERIOD = 1 days;
+    uint256 public constant CONTRACT_SCHEMA_ID = 1;
 
     struct Pact {
         address creator;
         uint64 startsAt;
-        uint64 claimDeadline;
         uint96 stake;
-        uint32 minDistanceMeters;
+        uint32 dailyTarget;
         uint32 participantCount;
         uint32 finisherCount;
-        uint32 claimedCount;
+        uint32 claimsRemaining;
         uint8 durationDays;
         uint8 requiredCompletions;
         uint8 minParticipants;
-        bytes32 challengeHash;
-        bytes32 providerKey;
+        uint8 maxParticipants;
+        uint8 missionType;
+        uint64 completionPauseGenerationAtCreation;
+        bytes32 missionPolicyHash;
         uint256 remainingPool;
         bool finalized;
         bool cancelled;
     }
 
-    struct StravaFields {
-        string athleteMarker;
-        string activityId;
-        string activityName;
-        string sportType;
-        string startTime;
-        string distanceRaw;
-        string flagged;
-        string movingTimeRaw;
-        string elapsedTimeRaw;
-        string elevationGainRaw;
-        string hasLatLng;
-        string trainer;
+    struct BaselineEvidence {
+        uint8 missionType;
+        bytes32 policyHash;
+        bytes32 sessionIdHash;
+        bytes32 identityHash;
+        uint64 metric;
+        bytes32 proofSetHash;
+        uint64 observedAt;
+        uint64 issuedAt;
+        uint64 expiresAt;
+        bytes signature;
+    }
+
+    struct CompletionEvidence {
+        uint8 missionType;
+        bytes32 policyHash;
+        bytes32 sessionIdHash;
+        bytes32 identityHash;
+        bytes32 eventNullifier;
+        uint64 metric;
+        bytes32 proofSetHash;
+        uint64 occurredAt;
+        uint32 oldestProofTimestamp;
+        uint32 newestProofTimestamp;
+        uint64 movingTimeSeconds;
+        uint64 elapsedTimeSeconds;
+        uint64 elevationGainMeters;
+        uint64 issuedAt;
+        uint64 expiresAt;
+        bytes signature;
+    }
+
+    struct AccessEvidence {
+        bytes32 configHash;
+        bytes32 nonce;
+        uint64 issuedAt;
+        uint64 expiresAt;
+        bytes signature;
     }
 
     IERC20 public immutable stakeToken;
-    IReclaimVerifier public immutable reclaim;
-    uint256 public immutable maxStake;
+    ILockInStravaVerifier public immutable stravaVerifier;
+    ILockInDuolingoVerifier public immutable duolingoVerifier;
     address public evidenceSigner;
+    address public accessSigner;
     uint256 public nextPactId = 1;
+    uint64 public completionPauseGeneration = 1;
+
+    bool public creationPaused;
+    bool public joiningPaused;
+    bool public baselinePaused;
+    bool public completionPaused;
 
     mapping(uint256 => Pact) public pacts;
-    mapping(uint256 => string) public pactChallenges;
     mapping(uint256 => mapping(address => bool)) public joined;
     mapping(uint256 => mapping(address => uint256)) public completionBitmap;
     mapping(uint256 => mapping(address => uint8)) public completionCount;
     mapping(uint256 => mapping(address => bytes32)) public participantIdentity;
     mapping(uint256 => mapping(bytes32 => address)) public identityOwner;
+    mapping(uint256 => mapping(address => uint64)) public lastMetric;
     mapping(uint256 => mapping(address => bool)) public claimed;
-    mapping(bytes32 => bool) public usedActivityNullifiers;
+    mapping(bytes32 => uint64) public consumedDuolingoMetric;
+    mapping(bytes32 => bool) public usedEventNullifiers;
+    mapping(bytes32 => bool) public usedAccessNonces;
+    mapping(uint64 => uint64) public completionPauseStartedAt;
+    mapping(uint64 => uint64) public completionPauseEndedAt;
+    /// @dev `duolingoIdentityLockedUntil` is authoritative; this id remains as the last lock after expiry.
+    mapping(bytes32 => uint256) public activeDuolingoPact;
+    mapping(bytes32 => uint64) public duolingoIdentityLockedUntil;
 
     event PactCreated(
         uint256 indexed pactId,
         address indexed creator,
+        uint8 indexed missionType,
         uint256 stake,
-        uint32 minDistanceMeters,
+        uint32 dailyTarget,
         uint8 durationDays,
         uint8 requiredCompletions,
         uint8 minParticipants,
+        uint8 maxParticipants,
         uint64 startsAt,
-        uint64 claimDeadline,
-        bytes32 providerKey,
-        string challenge
+        bytes32 missionPolicyHash
     );
     event PactJoined(uint256 indexed pactId, address indexed account);
-    event DayProved(
+    event IdentityBound(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
+    event BaselineAccepted(
+        uint256 indexed pactId, address indexed account, bytes32 indexed identityHash, uint64 totalMetric
+    );
+    event CompletionAccepted(
         uint256 indexed pactId,
         address indexed account,
         uint8 indexed dayIndex,
-        bytes32 activityNullifier,
-        uint256 distanceMeters,
-        uint256 activityTimestamp
+        uint8 missionType,
+        bytes32 eventNullifier,
+        uint64 metric,
+        uint64 occurredAt
     );
-    event PactFinalized(uint256 indexed pactId, uint256 pool, uint256 finishers, bool cancelled);
-    event PayoutClaimed(uint256 indexed pactId, address indexed account, uint256 amount);
     event PactCancelled(uint256 indexed pactId);
+    event PactFinalized(
+        uint256 indexed pactId, uint256 pool, uint256 eligibleClaimants, uint256 finishers, bool cancelled
+    );
+    event PayoutClaimed(uint256 indexed pactId, address indexed account, uint256 amount);
     event EvidenceSignerUpdated(address indexed previousSigner, address indexed newSigner);
-    event IdentityBound(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
+    event AccessSignerUpdated(address indexed previousSigner, address indexed newSigner);
+    event CreationPauseUpdated(bool paused);
+    event JoiningPauseUpdated(bool paused);
+    event BaselinePauseUpdated(bool paused);
+    event CompletionPauseUpdated(bool paused);
+    event PactRefundedForCompletionPause(uint256 indexed pactId, uint64 indexed pauseGeneration, uint64 pauseStartedAt);
+    event DuolingoIdentityReleased(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
 
     error InvalidAddress();
+    error LiveSchemaUnconfirmed();
+    error InvalidTokenDecimals();
     error InvalidStake();
-    error InvalidSchedule();
-    error InvalidChallenge();
     error InvalidGoal();
+    error InvalidSchedule();
+    error UnsupportedMission();
     error PactNotFound();
+    error CreationIsPaused();
+    error JoiningIsPaused();
+    error BaselineIsPaused();
+    error CompletionIsPaused();
     error JoinClosed();
     error AlreadyJoined();
     error PactFull();
     error NotParticipant();
     error InvalidDay();
-    error DayAlreadyProved();
-    error InvalidProofContext();
-    error InvalidProviderHash();
-    error StaleProof();
-    error InvalidStravaEvidence();
-    error ActivityOutsideDay();
-    error DistanceTooShort();
-    error ActivityAlreadyUsed();
-    error AttestationExpired();
-    error InvalidEvidenceSigner();
-    error SubmissionClosed();
-    error PactNotStarted();
-    error UnderfilledPact();
+    error CompletionOutsideDay();
+    error DayAlreadyCompleted();
     error TargetAlreadyMet();
+    error UnderfilledPact();
+    error SubmissionClosed();
+    error EventAlreadyUsed();
+    error InvalidEvidenceSigner();
+    error InvalidAccessSigner();
+    error AccessAlreadyUsed();
+    error AttestationExpired();
+    error StaleEvidence();
+    error InvalidAttestationWindow();
+    error InvalidProofHash();
+    error InvalidProofBundle();
+    error DirectProofMismatch();
+    error InvalidMissionPolicy();
+    error InvalidMetric();
+    error InvalidConfigurationHash();
+    error DuolingoIdentityInActivePact();
+    error PactStillActive();
+    error UnsupportedStakeToken();
+    error BaselineRequired();
     error IdentityAlreadyUsed();
     error IdentityMismatch();
+    error NotCreator();
+    error CancellationClosed();
+    error AlreadyCancelled();
     error FinalizationTooEarly();
     error AlreadyFinalized();
     error NotFinalized();
@@ -155,305 +230,348 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
 
     constructor(
         IERC20 stakeToken_,
-        IReclaimVerifier reclaim_,
         address evidenceSigner_,
-        uint256 maxStake_
-    ) EIP712("Lock In", "3") {
-        if (address(stakeToken_) == address(0) || address(reclaim_) == address(0) || evidenceSigner_ == address(0)) {
+        address accessSigner_,
+        ILockInStravaVerifier stravaVerifier_,
+        ILockInDuolingoVerifier duolingoVerifier_
+    ) EIP712("Lock In", "1") {
+        if (
+            address(stakeToken_) == address(0) || evidenceSigner_ == address(0) || accessSigner_ == address(0)
+                || address(stravaVerifier_) == address(0) || address(duolingoVerifier_) == address(0)
+        ) {
             revert InvalidAddress();
         }
-        if (maxStake_ == 0 || maxStake_ > type(uint96).max) revert InvalidStake();
+        if (address(stravaVerifier_).code.length == 0 || address(duolingoVerifier_).code.length == 0) {
+            revert InvalidAddress();
+        }
+        if (!stravaVerifier_.LIVE_SCHEMA_CONFIRMED() || !duolingoVerifier_.LIVE_SCHEMA_CONFIRMED()) {
+            revert LiveSchemaUnconfirmed();
+        }
+        if (IERC20Metadata(address(stakeToken_)).decimals() != 6) revert InvalidTokenDecimals();
         stakeToken = stakeToken_;
-        reclaim = reclaim_;
+        stravaVerifier = stravaVerifier_;
+        duolingoVerifier = duolingoVerifier_;
         evidenceSigner = evidenceSigner_;
-        maxStake = maxStake_;
+        accessSigner = accessSigner_;
+        creationPaused = true;
+        joiningPaused = true;
+        baselinePaused = true;
+        completionPaused = true;
+        completionPauseStartedAt[1] = uint64(block.timestamp);
     }
 
+    /// @notice Creates and atomically joins a pact. Duolingo creation requires a fresh XP baseline.
     function createPact(
         uint96 stake,
-        uint32 minDistanceMeters,
+        uint32 dailyTarget,
         uint8 durationDays,
         uint8 requiredCompletions,
         uint8 minParticipants,
+        uint8 maxParticipants,
         uint64 startsAt,
-        uint64 claimDeadline,
-        string calldata challenge
+        uint8 missionType,
+        BaselineEvidence calldata baseline,
+        LockInProofTypes.DirectProofBundle calldata directProof,
+        AccessEvidence calldata access
     ) external nonReentrant returns (uint256 pactId) {
-        if (stake == 0 || stake > maxStake) revert InvalidStake();
-        if (
-            minDistanceMeters == 0 ||
-            durationDays == 0 ||
-            durationDays > MAX_DAYS ||
-            requiredCompletions == 0 ||
-            requiredCompletions > durationDays ||
-            minParticipants == 0 ||
-            (durationDays > 1 && minParticipants < 2) ||
-            minParticipants > MAX_PARTICIPANTS
-        ) {
-            revert InvalidGoal();
-        }
-        uint256 endsAt = uint256(startsAt) + uint256(durationDays) * 1 days;
-        if (
-            startsAt < block.timestamp ||
-            claimDeadline < endsAt ||
-            claimDeadline > endsAt + MAX_CLAIM_WINDOW
-        ) revert InvalidSchedule();
-        if (!_isValidChallenge(challenge)) revert InvalidChallenge();
+        if (creationPaused) revert CreationIsPaused();
+        _validateConfiguration(
+            stake,
+            dailyTarget,
+            durationDays,
+            requiredCompletions,
+            minParticipants,
+            maxParticipants,
+            startsAt,
+            missionType
+        );
+        bytes32 configHash = _hashPactConfiguration(
+            stake,
+            dailyTarget,
+            durationDays,
+            requiredCompletions,
+            minParticipants,
+            maxParticipants,
+            startsAt,
+            missionType,
+            _missionPolicyHash(missionType)
+        );
+        _consumeAccess(msg.sender, ACCESS_CREATE, 0, configHash, access);
 
         pactId = nextPactId++;
         Pact storage pact = pacts[pactId];
         pact.creator = msg.sender;
         pact.startsAt = startsAt;
-        pact.claimDeadline = claimDeadline;
         pact.stake = stake;
-        pact.minDistanceMeters = minDistanceMeters;
+        pact.dailyTarget = dailyTarget;
         pact.participantCount = 1;
         pact.durationDays = durationDays;
         pact.requiredCompletions = requiredCompletions;
         pact.minParticipants = minParticipants;
-        pact.challengeHash = keccak256(bytes(challenge));
-        pact.providerKey = STRAVA_PROVIDER_KEY;
-        pactChallenges[pactId] = challenge;
+        pact.maxParticipants = maxParticipants;
+        pact.missionType = missionType;
+        pact.missionPolicyHash = _missionPolicyHash(missionType);
+        pact.completionPauseGenerationAtCreation = completionPauseGeneration;
 
         joined[pactId][msg.sender] = true;
-        stakeToken.safeTransferFrom(msg.sender, address(this), stake);
+        if (missionType == MISSION_DUOLINGO_XP) {
+            _acceptBaseline(pactId, 0, msg.sender, baseline, directProof);
+        } else {
+            _requireEmptyDirectProof(directProof);
+        }
+        _pullStake(msg.sender, stake);
+
         emit PactCreated(
             pactId,
             msg.sender,
+            missionType,
             stake,
-            minDistanceMeters,
+            dailyTarget,
             durationDays,
             requiredCompletions,
             minParticipants,
+            maxParticipants,
             startsAt,
-            claimDeadline,
-            STRAVA_PROVIDER_KEY,
-            challenge
+            pact.missionPolicyHash
         );
         emit PactJoined(pactId, msg.sender);
     }
 
-    function joinPact(uint256 pactId) external nonReentrant {
+    /// @notice Joins before the published start. Duolingo joining and baseline acceptance are atomic.
+    function joinPact(
+        uint256 pactId,
+        BaselineEvidence calldata baseline,
+        LockInProofTypes.DirectProofBundle calldata directProof,
+        AccessEvidence calldata access
+    ) external nonReentrant {
+        if (joiningPaused) revert JoiningIsPaused();
         Pact storage pact = _pact(pactId);
-        if (block.timestamp >= pact.startsAt || pact.cancelled) revert JoinClosed();
+        if (pact.cancelled || pact.finalized || block.timestamp >= pact.startsAt) revert JoinClosed();
         if (joined[pactId][msg.sender]) revert AlreadyJoined();
-        if (pact.participantCount >= MAX_PARTICIPANTS) revert PactFull();
+        if (pact.participantCount >= pact.maxParticipants) revert PactFull();
+        _consumeAccess(msg.sender, ACCESS_JOIN, pactId, _pactConfigHash(pact), access);
+
         joined[pactId][msg.sender] = true;
         ++pact.participantCount;
-        stakeToken.safeTransferFrom(msg.sender, address(this), pact.stake);
+        if (pact.missionType == MISSION_DUOLINGO_XP) {
+            _acceptBaseline(pactId, pactId, msg.sender, baseline, directProof);
+        } else {
+            _requireEmptyDirectProof(directProof);
+        }
+        _pullStake(msg.sender, pact.stake);
         emit PactJoined(pactId, msg.sender);
     }
 
-    function submitStravaProofs(
+    /// @notice Accepts one policy-checked mission completion for a pact day.
+    function submitCompletion(
         uint256 pactId,
         uint8 dayIndex,
-        string calldata challenge,
-        Reclaim.Proof[4] calldata proofs,
-        uint64 expiresAt,
-        bytes calldata validatorSignature
-    ) external nonReentrant returns (bytes32 activityNullifier) {
+        CompletionEvidence calldata evidence,
+        LockInProofTypes.DirectProofBundle calldata directProof
+    ) external nonReentrant {
+        if (completionPaused) revert CompletionIsPaused();
         Pact storage pact = _pact(pactId);
-        if (pact.finalized || pact.cancelled || block.timestamp > pact.claimDeadline) {
-            revert SubmissionClosed();
-        }
-        if (block.timestamp < pact.startsAt) revert PactNotStarted();
+        if (pact.cancelled || pact.finalized) revert SubmissionClosed();
         if (pact.participantCount < pact.minParticipants) revert UnderfilledPact();
         if (!joined[pactId][msg.sender]) revert NotParticipant();
         if (completionCount[pactId][msg.sender] >= pact.requiredCompletions) revert TargetAlreadyMet();
         if (dayIndex >= pact.durationDays) revert InvalidDay();
+
+        uint256 dayStart = uint256(pact.startsAt) + uint256(dayIndex) * 1 days;
+        if (evidence.occurredAt < dayStart || evidence.occurredAt >= dayStart + 1 days) revert CompletionOutsideDay();
+        if (evidence.occurredAt > block.timestamp + MAX_CLOCK_SKEW) revert StaleEvidence();
+        if (block.timestamp < dayStart || block.timestamp >= dayStart + 1 days + SUBMISSION_GRACE_PERIOD) {
+            revert CompletionOutsideDay();
+        }
+
         uint256 dayMask = uint256(1) << dayIndex;
         uint256 previousBitmap = completionBitmap[pactId][msg.sender];
-        if (previousBitmap & dayMask != 0) revert DayAlreadyProved();
-        if (keccak256(bytes(challenge)) != pact.challengeHash) revert InvalidChallenge();
+        if (previousBitmap & dayMask != 0) revert DayAlreadyCompleted();
+        if (evidence.proofSetHash == bytes32(0) || evidence.eventNullifier == bytes32(0)) revert InvalidProofHash();
+        if (usedEventNullifiers[evidence.eventNullifier]) revert EventAlreadyUsed();
 
-        _verifyProofSet(pactId, dayIndex, proofs);
-        StravaFields memory fields = _extractStravaFields(proofs);
-        uint256 distance;
-        uint256 activityTime;
-        (activityNullifier, distance, activityTime) = _validateStravaFields(
-            pact,
-            dayIndex,
-            challenge,
-            fields
-        );
-        if (block.timestamp > expiresAt || expiresAt > pact.claimDeadline) revert AttestationExpired();
-        bytes32 setHash = keccak256(abi.encode(
-            proofs[0].signedClaim.claim.identifier,
-            proofs[1].signedClaim.claim.identifier,
-            proofs[2].signedClaim.claim.identifier,
-            proofs[3].signedClaim.claim.identifier
-        ));
-        if (
-            ECDSA.recover(
-                completionDigest(pactId, msg.sender, dayIndex, activityNullifier, setHash, expiresAt),
-                validatorSignature
-            ) != evidenceSigner
-        ) revert InvalidEvidenceSigner();
-        if (usedActivityNullifiers[activityNullifier]) revert ActivityAlreadyUsed();
-        bytes32 identityHash = keccak256(abi.encode(STRAVA_PROVIDER_KEY, fields.athleteMarker));
-        bytes32 boundIdentity = participantIdentity[pactId][msg.sender];
-        if (boundIdentity == bytes32(0)) {
-            address boundOwner = identityOwner[pactId][identityHash];
-            if (boundOwner != address(0) && boundOwner != msg.sender) revert IdentityAlreadyUsed();
-            participantIdentity[pactId][msg.sender] = identityHash;
-            identityOwner[pactId][identityHash] = msg.sender;
-            emit IdentityBound(pactId, msg.sender, identityHash);
-        } else if (boundIdentity != identityHash) {
-            revert IdentityMismatch();
+        _verifyDirectCompletion(pactId, msg.sender, dayIndex, pact, evidence, directProof);
+        _verifyCompletionSignature(pactId, msg.sender, dayIndex, evidence);
+        _bindIdentity(pactId, msg.sender, evidence.identityHash);
+
+        if (pact.missionType == MISSION_STRAVA_RUN) {
+            if (evidence.metric < pact.dailyTarget) revert InvalidMetric();
+        } else {
+            uint64 previousMetric = lastMetric[pactId][msg.sender];
+            uint64 globallyConsumed = consumedDuolingoMetric[evidence.identityHash];
+            if (globallyConsumed > previousMetric) previousMetric = globallyConsumed;
+            if (evidence.metric < previousMetric || uint256(evidence.metric) - previousMetric < pact.dailyTarget) {
+                revert InvalidMetric();
+            }
+            lastMetric[pactId][msg.sender] = evidence.metric;
+            consumedDuolingoMetric[evidence.identityHash] = evidence.metric;
         }
-        usedActivityNullifiers[activityNullifier] = true;
 
-        uint256 updatedBitmap = previousBitmap | dayMask;
-        completionBitmap[pactId][msg.sender] = updatedBitmap;
+        usedEventNullifiers[evidence.eventNullifier] = true;
+        completionBitmap[pactId][msg.sender] = previousBitmap | dayMask;
         uint8 updatedCount = completionCount[pactId][msg.sender] + 1;
         completionCount[pactId][msg.sender] = updatedCount;
         if (updatedCount == pact.requiredCompletions) ++pact.finisherCount;
-        emit DayProved(pactId, msg.sender, dayIndex, activityNullifier, distance, activityTime);
+
+        emit CompletionAccepted(
+            pactId,
+            msg.sender,
+            dayIndex,
+            pact.missionType,
+            evidence.eventNullifier,
+            evidence.metric,
+            evidence.occurredAt
+        );
     }
 
-    function _verifyProofSet(
-        uint256 pactId,
-        uint8 dayIndex,
-        Reclaim.Proof[4] calldata proofs
-    ) private {
-        string memory expectedAddress = _addressToLowerHex(msg.sender);
-        string memory expectedMessage = string.concat(_uintToString(pactId), ":", _uintToString(dayIndex));
-        for (uint256 i; i < proofs.length; ++i) {
-            reclaim.verifyProof(proofs[i]);
-            string calldata context = proofs[i].claimInfo.context;
-            if (
-                !_equal(_extract(context, '"contextAddress":"'), expectedAddress) ||
-                !_equal(_extract(context, '"contextMessage":"'), expectedMessage)
-            ) revert InvalidProofContext();
-            if (_hexStringToBytes32(_extract(context, '"providerHash":"')) != _expectedProviderHash(i)) {
-                revert InvalidProviderHash();
-            }
-            uint256 timestamp = proofs[i].signedClaim.claim.timestampS;
-            if (timestamp > block.timestamp + 60 || block.timestamp > timestamp + MAX_PROOF_AGE) {
-                revert StaleProof();
-            }
-        }
+    function cancelPact(uint256 pactId) external {
+        Pact storage pact = _pact(pactId);
+        if (msg.sender != pact.creator) revert NotCreator();
+        if (pact.finalized) revert AlreadyFinalized();
+        if (pact.cancelled) revert AlreadyCancelled();
+        if (block.timestamp >= pact.startsAt) revert CancellationClosed();
+        pact.cancelled = true;
+        emit PactCancelled(pactId);
     }
 
-    function _extractStravaFields(
-        Reclaim.Proof[4] calldata proofs
-    ) private view returns (StravaFields memory fields) {
-        fields.athleteMarker = _extract(proofs[0].claimInfo.context, '"marker":"');
-        fields.activityId = _extract(proofs[1].claimInfo.context, '"id":"');
-        fields.activityName = _extract(proofs[1].claimInfo.context, '"name":"');
-        fields.sportType = _extract(proofs[1].claimInfo.context, '"type":"');
-        fields.startTime = _extract(proofs[1].claimInfo.context, '"time":"');
-        fields.distanceRaw = _extract(proofs[1].claimInfo.context, '"raw":"');
-        fields.flagged = _extract(proofs[1].claimInfo.context, '"flagged":"');
-        fields.movingTimeRaw = _extract(proofs[1].claimInfo.context, '"moving":"');
-        fields.elapsedTimeRaw = _extract(proofs[1].claimInfo.context, '"elapsed":"');
-        fields.elevationGainRaw = _extract(proofs[1].claimInfo.context, '"elevation":"');
-        fields.hasLatLng = _extract(proofs[2].claimInfo.context, '"latlng":"');
-        fields.trainer = _extract(proofs[3].claimInfo.context, '"trainer":"');
+    /// @notice Emergency action can only move an unsettled pact into participant refunds.
+    function cancelPactByOwner(uint256 pactId) external onlyOwner {
+        Pact storage pact = _pact(pactId);
+        if (pact.finalized) revert AlreadyFinalized();
+        if (pact.cancelled) revert AlreadyCancelled();
+        pact.cancelled = true;
+        emit PactCancelled(pactId);
     }
 
-    function _validateStravaFields(
-        Pact storage pact,
-        uint8 dayIndex,
-        string calldata challenge,
-        StravaFields memory fields
-    ) private view returns (bytes32 nullifier, uint256 distance, uint256 activityTime) {
-        if (
-            !_startsWith(fields.athleteMarker, "userId: ") ||
-            !_equal(fields.sportType, "Run") ||
-            !_equal(fields.hasLatLng, "true") ||
-            !_equal(fields.trainer, "false") ||
-            !_equal(fields.flagged, "false") ||
-            !_equal(fields.activityName, _dailyProofCode(challenge, dayIndex))
-        ) revert InvalidStravaEvidence();
-
-        uint256 activityId = _parseUint(fields.activityId);
-        if (activityId == 0) revert InvalidStravaEvidence();
-        distance = _parseUint(fields.distanceRaw);
-        if (distance < pact.minDistanceMeters) revert DistanceTooShort();
-        if (
-            bytes(fields.movingTimeRaw).length == 0 ||
-            bytes(fields.elapsedTimeRaw).length == 0 ||
-            bytes(fields.elevationGainRaw).length == 0
-        ) revert InvalidStravaEvidence();
-        uint256 movingTime = _parseUint(fields.movingTimeRaw);
-        uint256 elapsedTime = _parseUint(fields.elapsedTimeRaw);
-        _parseUint(fields.elevationGainRaw);
-        if (
-            movingTime == 0 ||
-            elapsedTime < movingTime ||
-            distance > movingTime * 9 ||
-            distance * 2 < movingTime ||
-            elapsedTime > movingTime * 4 + 15 minutes
-        ) revert InvalidStravaEvidence();
-        activityTime = _parseStravaTimestamp(fields.startTime);
-        uint256 dayStart = uint256(pact.startsAt) + uint256(dayIndex) * 1 days;
-        if (activityTime < dayStart || activityTime >= dayStart + 1 days) {
-            revert ActivityOutsideDay();
-        }
-        nullifier = keccak256(abi.encode(STRAVA_PROVIDER_KEY, fields.athleteMarker, activityId));
-    }
-
+    /// @notice Permissionless finalization. Pause flags never block settlement or claims.
     function finalizePact(uint256 pactId) public {
         Pact storage pact = _pact(pactId);
         if (pact.finalized) revert AlreadyFinalized();
+
         if (!pact.cancelled && block.timestamp >= pact.startsAt && pact.participantCount < pact.minParticipants) {
             pact.cancelled = true;
             emit PactCancelled(pactId);
         }
-        if (!pact.cancelled && block.timestamp <= pact.claimDeadline) revert FinalizationTooEarly();
+        if (!pact.cancelled && block.timestamp < _submissionDeadline(pact)) revert FinalizationTooEarly();
+
+        if (!pact.cancelled) {
+            (bool affected, uint64 pauseGeneration, uint64 pauseStartedAt) = _completionPauseAffected(pact);
+            if (affected) {
+                pact.cancelled = true;
+                emit PactRefundedForCompletionPause(pactId, pauseGeneration, pauseStartedAt);
+                emit PactCancelled(pactId);
+            }
+        }
+
+        uint32 eligibleClaimants =
+            pact.cancelled || pact.finisherCount == 0 ? pact.participantCount : pact.finisherCount;
         pact.finalized = true;
+        pact.claimsRemaining = eligibleClaimants;
         pact.remainingPool = uint256(pact.stake) * pact.participantCount;
-        emit PactFinalized(pactId, pact.remainingPool, pact.finisherCount, pact.cancelled);
+        emit PactFinalized(pactId, pact.remainingPool, eligibleClaimants, pact.finisherCount, pact.cancelled);
     }
 
     function claim(uint256 pactId) external nonReentrant returns (uint256 amount) {
         Pact storage pact = _pact(pactId);
         if (!pact.finalized) revert NotFinalized();
-        if (claimed[pactId][msg.sender]) revert AlreadyClaimed();
         if (!joined[pactId][msg.sender]) revert NotParticipant();
-
-        uint256 eligibleCount;
-        if (pact.cancelled || pact.finisherCount == 0) {
-            eligibleCount = pact.participantCount;
-        } else {
-            if (completionCount[pactId][msg.sender] < pact.requiredCompletions) revert NotEligible();
-            eligibleCount = pact.finisherCount;
-        }
+        if (claimed[pactId][msg.sender]) revert AlreadyClaimed();
+        if (
+            !pact.cancelled && pact.finisherCount != 0 && completionCount[pactId][msg.sender] < pact.requiredCompletions
+        ) revert NotEligible();
 
         claimed[pactId][msg.sender] = true;
-        ++pact.claimedCount;
-        uint256 remainingClaims = eligibleCount - (pact.claimedCount - 1);
-        amount = pact.remainingPool / remainingClaims;
+        amount = pact.remainingPool / pact.claimsRemaining;
         pact.remainingPool -= amount;
-        stakeToken.safeTransfer(msg.sender, amount);
+        --pact.claimsRemaining;
+        _pushPayout(msg.sender, amount);
         emit PayoutClaimed(pactId, msg.sender, amount);
     }
 
-    function cancelPact(uint256 pactId) external onlyOwner {
-        Pact storage pact = _pact(pactId);
-        if (pact.finalized) revert AlreadyFinalized();
-        pact.cancelled = true;
-        emit PactCancelled(pactId);
+    function pactEndsAt(uint256 pactId) external view returns (uint256) {
+        return _endsAt(_pact(pactId));
     }
 
-    function completionDigest(
-        uint256 pactId,
-        address account,
-        uint8 dayIndex,
-        bytes32 activityNullifier,
-        bytes32 setHash,
-        uint64 expiresAt
-    ) public view returns (bytes32) {
-        return _hashTypedDataV4(keccak256(abi.encode(
-            COMPLETION_TYPEHASH,
-            pactId,
-            account,
-            dayIndex,
-            activityNullifier,
-            setHash,
-            expiresAt
-        )));
+    function pactSubmissionDeadline(uint256 pactId) external view returns (uint256) {
+        return _submissionDeadline(_pact(pactId));
+    }
+
+    function pactConfigHash(uint256 pactId) external view returns (bytes32) {
+        return _pactConfigHash(_pact(pactId));
+    }
+
+    function hashPactConfiguration(
+        uint96 stake,
+        uint32 dailyTarget,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
+        uint8 maxParticipants,
+        uint64 startsAt,
+        uint8 missionType
+    ) external view returns (bytes32) {
+        return _hashPactConfiguration(
+            stake,
+            dailyTarget,
+            durationDays,
+            requiredCompletions,
+            minParticipants,
+            maxParticipants,
+            startsAt,
+            missionType,
+            _missionPolicyHash(missionType)
+        );
+    }
+
+    function missionPolicyHash(uint8 missionType) external view returns (bytes32) {
+        return _missionPolicyHash(missionType);
+    }
+
+    /// @notice Deterministic, pact-bound activity title required by the Strava provider for a given day.
+    function stravaChallenge(uint256 pactId, address account, uint8 dayIndex) public view returns (string memory) {
+        if (account == address(0) || dayIndex >= MAX_DURATION_DAYS) revert InvalidDay();
+        bytes32 seed = keccak256(
+            abi.encode(keccak256("LOCK_IN_STRAVA_CHALLENGE"), block.chainid, address(this), pactId, account, dayIndex)
+        );
+        bytes memory output = new bytes(22);
+        output[0] = "L";
+        output[1] = "I";
+        output[2] = "-";
+        bytes16 alphabet = "0123456789ABCDEF";
+        for (uint256 i; i < 16; ++i) {
+            output[3 + i] = alphabet[uint8(seed[i / 2]) >> (i % 2 == 0 ? 4 : 0) & 0x0f];
+        }
+        output[19] = "D";
+        uint8 day = dayIndex + 1;
+        output[20] = bytes1(uint8(48 + day / 10));
+        output[21] = bytes1(uint8(48 + day % 10));
+        return string(output);
+    }
+
+    function getPact(uint256 pactId) external view returns (Pact memory) {
+        return _pact(pactId);
+    }
+
+    function isFinisher(uint256 pactId, address account) external view returns (bool) {
+        Pact storage pact = _pact(pactId);
+        return joined[pactId][account] && completionCount[pactId][account] >= pact.requiredCompletions;
+    }
+
+    /// @notice Clears the caller's Duolingo lock once its pact can no longer accept completions.
+    /// @dev A stale pact can never clear a lock that has already moved to a newer pact.
+    function releaseDuolingoIdentity(uint256 pactId) external returns (bool released) {
+        Pact storage pact = _pact(pactId);
+        if (!pact.cancelled && !pact.finalized) revert PactStillActive();
+        if (pact.missionType != MISSION_DUOLINGO_XP || !joined[pactId][msg.sender]) revert NotParticipant();
+
+        bytes32 identityHash = participantIdentity[pactId][msg.sender];
+        if (identityHash == bytes32(0)) revert BaselineRequired();
+        if (activeDuolingoPact[identityHash] != pactId) return false;
+
+        delete activeDuolingoPact[identityHash];
+        delete duolingoIdentityLockedUntil[identityHash];
+        emit DuolingoIdentityReleased(pactId, msg.sender, identityHash);
+        return true;
     }
 
     function setEvidenceSigner(address newSigner) external onlyOwner {
@@ -463,20 +581,355 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         emit EvidenceSignerUpdated(previous, newSigner);
     }
 
-    function pactEndsAt(uint256 pactId) external view returns (uint256) {
-        Pact storage pact = _pact(pactId);
-        return uint256(pact.startsAt) + uint256(pact.durationDays) * 1 days;
+    function setAccessSigner(address newSigner) external onlyOwner {
+        if (newSigner == address(0)) revert InvalidAddress();
+        address previous = accessSigner;
+        accessSigner = newSigner;
+        emit AccessSignerUpdated(previous, newSigner);
     }
 
-    function _expectedProviderHash(uint256 index) private pure returns (bytes32) {
-        if (index == 0) return STRAVA_IDENTITY_HASH;
-        if (index == 1) return STRAVA_CORE_HASH;
-        if (index == 2) return STRAVA_GPS_HASH;
-        return STRAVA_TRAINER_HASH;
+    function setCreationPaused(bool paused) external onlyOwner {
+        creationPaused = paused;
+        emit CreationPauseUpdated(paused);
     }
 
-    function _extract(string calldata context, string memory target) private view returns (string memory) {
-        return reclaim.extractFieldFromContext(context, target);
+    function setJoiningPaused(bool paused) external onlyOwner {
+        joiningPaused = paused;
+        emit JoiningPauseUpdated(paused);
+    }
+
+    function setBaselinePaused(bool paused) external onlyOwner {
+        baselinePaused = paused;
+        emit BaselinePauseUpdated(paused);
+    }
+
+    function setCompletionPaused(bool paused) external onlyOwner {
+        if (paused && !completionPaused) {
+            ++completionPauseGeneration;
+            completionPauseStartedAt[completionPauseGeneration] = uint64(block.timestamp);
+        } else if (!paused && completionPaused) {
+            completionPauseEndedAt[completionPauseGeneration] = uint64(block.timestamp);
+        }
+        completionPaused = paused;
+        emit CompletionPauseUpdated(paused);
+    }
+
+    function _acceptBaseline(
+        uint256 pactId,
+        uint256 signedPactId,
+        address account,
+        BaselineEvidence calldata evidence,
+        LockInProofTypes.DirectProofBundle calldata directProof
+    ) private {
+        if (baselinePaused) revert BaselineIsPaused();
+        Pact storage pact = pacts[pactId];
+        if (directProof.proofs.length != 1 || bytes(directProof.sessionId).length == 0) revert InvalidProofBundle();
+        if (evidence.identityHash == bytes32(0) || evidence.proofSetHash == bytes32(0)) revert InvalidProofHash();
+        if (
+            evidence.missionType != MISSION_DUOLINGO_XP || evidence.policyHash != pact.missionPolicyHash
+                || evidence.policyHash != _missionPolicyHash(MISSION_DUOLINGO_XP)
+                || evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))
+        ) revert InvalidMissionPolicy();
+
+        LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProof(
+            directProof.proofs[0], account, signedPactId, true, 0, directProof.sessionId
+        );
+        if (
+            direct.identityHash != evidence.identityHash || direct.totalXp != evidence.metric
+                || direct.proofSetHash != evidence.proofSetHash || direct.proofTimestamp != evidence.observedAt
+        ) revert DirectProofMismatch();
+
+        _validateAttestationWindow(evidence.issuedAt, evidence.expiresAt);
+        if (
+            evidence.observedAt > block.timestamp + MAX_CLOCK_SKEW
+                || uint256(evidence.observedAt) + MAX_ATTESTATION_AGE < block.timestamp
+                || evidence.observedAt >= pacts[pactId].startsAt
+        ) revert StaleEvidence();
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                BASELINE_TYPEHASH,
+                signedPactId,
+                account,
+                evidence.missionType,
+                evidence.policyHash,
+                evidence.sessionIdHash,
+                evidence.identityHash,
+                evidence.metric,
+                evidence.proofSetHash,
+                evidence.observedAt,
+                evidence.issuedAt,
+                evidence.expiresAt
+            )
+        );
+        if (ECDSA.recover(_hashTypedDataV4(structHash), evidence.signature) != evidenceSigner) {
+            revert InvalidEvidenceSigner();
+        }
+
+        _bindIdentity(pactId, account, evidence.identityHash);
+        _lockDuolingoIdentity(pactId, evidence.identityHash);
+        if (evidence.metric < consumedDuolingoMetric[evidence.identityHash]) revert InvalidMetric();
+        lastMetric[pactId][account] = evidence.metric;
+        consumedDuolingoMetric[evidence.identityHash] = evidence.metric;
+        emit BaselineAccepted(pactId, account, evidence.identityHash, evidence.metric);
+    }
+
+    function _verifyDirectCompletion(
+        uint256 pactId,
+        address account,
+        uint8 dayIndex,
+        Pact storage pact,
+        CompletionEvidence calldata evidence,
+        LockInProofTypes.DirectProofBundle calldata directProof
+    ) private view {
+        if (
+            evidence.missionType != pact.missionType || evidence.policyHash != pact.missionPolicyHash
+                || evidence.policyHash != _missionPolicyHash(pact.missionType)
+        ) revert InvalidMissionPolicy();
+
+        if (pact.missionType == MISSION_STRAVA_RUN) {
+            if (directProof.proofs.length != 4 || bytes(directProof.sessionId).length == 0) {
+                revert InvalidProofBundle();
+            }
+            if (evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))) revert InvalidMissionPolicy();
+            uint64 startsAt = uint64(uint256(pact.startsAt) + uint256(dayIndex) * 1 days);
+            LockInProofTypes.StravaPolicy memory policy = LockInProofTypes.StravaPolicy({
+                account: account,
+                pactId: pactId,
+                dayIndex: dayIndex,
+                expectedSessionId: directProof.sessionId,
+                challenge: stravaChallenge(pactId, account, dayIndex),
+                startsAt: startsAt,
+                endsAt: startsAt + uint64(1 days),
+                minDistanceMeters: pact.dailyTarget
+            });
+            LockInProofTypes.StravaEvidence memory direct =
+                stravaVerifier.validateStravaProofs(directProof.proofs, policy);
+            if (
+                direct.identityHash != evidence.identityHash || direct.nullifier != evidence.eventNullifier
+                    || direct.proofSetHash != evidence.proofSetHash || direct.distanceMeters != evidence.metric
+                    || direct.startTime != evidence.occurredAt
+                    || direct.oldestProofTimestamp != evidence.oldestProofTimestamp
+                    || direct.newestProofTimestamp != evidence.newestProofTimestamp
+                    || direct.movingTimeSeconds != evidence.movingTimeSeconds
+                    || direct.elapsedTimeSeconds != evidence.elapsedTimeSeconds
+                    || direct.elevationGainMeters != evidence.elevationGainMeters
+            ) revert DirectProofMismatch();
+        } else if (pact.missionType == MISSION_DUOLINGO_XP) {
+            if (directProof.proofs.length != 1 || bytes(directProof.sessionId).length == 0) {
+                revert InvalidProofBundle();
+            }
+            if (evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))) revert InvalidMissionPolicy();
+            LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProof(
+                directProof.proofs[0], account, pactId, false, dayIndex, directProof.sessionId
+            );
+            bytes32 nullifier = keccak256(
+                abi.encode(
+                    keccak256("LOCK_IN_DUOLINGO_COMPLETION"), direct.identityHash, direct.totalXp, direct.proofSetHash
+                )
+            );
+            if (
+                direct.identityHash != evidence.identityHash || nullifier != evidence.eventNullifier
+                    || direct.proofSetHash != evidence.proofSetHash || direct.totalXp != evidence.metric
+                    || direct.proofTimestamp != evidence.occurredAt
+                    || direct.proofTimestamp != evidence.oldestProofTimestamp
+                    || direct.proofTimestamp != evidence.newestProofTimestamp || evidence.movingTimeSeconds != 0
+                    || evidence.elapsedTimeSeconds != 0 || evidence.elevationGainMeters != 0
+            ) revert DirectProofMismatch();
+        } else {
+            revert UnsupportedMission();
+        }
+    }
+
+    function _verifyCompletionSignature(
+        uint256 pactId,
+        address account,
+        uint8 dayIndex,
+        CompletionEvidence calldata evidence
+    ) private view {
+        _validateAttestationWindow(evidence.issuedAt, evidence.expiresAt);
+        bytes32 structHash = keccak256(
+            abi.encode(
+                COMPLETION_TYPEHASH,
+                pactId,
+                account,
+                dayIndex,
+                evidence.missionType,
+                evidence.policyHash,
+                evidence.sessionIdHash,
+                evidence.identityHash,
+                evidence.eventNullifier,
+                evidence.metric,
+                evidence.proofSetHash,
+                evidence.occurredAt,
+                evidence.oldestProofTimestamp,
+                evidence.newestProofTimestamp,
+                evidence.movingTimeSeconds,
+                evidence.elapsedTimeSeconds,
+                evidence.elevationGainMeters,
+                evidence.issuedAt,
+                evidence.expiresAt
+            )
+        );
+        if (ECDSA.recover(_hashTypedDataV4(structHash), evidence.signature) != evidenceSigner) {
+            revert InvalidEvidenceSigner();
+        }
+    }
+
+    function _requireEmptyDirectProof(LockInProofTypes.DirectProofBundle calldata directProof) private pure {
+        if (directProof.proofs.length != 0 || bytes(directProof.sessionId).length != 0) revert InvalidProofBundle();
+    }
+
+    function _consumeAccess(
+        address account,
+        uint8 action,
+        uint256 pactId,
+        bytes32 expectedConfigHash,
+        AccessEvidence calldata access
+    ) private {
+        if (access.nonce == bytes32(0)) revert InvalidProofHash();
+        if (access.configHash != expectedConfigHash) revert InvalidConfigurationHash();
+        _validateAttestationWindow(access.issuedAt, access.expiresAt);
+        if (usedAccessNonces[access.nonce]) revert AccessAlreadyUsed();
+        bytes32 structHash = keccak256(
+            abi.encode(
+                ACCESS_TYPEHASH,
+                account,
+                action,
+                pactId,
+                access.configHash,
+                access.nonce,
+                access.issuedAt,
+                access.expiresAt
+            )
+        );
+        if (ECDSA.recover(_hashTypedDataV4(structHash), access.signature) != accessSigner) {
+            revert InvalidAccessSigner();
+        }
+        usedAccessNonces[access.nonce] = true;
+    }
+
+    function _bindIdentity(uint256 pactId, address account, bytes32 identityHash) private {
+        if (identityHash == bytes32(0)) revert InvalidProofHash();
+        bytes32 existing = participantIdentity[pactId][account];
+        if (existing != bytes32(0) && existing != identityHash) revert IdentityMismatch();
+        address owner = identityOwner[pactId][identityHash];
+        if (owner != address(0) && owner != account) revert IdentityAlreadyUsed();
+        if (existing == bytes32(0)) {
+            participantIdentity[pactId][account] = identityHash;
+            identityOwner[pactId][identityHash] = account;
+            emit IdentityBound(pactId, account, identityHash);
+        }
+    }
+
+    function _lockDuolingoIdentity(uint256 pactId, bytes32 identityHash) private {
+        // XP totals are global counters. Forbidding overlapping pacts prevents one XP increase
+        // from satisfying multiple stakes; XP above a daily target is deliberately not banked.
+        uint256 lockedPact = activeDuolingoPact[identityHash];
+        if (duolingoIdentityLockedUntil[identityHash] > block.timestamp && lockedPact != pactId) {
+            revert DuolingoIdentityInActivePact();
+        }
+        activeDuolingoPact[identityHash] = pactId;
+        duolingoIdentityLockedUntil[identityHash] = uint64(_submissionDeadline(pacts[pactId]));
+    }
+
+    function _validateAttestationWindow(uint64 issuedAt, uint64 expiresAt) private view {
+        if (expiresAt < block.timestamp) revert AttestationExpired();
+        if (
+            issuedAt > block.timestamp + MAX_CLOCK_SKEW || issuedAt > expiresAt
+                || uint256(issuedAt) + MAX_ATTESTATION_AGE < block.timestamp
+                || uint256(expiresAt) > uint256(issuedAt) + MAX_ATTESTATION_AGE
+        ) revert InvalidAttestationWindow();
+    }
+
+    function _pullStake(address account, uint256 amount) private {
+        uint256 balanceBefore = stakeToken.balanceOf(address(this));
+        stakeToken.safeTransferFrom(account, address(this), amount);
+        if (stakeToken.balanceOf(address(this)) != balanceBefore + amount) revert UnsupportedStakeToken();
+    }
+
+    function _pushPayout(address account, uint256 amount) private {
+        uint256 balanceBefore = stakeToken.balanceOf(account);
+        stakeToken.safeTransfer(account, amount);
+        if (stakeToken.balanceOf(account) != balanceBefore + amount) revert UnsupportedStakeToken();
+    }
+
+    function _validateConfiguration(
+        uint96 stake,
+        uint32 dailyTarget,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
+        uint8 maxParticipants,
+        uint64 startsAt,
+        uint8 missionType
+    ) private view {
+        if (stake < MIN_STAKE || stake > MAX_STAKE) revert InvalidStake();
+        if (
+            durationDays < MIN_DURATION_DAYS || durationDays > MAX_DURATION_DAYS || requiredCompletions == 0
+                || requiredCompletions > durationDays || minParticipants < MIN_PARTICIPANTS
+                || minParticipants > maxParticipants || maxParticipants > MAX_PARTICIPANTS
+        ) revert InvalidGoal();
+        if (startsAt <= block.timestamp || uint256(startsAt) > block.timestamp + MAX_START_DELAY) {
+            revert InvalidSchedule();
+        }
+        if (missionType == MISSION_STRAVA_RUN) {
+            if (dailyTarget < MIN_STRAVA_DISTANCE_METERS || dailyTarget > MAX_STRAVA_DISTANCE_METERS) {
+                revert InvalidGoal();
+            }
+        } else if (missionType == MISSION_DUOLINGO_XP) {
+            if (dailyTarget < MIN_DUOLINGO_XP || dailyTarget > MAX_DUOLINGO_XP) revert InvalidGoal();
+        } else {
+            revert UnsupportedMission();
+        }
+    }
+
+    function _missionPolicyHash(uint8 missionType) private view returns (bytes32) {
+        address verifier;
+        if (missionType == MISSION_STRAVA_RUN) verifier = address(stravaVerifier);
+        else if (missionType == MISSION_DUOLINGO_XP) verifier = address(duolingoVerifier);
+        else revert UnsupportedMission();
+        return keccak256(abi.encode(POLICY_TYPEHASH, block.chainid, missionType, verifier, verifier.codehash));
+    }
+
+    function _hashPactConfiguration(
+        uint96 stake,
+        uint32 dailyTarget,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
+        uint8 maxParticipants,
+        uint64 startsAt,
+        uint8 missionType,
+        bytes32 missionPolicyHash_
+    ) private pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                stake,
+                dailyTarget,
+                durationDays,
+                requiredCompletions,
+                minParticipants,
+                maxParticipants,
+                startsAt,
+                missionType,
+                missionPolicyHash_
+            )
+        );
+    }
+
+    function _pactConfigHash(Pact storage pact) private view returns (bytes32) {
+        return _hashPactConfiguration(
+            pact.stake,
+            pact.dailyTarget,
+            pact.durationDays,
+            pact.requiredCompletions,
+            pact.minParticipants,
+            pact.maxParticipants,
+            pact.startsAt,
+            pact.missionType,
+            pact.missionPolicyHash
+        );
     }
 
     function _pact(uint256 pactId) private view returns (Pact storage pact) {
@@ -484,127 +937,44 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (pact.creator == address(0)) revert PactNotFound();
     }
 
-    function _isValidChallenge(string calldata challenge) private pure returns (bool) {
-        bytes calldata value = bytes(challenge);
-        if (value.length < 19 || value.length > 31 || value[0] != "L" || value[1] != "I" || value[2] != "-") {
-            return false;
+    function _endsAt(Pact storage pact) private view returns (uint256) {
+        return uint256(pact.startsAt) + uint256(pact.durationDays) * 1 days;
+    }
+
+    function _submissionDeadline(Pact storage pact) private view returns (uint256) {
+        return _endsAt(pact) + SUBMISSION_GRACE_PERIOD;
+    }
+
+    function _completionPauseAffected(Pact storage pact)
+        private
+        view
+        returns (bool affected, uint64 pauseGeneration, uint64 pauseStartedAt)
+    {
+        uint256 startsAt = pact.startsAt;
+        uint256 deadline = _submissionDeadline(pact);
+        uint64 closedCount = completionPaused ? completionPauseGeneration - 1 : completionPauseGeneration;
+
+        // Pause ends are monotonic. Binary search finds the first closed interval whose end is
+        // strictly after pact start, then one start comparison proves whether the intervals overlap.
+        uint64 low = 1;
+        uint64 high = closedCount + 1;
+        while (low < high) {
+            uint64 middle = low + (high - low) / 2;
+            if (completionPauseEndedAt[middle] > startsAt) high = middle;
+            else low = middle + 1;
         }
-        for (uint256 i = 3; i < value.length; ++i) {
-            bytes1 c = value[i];
-            if (!((c >= "A" && c <= "Z") || (c >= "0" && c <= "9"))) return false;
+        if (low <= closedCount) {
+            pauseStartedAt = completionPauseStartedAt[low];
+            if (pauseStartedAt < deadline) return (true, low, pauseStartedAt);
         }
-        return true;
-    }
 
-    function _dailyProofCode(string calldata challenge, uint8 dayIndex) private pure returns (string memory) {
-        uint256 dayNumber = uint256(dayIndex) + 1;
-        return dayNumber < 10
-            ? string.concat(challenge, "D0", _uintToString(dayNumber))
-            : string.concat(challenge, "D", _uintToString(dayNumber));
-    }
-
-    function _parseStravaTimestamp(string memory value) private pure returns (uint256) {
-        bytes memory data = bytes(value);
-        bool utcZ = data.length == 20 && data[19] == "Z";
-        bool utcOffset = data.length == 24 && data[19] == "+" && data[20] == "0" && data[21] == "0" && data[22] == "0" && data[23] == "0";
-        if (!utcZ && !utcOffset) revert InvalidStravaEvidence();
-        if (data[4] != "-" || data[7] != "-" || data[10] != "T" || data[13] != ":" || data[16] != ":") {
-            revert InvalidStravaEvidence();
+        // The only unclosed interval is the current one. At the exclusive deadline a newly-started
+        // pause cannot rewrite the already completed outcome.
+        if (completionPaused) {
+            pauseGeneration = completionPauseGeneration;
+            pauseStartedAt = completionPauseStartedAt[pauseGeneration];
+            if (pauseStartedAt < deadline) return (true, pauseGeneration, pauseStartedAt);
         }
-        uint256 year = _digits(data, 0, 4);
-        uint256 month = _digits(data, 5, 2);
-        uint256 day = _digits(data, 8, 2);
-        uint256 hour = _digits(data, 11, 2);
-        uint256 minute = _digits(data, 14, 2);
-        uint256 second = _digits(data, 17, 2);
-        if (year < 1970 || month == 0 || month > 12 || day == 0 || day > _daysInMonth(year, month) || hour > 23 || minute > 59 || second > 59) {
-            revert InvalidStravaEvidence();
-        }
-        return _daysFromDate(year, month, day) * 1 days + hour * 1 hours + minute * 1 minutes + second;
-    }
-
-    function _daysFromDate(uint256 year, uint256 month, uint256 day) private pure returns (uint256) {
-        int256 y = int256(year);
-        int256 m = int256(month);
-        int256 d = int256(day);
-        int256 daysValue = d - 32075 + (1461 * (y + 4800 + (m - 14) / 12)) / 4
-            + (367 * (m - 2 - ((m - 14) / 12) * 12)) / 12
-            - (3 * ((y + 4900 + (m - 14) / 12) / 100)) / 4 - 2440588;
-        if (daysValue < 0) revert InvalidStravaEvidence();
-        return uint256(daysValue);
-    }
-
-    function _daysInMonth(uint256 year, uint256 month) private pure returns (uint256) {
-        if (month == 2) return (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) ? 29 : 28;
-        return (month == 4 || month == 6 || month == 9 || month == 11) ? 30 : 31;
-    }
-
-    function _digits(bytes memory data, uint256 start, uint256 length) private pure returns (uint256 value) {
-        for (uint256 i; i < length; ++i) {
-            uint8 c = uint8(data[start + i]);
-            if (c < 48 || c > 57) revert InvalidStravaEvidence();
-            value = value * 10 + c - 48;
-        }
-    }
-
-    function _parseUint(string memory value) private pure returns (uint256 result) {
-        bytes memory data = bytes(value);
-        if (data.length == 0) revert InvalidStravaEvidence();
-        for (uint256 i; i < data.length; ++i) {
-            uint8 c = uint8(data[i]);
-            if (c < 48 || c > 57) revert InvalidStravaEvidence();
-            result = result * 10 + c - 48;
-        }
-    }
-
-    function _hexStringToBytes32(string memory value) private pure returns (bytes32 result) {
-        bytes memory data = bytes(value);
-        if (data.length != 66 || data[0] != "0" || data[1] != "x") revert InvalidProviderHash();
-        uint256 parsed;
-        for (uint256 i = 2; i < 66; ++i) {
-            uint8 c = uint8(data[i]);
-            uint8 nibble;
-            if (c >= 48 && c <= 57) nibble = c - 48;
-            else if (c >= 97 && c <= 102) nibble = c - 87;
-            else if (c >= 65 && c <= 70) nibble = c - 55;
-            else revert InvalidProviderHash();
-            parsed = (parsed << 4) | nibble;
-        }
-        result = bytes32(parsed);
-    }
-
-    function _startsWith(string memory value, string memory prefix) private pure returns (bool) {
-        bytes memory a = bytes(value);
-        bytes memory b = bytes(prefix);
-        if (b.length > a.length) return false;
-        for (uint256 i; i < b.length; ++i) if (a[i] != b[i]) return false;
-        return true;
-    }
-
-    function _equal(string memory a, string memory b) private pure returns (bool) {
-        return keccak256(bytes(a)) == keccak256(bytes(b));
-    }
-
-    function _addressToLowerHex(address account) private pure returns (string memory) {
-        bytes20 value = bytes20(account);
-        bytes16 alphabet = "0123456789abcdef";
-        bytes memory result = new bytes(42);
-        result[0] = "0";
-        result[1] = "x";
-        for (uint256 i; i < 20; ++i) {
-            result[2 + i * 2] = alphabet[uint8(value[i] >> 4)];
-            result[3 + i * 2] = alphabet[uint8(value[i] & 0x0f)];
-        }
-        return string(result);
-    }
-
-    function _uintToString(uint256 value) private pure returns (string memory) {
-        if (value == 0) return "0";
-        uint256 digits;
-        uint256 cursor = value;
-        while (cursor != 0) { ++digits; cursor /= 10; }
-        bytes memory output = new bytes(digits);
-        while (value != 0) { --digits; output[digits] = bytes1(uint8(48 + value % 10)); value /= 10; }
-        return string(output);
+        return (false, 0, 0);
     }
 }

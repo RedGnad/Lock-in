@@ -1,16 +1,17 @@
 {
   "providerId": "cdf8cb3b-2976-4413-ab2d-693ae5028380",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "name": "Lock In Duolingo owned XP",
   "status": "published-private",
-  "requestHash": "0xeee21aafba194b3d8e48a5a538d8920c69aac0924ab04c63a408571f8291f61a",
-  "loginUrl": "https://www.duolingo.com/settings/profile",
-  "description": "Proves a stable Duolingo profile id, username, wallet ownership code in the public bio, and cumulative XP in one HTTPS response.",
+  "requestHash": "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80",
+  "loginUrl": "https://www.duolingo.com/",
+  "description": "Proves a stable Duolingo profile id, username, wallet ownership code in the editable public Name, and cumulative XP in one HTTPS response.",
   "securityModel": {
-    "accountOwnership": "Before proving, the wallet owner sets their Duolingo bio to the exact 128-bit LI-<32 HEX> code derived from their wallet.",
+    "accountOwnership": "Before proving, the wallet owner sets their Duolingo Name to the exact grouped 50-bit LOCK-<5 CROCKFORD>-<5 CROCKFORD> code derived from their wallet.",
     "baseline": "A fresh snapshot is accepted atomically with create/join and becomes the minimum consumed XP.",
     "completion": "Only new totalXp above both the pact baseline and the globally consumed value can count.",
     "antiReplay": "The identity and totalXp snapshot form a global nullifier; one XP range cannot settle multiple days or pacts.",
+    "verificationFriction": "The Reclaim verification uses Duolingo's public profile endpoint in an incognito webview. Users edit their Name in their normal Duolingo session and do not sign in to Duolingo again inside Reclaim.",
     "knownLimit": "This proves control of a profile and XP credited by Duolingo, not human learning or the absence of account sharing/automation."
   },
   "requestData": [
@@ -20,31 +21,31 @@
       "urlType": "TEMPLATE",
       "method": "GET",
       "responseMatches": [
-        { "type": "contains", "value": "\"id\":{{id}}" },
-        { "type": "contains", "value": "\"bio\":\"{{bio}}\"" },
-        { "type": "contains", "value": "\"username\":\"{{username}}\"" },
-        { "type": "contains", "value": "\"totalXp\":{{totalXp}}" }
+        { "value": "\"id\":{{id}}", "type": "contains", "isOptional": false, "order": 0, "invert": false },
+        { "value": "\"name\":\"{{name}}\"", "type": "contains", "isOptional": false, "order": 1, "invert": false },
+        { "value": "\"username\":\"{{username}}\"", "type": "contains", "isOptional": false, "order": 2, "invert": false },
+        { "value": "\"totalXp\":{{totalXp}}", "type": "contains", "isOptional": false, "order": 3, "invert": false }
       ],
       "responseRedactions": [
-        { "jsonPath": "$.users[0].id", "regex": "\"id\":(?<id>\\d+)" },
-        { "jsonPath": "$.users[0].bio", "regex": "\"bio\":\"(?<bio>LI-[0-9A-F]{32})\"" },
-        { "jsonPath": "$.users[0].username", "regex": "\"username\":\"(?<username>[A-Za-z0-9._-]+)\"" },
-        { "jsonPath": "$.users[0].totalXp", "regex": "\"totalXp\":(?<totalXp>\\d+)" }
+        { "order": 0, "jsonPath": "$.users[0].id", "regex": "\"id\":(?<id>\\d+)" },
+        { "order": 1, "jsonPath": "$.users[0].name", "regex": "\"name\":\"(?<name>LOCK-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5})\"" },
+        { "order": 2, "jsonPath": "$.users[0].username", "regex": "\"username\":\"(?<username>[A-Za-z0-9._-]+)\"" },
+        { "order": 3, "jsonPath": "$.users[0].totalXp", "regex": "\"totalXp\":(?<totalXp>\\d+)" }
       ]
     }
   ],
   "runtimePolicy": {
-    "bioMustEqual": "128-bit LI-<32 HEX> code derived from the proof-bound wallet",
+    "nameMustEqual": "grouped 50-bit LOCK-ABCDE-FGHIJ code derived from the proof-bound wallet using an ambiguity-free Crockford alphabet",
     "stableIdentityField": "id",
     "metricField": "totalXp",
     "metricMode": "monotonic delta after fresh atomic baseline",
-    "providerVersionMustEqual": "1.0.0",
+    "providerVersionMustEqual": "1.0.3",
     "proofMaxAgeSeconds": 600
   },
   "publicationChecklist": {
     "captureReplay": true,
     "wrongProfileRejected": true,
-    "wrongBioRejected": true,
+    "wrongNameRejected": true,
     "baselineReplayRejectedOnchain": true,
     "xpReuseRejectedOnchain": true,
     "liveProofCanary": false
