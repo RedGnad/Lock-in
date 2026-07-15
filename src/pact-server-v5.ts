@@ -19,7 +19,7 @@ export type ProofPolicyV5 = {
 };
 
 function validPactId(value: string): bigint {
-  if (!/^\d+$/.test(value) || BigInt(value) < 1n) throw new Error("Invalid pact ID");
+  if (!/^\d+$/.test(value) || BigInt(value) < 1n) throw new Error("Invalid lock ID");
   return BigInt(value);
 }
 
@@ -64,8 +64,8 @@ export async function loadProofPolicyV5(input: {
     client.getBlock({ blockTag: "latest" }),
   ]);
   const typedPact = pact as PactTuple;
-  if (typedPact[0] === zeroAddress) throw new Error("Pact not found");
-  if (typedPact[13] || typedPact[14]) throw new Error("Pact is closed");
+  if (typedPact[0] === zeroAddress) throw new Error("Lock not found");
+  if (typedPact[13] || typedPact[14]) throw new Error("Lock is closed");
   if (typedPact[10] !== STRAVA_RUN_MISSION && typedPact[10] !== DUOLINGO_XP_MISSION) {
     throw new Error("Unsupported mission");
   }
@@ -73,9 +73,9 @@ export async function loadProofPolicyV5(input: {
 
   if (input.phase === "baseline") {
     if (input.intent !== "join" || typedPact[10] !== DUOLINGO_XP_MISSION) {
-      throw new Error("This pact does not accept a Duolingo baseline");
+      throw new Error("This lock does not accept a Duolingo baseline");
     }
-    if (joined) throw new Error("Wallet already joined this pact");
+    if (joined) throw new Error("Wallet already joined this lock");
     if (chainNowMs >= Number(typedPact[1]) * 1_000) throw new Error("Registration is closed");
     return {
       walletAddress,
@@ -90,17 +90,17 @@ export async function loadProofPolicyV5(input: {
     };
   }
 
-  if (!joined) throw new Error("Wallet has not joined this pact");
-  if (typedPact[4] < typedPact[9]) throw new Error("This pact did not reach its minimum crew");
+  if (!joined) throw new Error("Wallet has not joined this lock");
+  if (typedPact[4] < typedPact[9]) throw new Error("This lock did not reach its minimum crew");
   if (completed >= typedPact[8]) throw new Error("The completion target is already met");
   if (!Number.isSafeInteger(input.dayIndex) || Number(input.dayIndex) < 0 || Number(input.dayIndex) >= typedPact[7]) {
-    throw new Error("Invalid pact day");
+    throw new Error("Invalid lock day");
   }
   const dayIndex = Number(input.dayIndex);
   if ((BigInt(bitmap) & (1n << BigInt(dayIndex))) !== 0n) throw new Error("This day is already verified");
   const startsAtMs = (Number(typedPact[1]) + dayIndex * 86_400) * 1_000;
   const endsAtMs = startsAtMs + 86_400_000;
-  if (chainNowMs < startsAtMs || chainNowMs >= endsAtMs) throw new Error("This pact day is not open");
+  if (chainNowMs < startsAtMs || chainNowMs >= endsAtMs) throw new Error("This lock day is not open");
 
   return {
     walletAddress,

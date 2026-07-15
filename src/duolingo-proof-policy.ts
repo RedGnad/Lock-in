@@ -88,7 +88,7 @@ export function validateDuolingoEvidence(input: {
     reject("INVALID_PROOF_TIME", "The Duolingo proof timestamp is invalid");
   }
   if (!isAddress(policy.walletAddress) || !/^\d+$/.test(policy.pactId)) {
-    reject("INVALID_POLICY", "The expected wallet or pact is invalid");
+    reject("INVALID_POLICY", "The expected wallet or lock is invalid");
   }
   if (!/^LI-[0-9A-F]{32}$/.test(policy.expectedOwnershipCode)) {
     reject("INVALID_POLICY", "The ownership code is invalid");
@@ -103,7 +103,7 @@ export function validateDuolingoEvidence(input: {
       reject("WRONG_WALLET", "The proof is bound to another wallet");
     }
     if (contextString(item.context, "contextMessage") !== expectedMessage) {
-      reject("WRONG_PACT_PHASE", "The proof is bound to another pact or phase");
+      reject("WRONG_PACT_PHASE", "The proof is bound to another lock or phase");
     }
     if (contextString(item.context, "reclaimSessionId") !== policy.expectedSessionId) {
       reject("WRONG_SESSION", "The proof does not belong to this Reclaim session");

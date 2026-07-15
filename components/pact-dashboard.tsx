@@ -73,11 +73,11 @@ function friendlyError(error: unknown) {
   if (/CompletionOutsideDay/i.test(message)) return "This verification window is closed.";
   if (/DayAlreadyCompleted/i.test(message)) return "This day is already verified.";
   if (/InvalidMetric/i.test(message)) return "The verified activity did not reach the daily target or reused prior progress.";
-  if (/UnderfilledPact/i.test(message)) return "The pact did not reach its minimum crew.";
-  if (/FinalizationTooEarly/i.test(message)) return "This pact cannot settle yet.";
+  if (/UnderfilledPact/i.test(message)) return "The lock did not reach its minimum crew.";
+  if (/FinalizationTooEarly/i.test(message)) return "This lock cannot settle yet.";
   if (/NotEligible/i.test(message)) return "You did not reach the completion target.";
   if (/Reclaim|verification|Duolingo|Strava|bio|GPS|title|session|profile|proof|XP/i.test(message) && message.length < 220) return message;
-  return "The transaction did not complete. Refresh the pact before retrying.";
+  return "The transaction did not complete. Refresh the lock before retrying.";
 }
 
 export function PactDashboard({ id }: { id: string }) {
@@ -239,7 +239,7 @@ export function PactDashboard({ id }: { id: string }) {
         setMessage(`Approve ${formatUnits(pact[2], decimals)} ${symbol} in your wallet…`);
         await send({ address: token, abi: erc20Abi, functionName: "approve", args: [escrowAddress, pact[2]] }, "approval");
         if (pact[10] === DUOLINGO_XP_MISSION) {
-          setMessage("USDC approved. Click join again to verify Duolingo and enter the pact.");
+          setMessage("USDC approved. Click join again to verify Duolingo and enter the lock.");
           return;
         }
       }
@@ -256,7 +256,7 @@ export function PactDashboard({ id }: { id: string }) {
         if (!result.baseline) throw new Error("Duolingo baseline was not returned");
         baseline = result.baseline;
       }
-      setMessage("Joining the pact…");
+      setMessage("Joining the lock…");
       await send({ address: escrowAddress, abi: lockInAbi, functionName: "joinPact", args: [pactId, baseline] }, "join");
       setMessage("You are locked in.");
     } catch (error) {
@@ -275,7 +275,7 @@ export function PactDashboard({ id }: { id: string }) {
     setBusyAction("proof");
     try {
       if (pact?.[10] === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) {
-        return setMessage("Enter your Duolingo username in Pact details before verifying.");
+        return setMessage("Enter your Duolingo username in Lock details before verifying.");
       }
       const result = await runReclaimProofV5({
         walletAddress: address,
@@ -299,11 +299,11 @@ export function PactDashboard({ id }: { id: string }) {
   async function finalizeOrClaim(action: "finalize" | "claim" | "cancel") {
     if (!escrowAddress) return;
     try {
-      const labels = { finalize: "Settling the pact…", claim: "Claiming your payout…", cancel: "Cancelling the pact…" };
+      const labels = { finalize: "Settling the lock…", claim: "Claiming your payout…", cancel: "Cancelling the lock…" };
       setMessage(labels[action]);
       const functionName = action === "finalize" ? "finalizePact" : action === "claim" ? "claim" : "cancelPact";
       await send({ address: escrowAddress, abi: lockInAbi, functionName, args: [pactId] } as never, action);
-      setMessage(action === "finalize" ? "Pact settled." : action === "claim" ? "Payout received." : "Pact cancelled. Refunds can now be enabled.");
+      setMessage(action === "finalize" ? "Lock settled." : action === "claim" ? "Payout received." : "Lock cancelled. Refunds can now be enabled.");
     } catch (error) {
       setMessage(friendlyError(error));
     }
@@ -316,7 +316,7 @@ export function PactDashboard({ id }: { id: string }) {
       : "Join my Lock In challenge.";
     try {
       const usedShareSheet = typeof navigator.share === "function";
-      if (usedShareSheet) await navigator.share({ title: `Lock In pact #${id}`, text, url });
+      if (usedShareSheet) await navigator.share({ title: `Lock In #${id}`, text, url });
       else await navigator.clipboard.writeText(url);
       setMessage(usedShareSheet ? "Invite ready to share." : "Invite link copied.");
     } catch (error) {
@@ -335,10 +335,10 @@ export function PactDashboard({ id }: { id: string }) {
   }
 
   if (!escrowAddress) return <main className="pact-shell"><div className="empty-state"><strong>Lock In is not configured.</strong><Link href="/">Back home</Link></div></main>;
-  if (pactId <= 0n) return <main className="pact-shell"><div className="empty-state"><strong>That pact ID is not valid.</strong><Link href="/#join">Find a pact</Link></div></main>;
-  if (reads.isPending) return <main className="pact-shell"><div className="empty-state"><strong>Reading pact #{id} from Monad…</strong></div></main>;
+  if (pactId <= 0n) return <main className="pact-shell"><div className="empty-state"><strong>That lock ID is not valid.</strong><Link href="/#join">Find a lock</Link></div></main>;
+  if (reads.isPending) return <main className="pact-shell"><div className="empty-state"><strong>Reading lock #{id} from Monad…</strong></div></main>;
   if (reads.isError) return <main className="pact-shell"><div className="empty-state"><strong>Monad is not responding.</strong><button className="secondary-button" onClick={() => reads.refetch()}>TRY AGAIN</button></div></main>;
-  if (!pact || pact[0] === zeroAddress) return <main className="pact-shell"><div className="empty-state"><strong>Pact #{id} does not exist.</strong><Link href="/#join">Find a pact</Link></div></main>;
+  if (!pact || pact[0] === zeroAddress) return <main className="pact-shell"><div className="empty-state"><strong>Lock #{id} does not exist.</strong><Link href="/#join">Find a lock</Link></div></main>;
 
   const startsAt = pact[1];
   const durationDays = pact[7];
@@ -365,7 +365,7 @@ export function PactDashboard({ id }: { id: string }) {
   const status = pact[13] && pact[14] ? "REFUND READY" : pact[13] ? "SETTLED" : pact[14] ? "CANCELLED" : registration ? "REGISTRATION" : underfilled ? "UNDERFILLED" : active ? "ACTIVE" : "SETTLEMENT READY";
   const roomHeading = registration
     ? playersNeeded > 0 ? `${pact[4]} joined. ${playersNeeded} more to start.` : "Your crew is ready."
-    : targetReached ? "You kept the pact."
+    : targetReached ? "You kept the lock."
     : active && !actions.checkIns ? "Verification is temporarily paused."
     : active && todayDone ? "Today is verified."
     : active ? `${targetLabel} before the window closes.`
@@ -381,13 +381,13 @@ export function PactDashboard({ id }: { id: string }) {
 
       <section className={`pact-now ${registration ? "forming" : active ? "active" : ""}`}>
         <div>
-          <span>{registration ? "CREW CHECK" : active && currentDay >= 0 ? `TODAY · DAY ${currentDay + 1}` : "PACT STATUS"}</span>
+          <span>{registration ? "CREW CHECK" : active && currentDay >= 0 ? `TODAY · DAY ${currentDay + 1}` : "LOCK STATUS"}</span>
           <h2>{roomHeading}</h2>
           {registration ? <p>Registration closes {formatDate(startsAt)}.</p> : active && !actions.checkIns ? <p>The safety switch is active. Watch this page for reopening or refund instructions.</p> : active ? <p>Verify through {mission.name} before {formatDate(startsAt + BigInt((currentDay + 1) * 86_400))}.</p> : <p>{pact[13] && pact[14] ? "Refunds are ready." : pact[13] ? "Payouts are ready." : `Program ended ${formatDate(endsAt)}.`}</p>}
         </div>
         <div className="pact-now-actions">
           {registration && isJoined && <button className="lock-button" type="button" onClick={sharePact}>INVITE A PLAYER</button>}
-          {registration && !isJoined && <a className="primary-link" href="#join-pact">JOIN THIS PACT</a>}
+          {registration && !isJoined && <a className="primary-link" href="#join-lock">JOIN THIS LOCK</a>}
           {canCheckIn && <button className="lock-button" type="button" onClick={() => void checkIn(currentDay)}>VERIFY TODAY</button>}
           {!registration && isJoined && !canCheckIn && actions.checkIns && <button className="secondary-button" type="button" onClick={sharePact}>SHARE PROGRESS</button>}
         </div>
@@ -397,8 +397,8 @@ export function PactDashboard({ id }: { id: string }) {
 
       <section className="pact-grid">
         <div className="days-card">
-          <div className="section-title"><span>{isJoined ? "YOUR PROGRESS" : "PACT PROGRESS"}</span><b>{completed}/{requiredCompletions} REQUIRED</b></div>
-          <div className="progress-track" role="progressbar" aria-label="Pact progress" aria-valuemin={0} aria-valuemax={requiredCompletions} aria-valuenow={completed}><i style={{ width: `${progress}%` }} /></div>
+          <div className="section-title"><span>{isJoined ? "YOUR PROGRESS" : "LOCK PROGRESS"}</span><b>{completed}/{requiredCompletions} REQUIRED</b></div>
+          <div className="progress-track" role="progressbar" aria-label="Lock progress" aria-valuemin={0} aria-valuemax={requiredCompletions} aria-valuenow={completed}><i style={{ width: `${progress}%` }} /></div>
           <div className="day-list">
             {Array.from({ length: durationDays }, (_, day) => {
               const done = (bitmap & (1n << BigInt(day))) !== 0n;
@@ -407,28 +407,28 @@ export function PactDashboard({ id }: { id: string }) {
             })}
           </div>
         </div>
-        <details className="pact-details"><summary>PACT DETAILS <span>+</span></summary><div className="details-body"><div><span>MISSION</span><b>{mission.name} · {targetLabel}</b></div>{pact[10] === DUOLINGO_XP_MISSION && isJoined && <div className="duolingo-inline"><span>DUOLINGO USERNAME</span><input value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username"/><small>Keep bio set to <code>{address ? duolingoOwnershipCode(address) : "LI-<YOUR WALLET CODE>"}</code></small></div>}<div><span>STAKE / PLAYER</span><b>{formatUnits(pact[2], decimals)} {symbol}</b></div><div><span>REGISTRATION CLOSES</span><b>{formatDate(startsAt)}</b></div><div><span>PROGRAM ENDS</span><b>{formatDate(endsAt)}</b></div><div><span>MINIMUM CREW</span><b>{minParticipants} players</b></div><div><span>FINISHERS</span><b>{pact[5]}</b></div></div></details>
+        <details className="pact-details"><summary>LOCK DETAILS <span>+</span></summary><div className="details-body"><div><span>MISSION</span><b>{mission.name} · {targetLabel}</b></div>{pact[10] === DUOLINGO_XP_MISSION && isJoined && <div className="duolingo-inline"><span>DUOLINGO USERNAME</span><input value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username"/><small>Keep bio set to <code>{address ? duolingoOwnershipCode(address) : "LI-<YOUR WALLET CODE>"}</code></small></div>}<div><span>STAKE / PLAYER</span><b>{formatUnits(pact[2], decimals)} {symbol}</b></div><div><span>REGISTRATION CLOSES</span><b>{formatDate(startsAt)}</b></div><div><span>PROGRAM ENDS</span><b>{formatDate(endsAt)}</b></div><div><span>MINIMUM CREW</span><b>{minParticipants} players</b></div><div><span>FINISHERS</span><b>{pact[5]}</b></div></div></details>
       </section>
 
-      <div className="pact-actions" id="join-pact">
+      <div className="pact-actions" id="join-lock">
         {isJoined && active && activityCode && <div className="proof-prep"><div><span>STRAVA RUN TITLE</span><code>{activityCode}</code><small>Use this exact title for today&apos;s GPS run.</small></div><button className="secondary-button" type="button" onClick={() => void copyProofValue(activityCode, "Run title")}>COPY TITLE</button></div>}
-        {isJoined && pact[10] === DUOLINGO_XP_MISSION && ownershipCode && <div className="proof-prep"><div><span>DUOLINGO BIO CODE</span><code>{ownershipCode}</code><small>Keep this exact code in your public bio while the pact is active.</small></div><button className="secondary-button" type="button" onClick={() => void copyProofValue(ownershipCode, "Bio code")}>COPY CODE</button></div>}
+        {isJoined && pact[10] === DUOLINGO_XP_MISSION && ownershipCode && <div className="proof-prep"><div><span>DUOLINGO BIO CODE</span><code>{ownershipCode}</code><small>Keep this exact code in your public bio while the lock is active.</small></div><button className="secondary-button" type="button" onClick={() => void copyProofValue(ownershipCode, "Bio code")}>COPY CODE</button></div>}
         {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
         {!isJoined && registration && <button className="lock-button" disabled={!entryAccepted || !actions.join || Boolean(busyAction)} onClick={() => address ? setJoinReviewOpen(true) : setMessage("Connect your wallet to join.")}>JOIN FOR {formatUnits(pact[2], decimals)} {symbol}</button>}
         {!isJoined && registration && !actions.join && <p>Joining is temporarily paused for safety.</p>}
         {!isJoined && !registration && <p>Registration is closed.</p>}
         {isJoined && registration && address?.toLowerCase() === pact[0].toLowerCase() && !pact[14] && <button className="secondary-button" disabled={Boolean(busyAction)} onClick={() => void finalizeOrClaim("cancel")}>CANCEL BEFORE START</button>}
-        {!pact[13] && canSettle && <button className="secondary-button" disabled={Boolean(busyAction)} onClick={() => void finalizeOrClaim("finalize")}>{pact[14] || underfilled ? "ENABLE REFUNDS" : "SETTLE PACT"}</button>}
+        {!pact[13] && canSettle && <button className="secondary-button" disabled={Boolean(busyAction)} onClick={() => void finalizeOrClaim("finalize")}>{pact[14] || underfilled ? "ENABLE REFUNDS" : "SETTLE LOCK"}</button>}
         {pact[13] && payoutEligible && !hasClaimed && <button className="lock-button" disabled={Boolean(busyAction)} onClick={() => void finalizeOrClaim("claim")}>{pact[14] || pact[5] === 0 ? "CLAIM MY REFUND" : "CLAIM MY PAYOUT"}</button>}
         {pact[13] && hasClaimed && <p>Your {pact[14] || pact[5] === 0 ? "refund" : "payout"} has already been claimed.</p>}
         {pact[13] && isJoined && !payoutEligible && <p>You missed the target, so your stake went to the finishers.</p>}
         {message && <p className="form-status" aria-live="polite">{message}{txHash && <> · <a href={`https://monadscan.com/tx/${txHash}`} target="_blank" rel="noreferrer">View transaction ↗</a></>}</p>}
       </div>
 
-      <ActionDialog open={joinReviewOpen} title="Join this pact?" eyebrow="Transaction review" confirmLabel={`Join for ${formatUnits(pact[2], decimals)} ${symbol}`} busy={Boolean(busyAction)} onClose={() => setJoinReviewOpen(false)} onConfirm={join}>
+      <ActionDialog open={joinReviewOpen} title="Join this lock?" eyebrow="Transaction review" confirmLabel={`Join for ${formatUnits(pact[2], decimals)} ${symbol}`} busy={Boolean(busyAction)} onClose={() => setJoinReviewOpen(false)} onConfirm={join}>
         <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {targetLabel}</dd></div><div><dt>Schedule</dt><dd>{requiredCompletions} of {durationDays} days</dd></div><div><dt>Starts</dt><dd>{formatDate(startsAt)}</dd></div><div><dt>Stake</dt><dd>{formatUnits(pact[2], decimals)} {symbol}</dd></div></dl>
         {pact[10] === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="join-duolingo">Duolingo username</label><input id="join-duolingo" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username"/><p>Set your bio to <code>{address ? duolingoOwnershipCode(address) : "LI-<YOUR WALLET CODE>"}</code> first.</p></div>}
-        <p>Real USDC and gas are used on Monad mainnet. If the pact stays below two players, your stake is refundable.</p>
+        <p>Real USDC and gas are used on Monad mainnet. If the lock stays below two players, your stake is refundable.</p>
         <Link className="dialog-link" href="/rules">Read the rules ↗</Link>
       </ActionDialog>
     </main>

@@ -33,9 +33,9 @@ function friendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (/user rejected|user denied|rejected the request/i.test(message)) return "Transaction cancelled.";
   if (/insufficient funds|exceeds balance/i.test(message)) return "You need more MON for network gas.";
-  if (/CreationIsPaused/i.test(message)) return "New pacts are paused for safety.";
+  if (/CreationIsPaused/i.test(message)) return "New locks are paused for safety.";
   if (/InvalidStake/i.test(message)) return "Choose a stake from 0.1 to 1 USDC.";
-  if (/InvalidSchedule|next pact ID changed/i.test(message)) return "The join window changed. Review the pact again.";
+  if (/InvalidSchedule|next pact ID changed/i.test(message)) return "The join window changed. Review the lock again.";
   if (/popup/i.test(message)) return message;
   return message.length < 180 ? message : "The transaction did not complete. Check your wallet and try again.";
 }
@@ -125,10 +125,10 @@ export function CreatePact() {
         if (pending.action === "create") {
           const logs = parseEventLogs({ abi: lockInAbi, eventName: "PactCreated", logs: receipt.logs });
           const id = logs[0]?.args.pactId;
-          if (id !== undefined) router.replace(`/pact/${id}`);
+          if (id !== undefined) router.replace(`/lock/${id}`);
         } else {
           void refetchAllowance();
-          setStatus("USDC approved. Review again to finish creating your pact.");
+          setStatus("USDC approved. Review again to finish creating your lock.");
         }
       })
       .catch(() => setStatus("Your last transaction is still pending or failed. Check it in your wallet before retrying."))
@@ -155,10 +155,10 @@ export function CreatePact() {
     if (!address || !escrowAddress || !publicClient) return setStatus("Connect your wallet first.");
     if (readPending(address)) return setStatus("A previous transaction is still pending.");
     if (chainId !== monad.id) return setStatus("Switch your wallet to Monad mainnet.");
-    if (!creationEnabled) return setStatus("New pacts are paused for safety.");
+    if (!creationEnabled) return setStatus("New locks are paused for safety.");
     if (!entryAccepted) return setStatus("Accept the Rules to continue.");
     if ((minStake !== undefined && amount < minStake) || (maxStake !== undefined && amount > maxStake)) return setStatus("Choose a stake from 0.1 to 1 USDC.");
-    if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this pact.`);
+    if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this lock.`);
     if (mission.type === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) {
       return setStatus("Enter your Duolingo username.");
     }
@@ -172,7 +172,7 @@ export function CreatePact() {
         await writeWithGas({ address: token, abi: erc20Abi, functionName: "approve", args: [escrowAddress, amount] }, "approval");
         await refetchAllowance();
         if (mission.type === DUOLINGO_XP_MISSION) {
-          setStatus("USDC approved. Review again to link Duolingo and create the pact.");
+          setStatus("USDC approved. Review again to link Duolingo and create the lock.");
           return;
         }
       }
@@ -193,7 +193,7 @@ export function CreatePact() {
 
       const latestBlock = await publicClient.getBlock({ blockTag: "latest" });
       const startsAt = scheduledStart(latestBlock.timestamp);
-      setStatus("Locking your pact on Monad…");
+      setStatus("Creating your lock on Monad…");
       const receipt = await writeWithGas({
         address: escrowAddress,
         abi: lockInAbi,
@@ -202,8 +202,8 @@ export function CreatePact() {
       }, "create");
       const logs = parseEventLogs({ abi: lockInAbi, eventName: "PactCreated", logs: receipt.logs });
       const id = logs[0]?.args.pactId;
-      if (id === undefined) throw new Error("PactCreated event not found");
-      router.push(`/pact/${id}`);
+      if (id === undefined) throw new Error("Lock creation event not found");
+      router.push(`/lock/${id}`);
     } catch (error) {
       setStatus(friendlyError(error));
     } finally {
@@ -219,12 +219,12 @@ export function CreatePact() {
   }
 
   function review() {
-    if (!address) return setStatus("Connect your wallet to create a pact.");
+    if (!address) return setStatus("Connect your wallet to create a lock.");
     if (chainId !== monad.id) return setStatus("Switch your wallet to Monad mainnet.");
-    if (!creationEnabled) return setStatus("New pacts are paused for safety.");
+    if (!creationEnabled) return setStatus("New locks are paused for safety.");
     if (!entryAccepted) return setStatus("Accept the Rules to continue.");
     if ((minStake !== undefined && amount < minStake) || (maxStake !== undefined && amount > maxStake)) return setStatus("Choose a stake from 0.1 to 1 USDC.");
-    if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this pact.`);
+    if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this lock.`);
     if (mission.type === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) return setStatus("Enter your Duolingo username.");
     setStatus("");
     setReviewOpen(true);
@@ -232,7 +232,7 @@ export function CreatePact() {
 
   return (
     <section className="create-card" id="create">
-      <div className="create-heading"><div><span className="card-kicker">CREATE A CHALLENGE</span><h2>Build your pact</h2></div><span className="step-count">{step + 1} / 3</span></div>
+      <div className="create-heading"><div><span className="card-kicker">CREATE A CHALLENGE</span><h2>Build your lock</h2></div><span className="step-count">{step + 1} / 3</span></div>
       <div className="step-track" aria-label={`Step ${step + 1} of 3`}>{[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`}/>)}</div>
       <div className="form-stage">
         {step === 0 && <fieldset className="form-field"><legend><b>Choose your mission</b><span>Fitness or learning. Each has its own proof.</span></legend><div className="mission-options" role="group" aria-label="Mission">{MISSIONS.map((item) => <button type="button" className={missionId === item.id ? "active" : ""} aria-pressed={missionId === item.id} onClick={() => chooseMission(item.id)} key={item.id}><strong>{item.name}</strong><span>{item.description}</span></button>)}</div></fieldset>}
@@ -241,12 +241,12 @@ export function CreatePact() {
       </div>
       <div className="pact-summary"><strong>{mission.name} · {template.requiredCompletions}/{durationDays} days</strong><span>{mission.targets.find((item) => item.value === dailyTarget)?.label} · {stakeInput} {symbol} each</span></div>
       {step === 2 && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
-      <div className="stage-actions">{step > 0 && <button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>}{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW PACT</button>}</div>
-      {!creationEnabled && <p className="form-status safety-status" role="status">New pacts are temporarily paused for safety.</p>}
+      <div className="stage-actions">{step > 0 && <button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>}{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW LOCK</button>}</div>
+      {!creationEnabled && <p className="form-status safety-status" role="status">New locks are temporarily paused for safety.</p>}
       {status && <p className="form-status" aria-live="polite">{status}</p>}
-      <ActionDialog open={reviewOpen} title="Lock in this pact?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
+      <ActionDialog open={reviewOpen} title="Create this lock?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
         <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {mission.targets.find((item) => item.value === dailyTarget)?.label}</dd></div><div><dt>Schedule</dt><dd>{template.requiredCompletions} of {durationDays} days</dd></div><div><dt>Crew</dt><dd>2+ players · starts in about 2 hours</dd></div><div><dt>Stake</dt><dd>{stakeInput} {symbol} per player</dd></div></dl>
-        <p>{mission.type === DUOLINGO_XP_MISSION ? "Reclaim checks your wallet code and current XP before any stake enters the pact. Only XP earned after that baseline can count." : "Each completion requires a challenge-named GPS run from the same Strava account. Suspicious, manual, trainer, flagged, or implausible runs are rejected."}</p>
+        <p>{mission.type === DUOLINGO_XP_MISSION ? "Reclaim checks your wallet code and current XP before any stake enters the lock. Only XP earned after that baseline can count." : "Each completion requires a challenge-named GPS run from the same Strava account. Suspicious, manual, trainer, flagged, or implausible runs are rejected."}</p>
         <p>Wallet gas is separate. If fewer than two players join, each participant can reclaim their full stake.</p>
       </ActionDialog>
     </section>

@@ -63,7 +63,7 @@ export const PACT_TEMPLATES: readonly PactTemplate[] = [
 
 export function pactTemplate(durationDays: number): PactTemplate {
   const template = PACT_TEMPLATES.find((item) => item.durationDays === durationDays);
-  if (!template) throw new Error("Unsupported pact template");
+  if (!template) throw new Error("Unsupported lock template");
   return template;
 }
 

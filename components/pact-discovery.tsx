@@ -136,18 +136,18 @@ export function PactDiscovery() {
     event.preventDefault();
     const normalized = pactIdInput.trim();
     if (!/^\d+$/.test(normalized) || BigInt(normalized) < 1n) {
-      setInputError("Enter a valid pact ID.");
+      setInputError("Enter a valid lock ID.");
       return;
     }
 
     const id = BigInt(normalized);
     if (nextPactId && id >= nextPactId) {
-      setInputError("That pact does not exist yet.");
+      setInputError("That lock does not exist yet.");
       return;
     }
 
     setInputError("");
-    router.push(`/pact/${id}`);
+    router.push(`/lock/${id}`);
   }
 
   const loading = nowSeconds === null || nextPact.isPending || (recentPactIds.length > 0 && pactReads.isPending);
@@ -159,10 +159,10 @@ export function PactDiscovery() {
         <div>
           <span className="card-kicker">LIVE ON MONAD</span>
           <h2 id="pact-discovery-title">Join a crew</h2>
-          <p>Find a real challenge with registration still open, or use an invite&apos;s pact ID.</p>
+          <p>Find a real challenge with registration still open, or use an invite&apos;s lock ID.</p>
         </div>
         <form className="join-pact-form" onSubmit={openPact} noValidate>
-          <label htmlFor="pact-id">Join by pact ID</label>
+          <label htmlFor="pact-id">Join by lock ID</label>
           <div>
             <input
               id="pact-id"
@@ -178,27 +178,27 @@ export function PactDiscovery() {
               aria-describedby={inputError ? "pact-id-error" : undefined}
               aria-invalid={Boolean(inputError)}
             />
-            <button className="secondary-button" type="submit">OPEN PACT</button>
+            <button className="secondary-button" type="submit">OPEN LOCK</button>
           </div>
           {inputError && <small id="pact-id-error" role="alert">{inputError}</small>}
         </form>
       </div>
 
       {address && myPactIds.length > 0 && <section className="my-pacts" aria-labelledby="my-pacts-title">
-        <div><span>WELCOME BACK</span><h3 id="my-pacts-title">Your pacts</h3></div>
+        <div><span>WELCOME BACK</span><h3 id="my-pacts-title">Your locks</h3></div>
         <div className="my-pact-list">{myPactIds.map((id, index) => {
           const pact = myPactReads.data?.[index]?.result as PactTuple | undefined;
           if (!pact || pact[0] === zeroAddress) return null;
           const ended = nowSeconds !== null && nowSeconds >= Number(pact[1]) + pact[7] * 86_400;
           const state = pact[13] && pact[14] ? "REFUND READY" : pact[13] ? "SETTLED" : pact[14] ? "CANCELLED" : nowSeconds !== null && nowSeconds < Number(pact[1]) ? "FORMING" : ended ? "ENDING" : "ACTIVE";
-          return <Link href={`/pact/${id}`} className="my-pact-row" key={id.toString()}><span>#{id.toString().padStart(4, "0")}</span><strong>{missionByType(pact[10]).name} · {pact[8]}/{pact[7]}</strong><b>{state} →</b></Link>;
+          return <Link href={`/lock/${id}`} className="my-pact-row" key={id.toString()}><span>#{id.toString().padStart(4, "0")}</span><strong>{missionByType(pact[10]).name} · {pact[8]}/{pact[7]}</strong><b>{state} →</b></Link>;
         })}</div>
       </section>}
 
       {loading ? (
         <div className="discovery-state" aria-live="polite">Reading open challenges from Monad…</div>
       ) : failed ? (
-        <div className="discovery-state" role="alert">Open challenges could not be loaded. You can still use a pact ID.</div>
+        <div className="discovery-state" role="alert">Open challenges could not be loaded. You can still use a lock ID.</div>
       ) : openPacts.length === 0 ? (
         <div className="discovery-state discovery-empty">
           <p>No open challenges on Monad right now.</p>
@@ -210,9 +210,9 @@ export function PactDiscovery() {
             const playersNeeded = Math.max(0, pact[9] - pact[4]);
             const mission = missionByType(pact[10]);
             return (
-              <Link className="discovery-card" href={`/pact/${id}`} key={id.toString()}>
+              <Link className="discovery-card" href={`/lock/${id}`} key={id.toString()}>
                 <div className="discovery-card-topline">
-                  <span>PACT #{id.toString().padStart(4, "0")}</span>
+                  <span>LOCK #{id.toString().padStart(4, "0")}</span>
                   <b>REGISTRATION OPEN</b>
                 </div>
                 <h3>{mission.name}</h3>

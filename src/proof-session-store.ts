@@ -75,7 +75,7 @@ export async function consumeSessionOnce(
     });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      throw new Error("REUSED_ACTIVITY: this Strava activity already settled another pact");
+      throw new Error("REUSED_ACTIVITY: this Strava activity already settled another lock");
     }
     throw error;
   }

@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     if (
       policy.missionType !== token.missionType || policy.dailyTarget !== token.dailyTarget
         || policy.ownershipCode !== token.ownershipCode || policy.proofCode !== token.proofCode
-    ) throw new Error("The onchain pact policy changed");
+    ) throw new Error("The onchain lock policy changed");
 
     const appSecret = process.env.SECRET?.trim();
     if (!appSecret) throw new Error("SECRET is not configured");

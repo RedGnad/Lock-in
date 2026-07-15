@@ -31,7 +31,7 @@ export function PactHub() {
         <p>Create a competitive streak or join one already forming on Monad.</p>
       </header>
       <div className="hub-tabs" role="tablist" aria-label="Choose how to start">
-        <button type="button" role="tab" id="create-tab" aria-selected={view === "create"} aria-controls="create-panel" onClick={() => choose("create")}>START A PACT</button>
+        <button type="button" role="tab" id="create-tab" aria-selected={view === "create"} aria-controls="create-panel" onClick={() => choose("create")}>START A LOCK</button>
         <button type="button" role="tab" id="join-tab" aria-selected={view === "join"} aria-controls="join-panel" onClick={() => choose("join")}>JOIN A CREW</button>
       </div>
       <div role="tabpanel" id="create-panel" aria-labelledby="create-tab" hidden={view !== "create"}><CreatePact /></div>

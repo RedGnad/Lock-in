@@ -8,7 +8,7 @@ export default function Home() {
           <div className="eyebrow"><span>01</span> Accountability that pays</div>
           <h1>Your word.<br/><em>Locked in.</em></h1>
           <p>Challenge your friends to run or learn. Stake up to 1 USDC each. Finishers split the pool funded by those who quit.</p>
-          <div className="hero-actions"><a className="primary-link" href="#create">START A PACT</a><a className="secondary-link" href="#join">JOIN A PACT</a></div>
+          <div className="hero-actions"><a className="primary-link" href="#create">START A LOCK</a><a className="secondary-link" href="#join">JOIN A LOCK</a></div>
         </div>
         <div className="hero-mark" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="lock-core"><span>NO</span><strong>EXCUSES</strong></div></div>
         <div className="proof-strip"><span>STRAVA + DUOLINGO</span><b>PVP PAYOUTS</b><i>SETTLED ON MONAD</i></div>
