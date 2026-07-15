@@ -37,7 +37,11 @@ async function main() {
     try { status = await fetchStatusUrl(sessionId); } catch { continue; }
     const raw = String(status.session?.statusV2 || status.message || "");
     if (raw && raw !== lastStatus) { console.log(`\nstatus: ${raw}`); lastStatus = raw; }
-    if (/fail|error|cancel|reject|expired/i.test(raw)) throw new Error(`Reclaim session ${raw}`);
+    if (/fail|error|cancel|reject|expired/i.test(raw)) {
+      const detail = JSON.stringify({ statusV2: status.session?.statusV2, message: status.message, sessionMessage: (status.session as { message?: unknown } | undefined)?.message, error: (status.session as { error?: unknown } | undefined)?.error });
+      console.log("\nERROR DETAIL:", detail);
+      throw new Error(`Reclaim session ${raw}`);
+    }
     const ready = status.session?.proofs as Proof[] | Proof | undefined;
     const list = Array.isArray(ready) ? ready : ready ? [ready] : [];
     if (list.length > 0) { proofs = list; break; }

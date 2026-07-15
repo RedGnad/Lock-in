@@ -39,6 +39,7 @@ async function main() {
   const sessionId = request.getSessionId();
   const requestUrl = await request.getRequestUrl();
   console.log(JSON.stringify({ sessionId, provider: `${providerId}@${providerVersion}`, proofCode, contextAddress: wallet }, null, 2));
+  console.log("REQUEST_URL:", requestUrl);
 
   if (openCdp) {
     try {
