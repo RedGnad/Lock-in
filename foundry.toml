@@ -9,6 +9,9 @@ evm_version = "shanghai"
 optimizer = true
 optimizer_runs = 200
 via_ir = true
+# Monad raises the CREATE/CREATE2 contract-size limit to 128 KiB. Keep this
+# explicit so upstream Foundry uses the target chain's limit in `--sizes` CI.
+code_size_limit = 131072
 
 [rpc_endpoints]
 monad = "${MONAD_RPC_URL}"
