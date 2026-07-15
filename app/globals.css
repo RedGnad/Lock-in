@@ -179,11 +179,12 @@ a { color: inherit; }
 .stake-options { grid-template-columns: repeat(3, 1fr); }
 .target-options { margin-bottom: 12px; grid-template-columns: repeat(4, 1fr); }
 .mission-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.mission-options button { min-height: 126px; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 22px; border: 2px solid var(--ink); color: var(--ink); background: var(--paper); box-shadow: 5px 5px 0 var(--ink); cursor: pointer; text-align: left; transition: transform .15s ease, box-shadow .15s ease, color .15s ease, background .15s ease; }
-.mission-options button.active { color: var(--paper); background: var(--ink); box-shadow: 5px 5px 0 var(--acid); }
+.mission-options button { position: relative; min-height: 126px; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 22px; border: 2px solid var(--ink); color: var(--ink); background: var(--paper); box-shadow: 5px 5px 0 var(--ink); cursor: pointer; text-align: left; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease; }
+.mission-options button.active { border-color: var(--acid); color: var(--ink); background: var(--paper); box-shadow: 5px 5px 0 var(--acid); }
 .mission-options button:hover { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); }
 .mission-options button.active:hover { box-shadow: 2px 2px 0 var(--acid); }
 .mission-options button:active { transform: translate(5px, 5px); box-shadow: none; }
+.mission-options button.active::after { content: "SELECTED ✓"; color: var(--acid); font-size: 9px; font-weight: 950; letter-spacing: .1em; }
 .mission-options strong { font-size: 22px; letter-spacing: -.03em; }
 .mission-options span { max-width: 280px; color: inherit; font: 14px/1.4 Georgia, serif; opacity: .75; }
 .duolingo-link { margin-top: 16px; padding: 18px; border: 1px solid var(--ink); background: var(--lime); }
