@@ -193,11 +193,12 @@ contract LockInReclaimVerifierTest {
     }
 
     function testRejectsWrongOwnershipCodeAndNonCanonicalNumbers() public {
-        string memory wrongNameParameters =
-            _replaceOnce(_parameters(), _ownershipCode(ACCOUNT), "LOCK-00000-00000");
+        string memory wrongNameParameters = _replaceOnce(_parameters(), _ownershipCode(ACCOUNT), "LOCK-00000-00000");
         string memory wrongNameContext =
             _replaceOnce(_context("42:baseline"), _ownershipCode(ACCOUNT), "LOCK-00000-00000");
-        _assertRejected(_proof("http", wrongNameParameters, wrongNameContext, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION);
+        _assertRejected(
+            _proof("http", wrongNameParameters, wrongNameContext, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION
+        );
 
         string memory zeroPaddedParameters =
             _replaceOnce(_parameters(), "\"totalXp\":\"1000\"", "\"totalXp\":\"01000\"");
