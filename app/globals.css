@@ -168,6 +168,20 @@ a { color: inherit; }
 .segmented button:disabled { cursor: not-allowed; opacity: .38; }
 .distance-options, .schedule-options { grid-template-columns: repeat(4, 1fr); }
 .stake-options { grid-template-columns: repeat(3, 1fr); }
+.target-options { margin-bottom: 12px; grid-template-columns: repeat(4, 1fr); }
+.mission-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mission-options button { min-height: 126px; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 22px; border: 2px solid var(--ink); color: var(--ink); background: var(--paper); cursor: pointer; text-align: left; }
+.mission-options button.active { color: var(--paper); background: var(--ink); box-shadow: 5px 5px 0 var(--acid); }
+.mission-options strong { font-size: 22px; letter-spacing: -.03em; }
+.mission-options span { max-width: 280px; color: inherit; font: 14px/1.4 Georgia, serif; opacity: .75; }
+.duolingo-link { margin-top: 16px; padding: 18px; border: 1px solid var(--ink); background: var(--lime); }
+.duolingo-link label { display: block; margin-bottom: 8px; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.duolingo-link input, .duolingo-inline input { width: 100%; height: 46px; padding: 0 12px; border: 2px solid var(--ink); background: var(--paper); font-size: 16px; }
+.duolingo-link p { margin: 12px 0; font: 14px/1.4 Georgia, serif; }
+.duolingo-link code, .duolingo-inline code { padding: 3px 6px; color: white; background: var(--acid); font: 800 13px Arial, sans-serif; }
+.duolingo-link a { font-size: 10px; font-weight: 950; letter-spacing: .08em; text-decoration: none; }
+.duolingo-inline { align-items: stretch !important; flex-direction: column; }
+.duolingo-inline small { color: var(--muted); font: 12px/1.4 Georgia, serif; }
 .distance-options button, .schedule-options button, .stake-options button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
 .distance-options button small, .schedule-options button small, .stake-options button small { color: inherit; font-size: 10px; letter-spacing: .06em; }
 .pact-summary { margin: 30px 0 20px; padding: 18px 20px; display: flex; justify-content: space-between; gap: 22px; border-left: 4px solid var(--acid); background: var(--paper); }
@@ -295,6 +309,11 @@ a { color: inherit; }
 .pact-actions .lock-button { width: auto; }
 .pact-actions .consent-row { flex: 0 0 100%; }
 .pact-actions p { font: italic 14px/1.4 Georgia, serif; }
+.proof-prep { flex: 0 0 100%; padding: 18px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--ink); background: var(--lime); }
+.proof-prep > div { min-width: 0; display: grid; gap: 7px; }
+.proof-prep span { font-size: 10px; font-weight: 950; letter-spacing: .12em; }
+.proof-prep code { overflow-wrap: anywhere; color: var(--acid); font: 900 14px/1.3 Arial, sans-serif; }
+.proof-prep small { color: var(--muted); font: 13px/1.35 Georgia, serif; }
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 100; padding: 22px; display: grid; place-items: center; background: rgba(16, 16, 15, .72); backdrop-filter: blur(5px); }
 .action-dialog { width: min(600px, 100%); max-height: calc(100vh - 44px); padding: clamp(24px, 4vw, 38px); overflow: auto; border: 2px solid var(--ink); background: var(--surface); box-shadow: 11px 11px 0 var(--acid); }
@@ -361,6 +380,11 @@ footer div { display: flex; gap: 22px; }
   .form-field legend { align-items: flex-start; flex-direction: column; gap: 8px; }
   .form-field legend span { text-align: left; }
   .schedule-options { grid-template-columns: repeat(2, 1fr); }
+  .target-options { grid-template-columns: repeat(2, 1fr); }
+  .target-options button:nth-child(2) { border-right: 0; }
+  .target-options button:nth-child(-n+2) { border-bottom: 1px solid var(--ink); }
+  .mission-options { grid-template-columns: 1fr; }
+  .mission-options button { min-height: 105px; }
   .schedule-options button:nth-child(2) { border-right: 0; }
   .schedule-options button:nth-child(-n+2) { border-bottom: 1px solid var(--ink); }
   .segmented button { height: 64px; }
@@ -394,6 +418,7 @@ footer div { display: flex; gap: 22px; }
   .day-row { min-height: 128px; }
   .pact-actions { align-items: stretch; flex-direction: column; }
   .pact-actions .lock-button { width: 100%; }
+  .proof-prep { align-items: stretch; flex-direction: column; }
   .dialog-backdrop { padding: 12px; align-items: end; }
   .action-dialog { width: 100%; max-height: calc(100vh - 24px); padding: 25px 20px; box-shadow: none; }
   .dialog-actions { grid-template-columns: 1fr; }

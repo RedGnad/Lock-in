@@ -7,6 +7,7 @@ import { formatUnits, zeroAddress, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useReadContracts } from "wagmi";
 import { escrowAddress, escrowDeploymentBlock } from "@/src/chain";
 import { lockInAbi, type PactTuple } from "@/src/lock-in-abi";
+import { formatMissionTarget, missionByType } from "@/src/missions";
 
 const DISCOVERY_LIMIT = 12;
 const MAX_PARTICIPANTS = 100;
@@ -122,7 +123,7 @@ export function PactDiscovery() {
         !pact
         || pact[0] === zeroAddress
         || Number(pact[1]) <= nowSeconds
-        || pact[3] >= MAX_PARTICIPANTS
+        || pact[4] >= MAX_PARTICIPANTS
         || pact[13]
         || pact[14]
       ) return [];
@@ -188,9 +189,9 @@ export function PactDiscovery() {
         <div className="my-pact-list">{myPactIds.map((id, index) => {
           const pact = myPactReads.data?.[index]?.result as PactTuple | undefined;
           if (!pact || pact[0] === zeroAddress) return null;
-          const ended = nowSeconds !== null && nowSeconds >= Number(pact[1]) + pact[6] * 86_400;
+          const ended = nowSeconds !== null && nowSeconds >= Number(pact[1]) + pact[7] * 86_400;
           const state = pact[13] && pact[14] ? "REFUND READY" : pact[13] ? "SETTLED" : pact[14] ? "CANCELLED" : nowSeconds !== null && nowSeconds < Number(pact[1]) ? "FORMING" : ended ? "ENDING" : "ACTIVE";
-          return <Link href={`/pact/${id}`} className="my-pact-row" key={id.toString()}><span>#{id.toString().padStart(4, "0")}</span><strong>{pact[7]}/{pact[6]} day check-in</strong><b>{state} →</b></Link>;
+          return <Link href={`/pact/${id}`} className="my-pact-row" key={id.toString()}><span>#{id.toString().padStart(4, "0")}</span><strong>{missionByType(pact[10]).name} · {pact[8]}/{pact[7]}</strong><b>{state} →</b></Link>;
         })}</div>
       </section>}
 
@@ -206,18 +207,19 @@ export function PactDiscovery() {
       ) : (
         <div className="discovery-grid">
           {openPacts.map(({ id, pact }) => {
-            const playersNeeded = Math.max(0, pact[8] - pact[3]);
+            const playersNeeded = Math.max(0, pact[9] - pact[4]);
+            const mission = missionByType(pact[10]);
             return (
               <Link className="discovery-card" href={`/pact/${id}`} key={id.toString()}>
                 <div className="discovery-card-topline">
                   <span>PACT #{id.toString().padStart(4, "0")}</span>
                   <b>REGISTRATION OPEN</b>
                 </div>
-                <h3>{pact[7]} check-ins</h3>
-                <p>in {pact[6]} days</p>
+                <h3>{mission.name}</h3>
+                <p>{formatMissionTarget(pact[10], pact[3])} · {pact[8]} in {pact[7]} days</p>
                 <dl>
                   <div><dt>Stake</dt><dd>{formatUnits(pact[2], 6)} USDC</dd></div>
-                  <div><dt>Crew</dt><dd>{pact[3]} joined · {playersNeeded > 0 ? `${playersNeeded} needed` : "ready"}</dd></div>
+                  <div><dt>Crew</dt><dd>{pact[4]} joined · {playersNeeded > 0 ? `${playersNeeded} needed` : "ready"}</dd></div>
                   <div><dt>Starts</dt><dd>{formatStart(pact[1])}</dd></div>
                 </dl>
                 <small>Created by {compactAddress(pact[0])} <b>→</b></small>

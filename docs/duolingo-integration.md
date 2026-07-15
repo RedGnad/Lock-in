@@ -1,39 +1,37 @@
-# Duolingo research gate
+# Duolingo V5 integration
 
 ## Current decision
 
-Duolingo is not a live Lock In mission and cannot be used for a money-bearing pact. Duolingo does not expose a supported public API for this use, and its [terms](https://www.duolingo.com/Terms) restrict automated extraction. Lock In will not publish a provider or activate an escrow until an official API or written permission makes the integration supportable.
+V5 supports Duolingo as an experimental hackathon mission next to Strava. It does not trust a username alone. Before staking, the user places a wallet-derived 128-bit `LI-<32 HEX>` code in the Duolingo bio. One Reclaim proof must expose the stable profile id, username, exact bio code, and cumulative `totalXp` from the same HTTPS response. The fresh XP baseline and the USDC stake are accepted atomically.
 
-The consumer UI does not render a disabled or coming-soon Duolingo card. There is no Duolingo provider owned by Lock In, API route, contract adapter, environment variable, or activation control in the product.
+The integration remains independent and unofficial. The private provider is published and pinned. Its captured request and anonymous replay succeeded, as expected for this public endpoint. Production stays paused until full live ownership, negative, baseline, delta, and replay canaries pass end to end.
 
 ## Reclaim registry audit
 
 The active Reclaim registry was checked on July 15, 2026 through the authenticated Reclaim MCP. Fourteen entries match Duolingo; all are approved community entries but none is marked verified. The most relevant expose cumulative `totalXp`, `streakData`, or a profile id. They do not prove an authenticated self identity, a lesson/event id and a server completion time together.
 
-The public XP providers accept a user id in the request URL without proving that it belongs to the logged-in account. Because Duolingo profiles expose progress statistics, this can let one account target another public profile. A cumulative XP delta also cannot identify when or how the XP was earned. Those providers are therefore unsuitable for settlement and were not connected to the escrow.
+The public XP providers accept a user id in the request URL without proving account ownership. The inspected provider `7c57a498-6b0e-4b3a-8235-de7ba938e823` extracts only `totalXp`; a user can target somebody else&apos;s profile. V5 does not use it. The Lock In provider closes that attack by requiring the wallet code in the same profile response and by binding the stable id to one wallet per pact.
 
-## What a future proof could establish
+## What the proof establishes
 
-If the permission gate is cleared, Reclaim could prove that Duolingo credited activity to an authenticated account. It could not prove that a person learned without automation, account sharing, or outside help. Product wording must therefore say “Duolingo credited progress,” never “you learned.”
+Reclaim can prove that Duolingo returned the wallet code and credited progress to that profile. It cannot prove that a person learned without automation, account sharing, or outside help. Product wording therefore says “new Duolingo XP,” never “you learned.”
 
-A streak alone is insufficient because it can be protected or repaired. A final XP total alone does not show when XP was earned. A future adapter would need:
+A streak is never accepted. V5 requires:
 
-1. A fresh authenticated baseline bound to the wallet and pact.
-2. A fresh final state from the same Duolingo account.
-3. Active-day evidence or a capped progression threshold inside the pact window.
-4. Account commitments and proof nullifiers that prevent replay and multi-wallet reuse within a pool.
+1. A fresh ownership-coded baseline bound to wallet and pact before stake transfer.
+2. A fresh current-day snapshot from the same stable profile identity.
+3. `current totalXp - max(pact baseline, globally consumed totalXp) >= daily target`.
+4. Global snapshot nullifiers and one profile per wallet within a pact.
 
 Raw XP must never be used as a competitive ranking because earning rates differ by exercise, bonuses, and product mechanics.
 
-## Research-only technical candidates
+## Data and privacy
 
-Authenticated responses for the current user and daily XP summaries may be technically observable, but they are internal endpoints rather than a supported developer contract. They may be inspected only in a non-monetary research environment after confirming that the test complies with platform rules. No credentials, cookies, tokens, email addresses, or unnecessary profile fields may be retained.
+The proof uses the public profile response and does not need a Duolingo password or cookie inside Reclaim. The server processes id, username, bio, total XP, proof time, wallet, pact and phase without a product database. Cumulative XP, wallet, hashed profile identity, metric and nullifier are public on Monad; username, raw id and bio are not written onchain.
 
 ## Activation checklist
 
-1. Obtain a supported API or written permission.
-2. Complete a privacy and legal review, including the fact that Duolingo serves minors while Lock In money modes are 18+.
-3. Capture the minimum authenticated fields and prove that account A cannot submit account B’s data.
-4. Publish and pin a separate provider and adapter; never weaken the Strava verifier to accommodate it.
-5. Test replay, wrong-account, stale-state, baseline/final mixing, bot-like progression, cancellation, and refund paths.
-6. Update the privacy policy and rules before any public activation.
+1. Confirm the published `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.0` provider and pinned request hash match production.
+2. Pass live ownership, wrong-profile, wrong-bio, stale proof, baseline/final mixing, XP delta and replay tests.
+3. Complete an independent contract/security review; V5 is currently unaudited.
+4. Confirm private beta eligibility and 18+ messaging before enabling funds.

@@ -9,8 +9,14 @@ import {
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { lockInAbi } from "../src/lock-in-abi.js";
 import { addMonadGasBuffer } from "../src/monad-gas.js";
+
+const lockInAbi = [
+  { type: "function", name: "VERSION", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "setCreationPaused", stateMutability: "nonpayable", inputs: [{ name: "paused", type: "bool" }], outputs: [] },
+  { type: "function", name: "setJoiningPaused", stateMutability: "nonpayable", inputs: [{ name: "paused", type: "bool" }], outputs: [] },
+  { type: "function", name: "setCheckInsPaused", stateMutability: "nonpayable", inputs: [{ name: "paused", type: "bool" }], outputs: [] },
+] as const;
 
 function privateKey(): Hex {
   const raw = process.env.DEPLOYER_PRIVATE_KEY?.trim() || process.env.PRIVATE_KEY?.trim();

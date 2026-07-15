@@ -1,35 +1,36 @@
-# Lock In V4 security model
+# Lock In V5 security model
 
-Lock In V4 is a small-stake, Monad-native social escrow. Its only active completion signal is an onchain wallet check-in. It does not use Strava, Reclaim, GPS, a social network, or a learning service to settle funds.
+V5 is a small-stake, multi-mission escrow on Monad. Completion requires a short-lived EIP-712 attestation produced only after the server verifies a pinned Reclaim zkTLS proof and applies the mission policy.
 
-## What a check-in proves
+## Evidence boundaries
 
-The contract proves that the transaction sender is a joined wallet, the pact reached its minimum crew, the submitted day is the current pact day, and that wallet has not already checked in for that day. The wallet can check in once per eligible day until it reaches the published target.
+**Strava:** the policy binds proof to wallet, pact, day and Reclaim session; requires the exact daily title, Run type, GPS, non-trainer, non-flagged activity, minimum distance, coherent motion values, and plausible speed/pause ratios. Stable athlete identity cannot switch or back two wallets in one pact. Activity nullifiers are global.
 
-A check-in can be automated. It does not prove identity, presence, exercise, learning, or any other offchain action. This limitation is shown in the transaction review and Rules; it must never be weakened in marketing or support.
+**Duolingo:** username alone is rejected. The proof must expose stable profile id, username, exact wallet code in the bio, and cumulative XP in one response. A fresh baseline is accepted atomically with create/join. The contract requires each completion to exceed the maximum of the pact baseline and globally consumed metric by the daily target. One profile cannot back two wallets in one pact and one XP range cannot be reused.
 
-## Fund safety properties
+These controls prove what the services returned, not human activity. GPS spoofing, account sharing, bots, modified clients, collusion, upstream compromise, and provider errors remain possible.
 
-- The immutable stake cap is 1,000,000 atomic units of a six-decimal token: 1 USDC per participant per pact.
-- Every participant in a pact deposits the same amount. The creator is auto-joined.
-- New pacts require 3–30 days, 1–duration required completions, and 2–100 minimum participants.
-- Registration closes at the exact start timestamp. Check-ins are accepted only in their strict 24-hour pact window; there is no early or retroactive completion.
-- Settlement is permissionless. Eligible wallets claim their own payout; no operator can redirect it.
-- Finishers split the entire pool. If there are no finishers, or the pact is underfilled or cancelled, every participant can reclaim the original stake.
-- Rounding dust goes to the last eligible claimant. There is no protocol fee, admin withdrawal, or abandoned-funds sweep.
-- The creator may cancel only before start. The owner may emergency-cancel an unfinalized pact only into the participant-refund path.
-- Creation, joining, and check-ins have independent onchain pauses. Finalization and claims cannot be paused.
+## Trust and key model
 
-The website adds fail-closed flags for new pacts, joining, and check-ins. These flags are UX gates, not contract enforcement; an incident involving direct calls requires the corresponding onchain pause.
+- Reclaim verifies the HTTPS claim and TEE attestation for an exact provider id and version.
+- `EVIDENCE_SIGNER_PRIVATE_KEY` signs only the normalized, policy-accepted fields. It is not the funded deployer key.
+- The contract binds the signature to chain, contract, pact, wallet, mission, day, identity, metric, proof hash, event nullifier, occurrence time and expiry.
+- A compromised evidence signer can fabricate completions. Pause evidence immediately, rotate the signer, and cancel affected unsettled pacts into refunds.
+- The owner can rotate the signer and pause creation, joining or evidence. The owner cannot withdraw escrowed funds or block finalization/claims; emergency cancellation only enables refunds.
 
-## Operational and residual risk
+## Fund invariants
 
-The contract is source-verified with a Sourcify exact match and has automated tests, but it has not received an independent security audit. Smart-contract bugs, compromised wallets, malicious approvals, RPC or chain outages, token behavior, operator mistakes, and undiscovered economic attacks remain possible.
+- Official six-decimal Monad USDC; immutable 1,000,000-unit maximum stake per participant per pact.
+- Equal stake, 3–30 days, 2–100 minimum participants, one completion per wallet/day.
+- Duolingo ownership proof and baseline acceptance occur before the stake transfer in the same transaction; failure rolls back everything.
+- Registration closes at start; completions are current-day only.
+- Finishers split the full pool. Nobody-finished, underfilled and cancelled pacts refund all participants.
+- Permissionless finalization and self-service claims; no protocol fee, admin withdrawal or abandoned-funds sweep.
 
-The 1 USDC limit is per pact, not per wallet across all pacts. MON gas is separate and never refunded by the contract. The beta must remain invitation-only until the two-wallet success-path and underfilled/refund mainnet canaries in `docs/tester-runbook.md` are complete.
+## Operations
 
-Before every release, verify from chain state that the configured contract reports V4, the official six-decimal Monad USDC address, the 1 USDC cap, and the expected pause state. Keep the deployer key out of Vercel. Never collect a seed phrase or private key in support.
+Website flags are fail-closed UX gates only; direct calls require onchain pauses. Keep V5 paused until provider canaries, source verification, signer-address verification, two-wallet mission rehearsals, and an independent review pass. The contract is currently unaudited.
 
-## Reporting
+Keep the funded deployer key out of Vercel. Never expose server secrets through `NEXT_PUBLIC_*`. Never collect wallet keys, seed phrases, Duolingo passwords, Strava passwords, or session cookies in support.
 
-Report a suspected vulnerability privately to **mookipstore@hotmail.com**. Include the affected contract or pact, transaction hash, UTC time, and impact. Do not include seed phrases, private keys, wallet exports, or private RPC credentials.
+Report vulnerabilities privately to **mookipstore@hotmail.com** with affected contract/pact, transaction hash, UTC time and impact. Do not include secrets.

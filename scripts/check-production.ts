@@ -1,7 +1,9 @@
 import "dotenv/config";
-import { createPublicClient, defineChain, getAddress, http, isAddress } from "viem";
+import { createPublicClient, defineChain, getAddress, http, isAddress, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { erc20Abi, lockInAbi } from "../src/lock-in-abi.js";
 import { readProductFlagState } from "../src/product-flags.js";
+import { DUOLINGO_PROVIDER_ID } from "../src/duolingo-proof-policy.js";
 
 const EXPECTED_USDC = getAddress("0x754704Bc059F8C67012fEd69BC8A327a5aafb603");
 
@@ -17,6 +19,14 @@ if (!isAddress(rawEscrow)) throw new Error("NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS i
 const escrow = getAddress(rawEscrow);
 required("NEXT_PUBLIC_PRIVACY_EMAIL");
 required("NEXT_PUBLIC_REPOSITORY_URL");
+required("ID");
+required("SECRET");
+required("SESSION_SIGNING_SECRET");
+if (required("DUOLINGO_PROVIDER_ID") !== DUOLINGO_PROVIDER_ID) throw new Error("Duolingo provider does not match the pinned ID");
+const evidenceSignerKey = (
+  process.env.EVIDENCE_SIGNER_PRIVATE_KEY?.trim() || process.env.RECLAIM_PRIVATE_KEY?.trim() || ""
+) as Hex;
+if (!/^0x[0-9a-fA-F]{64}$/.test(evidenceSignerKey)) throw new Error("Invalid EVIDENCE_SIGNER_PRIVATE_KEY");
 const product = readProductFlagState();
 if (!product.configuration.allConfigured) throw new Error("All product action flags must be explicitly true or false");
 
@@ -27,16 +37,18 @@ const chain = defineChain({
   rpcUrls: { default: { http: [rpcUrl] } },
 });
 const client = createPublicClient({ chain, transport: http(rpcUrl) });
-const [chainId, escrowCode, stakeToken, maxStake, version, maxDays, creationPaused, joiningPaused, checkInsPaused] = await Promise.all([
+const [chainId, escrowCode, stakeToken, minStake, maxStake, version, maxDays, evidenceSigner, creationPaused, joiningPaused, checkInsPaused] = await Promise.all([
   client.getChainId(),
   client.getCode({ address: escrow }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "stakeToken" }),
+  client.readContract({ address: escrow, abi: lockInAbi, functionName: "MIN_STAKE" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "MAX_STAKE" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "VERSION" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "MAX_DURATION_DAYS" }),
+  client.readContract({ address: escrow, abi: lockInAbi, functionName: "evidenceSigner" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "creationPaused" }),
   client.readContract({ address: escrow, abi: lockInAbi, functionName: "joiningPaused" }),
-  client.readContract({ address: escrow, abi: lockInAbi, functionName: "checkInsPaused" }),
+  client.readContract({ address: escrow, abi: lockInAbi, functionName: "evidencePaused" }),
 ]);
 const [tokenCode, tokenDecimals, tokenSymbol] = await Promise.all([
   client.getCode({ address: stakeToken }),
@@ -50,10 +62,15 @@ const checks = {
   tokenCode: Boolean(tokenCode && tokenCode !== "0x"),
   nativeUsdc: getAddress(stakeToken) === EXPECTED_USDC,
   usdcMetadata: tokenDecimals === 6 && tokenSymbol === "USDC",
-  oneDollarCap: maxStake === 1_000_000n,
-  contractVersion: version === 4n,
+  stakeBounds: minStake === 100_000n && maxStake === 1_000_000n,
+  contractVersion: version === 5n,
+  evidenceSigner: getAddress(evidenceSigner) === privateKeyToAccount(evidenceSignerKey).address,
   thirtyDayPrograms: maxDays === 30,
   productFlagsConfigured: product.configuration.allConfigured,
+  flagPauseAlignment:
+    creationPaused === !product.actions.newPacts
+    && joiningPaused === !product.actions.join
+    && checkInsPaused === !product.actions.checkIns,
 };
 if (!Object.values(checks).every(Boolean)) throw new Error(`Production check failed: ${JSON.stringify(checks)}`);
 
@@ -62,6 +79,7 @@ console.log(JSON.stringify({
   chainId,
   escrow,
   stakeToken: getAddress(stakeToken),
+  minStakeAtomicUnits: minStake.toString(),
   maxStakeAtomicUnits: maxStake.toString(),
   actions: product.actions,
   contractPauses: { creation: creationPaused, joining: joiningPaused, checkIns: checkInsPaused },

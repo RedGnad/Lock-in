@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { createHash } from "node:crypto";
 
 export type RateLimitDecision = {
   allowed: boolean;
@@ -130,9 +131,9 @@ export function clientIpFromRequest(request: Request): string {
 }
 
 export const reclaimRateLimitPolicies = {
-  session: { limit: 6, windowMs: 10 * 60_000, maxEntries: 5_000 },
-  status: { limit: 240, windowMs: 10 * 60_000, maxEntries: 10_000 },
-  verify: { limit: 20, windowMs: 10 * 60_000, maxEntries: 5_000 },
+  session: { limit: 30, windowMs: 10 * 60_000, maxEntries: 5_000 },
+  status: { limit: 180, windowMs: 10 * 60_000, maxEntries: 10_000 },
+  verify: { limit: 10, windowMs: 10 * 60_000, maxEntries: 5_000 },
 } as const;
 
 export type ReclaimRateLimitKind = keyof typeof reclaimRateLimitPolicies;
@@ -146,8 +147,16 @@ const reclaimLimiters: Record<ReclaimRateLimitKind, FixedWindowRateLimiter> = {
 export function checkReclaimRateLimit(
   kind: ReclaimRateLimitKind,
   request: Request,
+  signedScope?: string,
 ): RateLimitDecision {
-  return reclaimLimiters[kind].check(clientIpFromRequest(request));
+  return reclaimLimiters[kind].check(rateLimitKeyForRequest(request, signedScope));
+}
+
+export function rateLimitKeyForRequest(request: Request, signedScope?: string): string {
+  const ip = clientIpFromRequest(request);
+  if (!signedScope) return ip;
+  const scopeHash = createHash("sha256").update(signedScope).digest("hex").slice(0, 24);
+  return `${ip}:${scopeHash}`;
 }
 
 export function rateLimitResponseHeaders(decision: RateLimitDecision): Record<string, string> {

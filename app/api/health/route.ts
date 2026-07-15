@@ -1,24 +1,29 @@
 import { NextResponse } from "next/server";
-import { getAddress, isAddress, zeroAddress, type Address } from "viem";
+import { getAddress, isAddress, zeroAddress, type Address, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { escrowAddress, lockInPublicClient } from "@/src/chain";
 import { erc20Abi } from "@/src/lock-in-abi";
 import { readProductFlagState } from "@/src/product-flags";
+import { DUOLINGO_PROVIDER_ID } from "@/src/duolingo-proof-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 const EXPECTED_CHAIN_ID = 143;
-const EXPECTED_CONTRACT_VERSION = 4n;
+const EXPECTED_CONTRACT_VERSION = 5n;
+const EXPECTED_MIN_STAKE = 100_000n;
 const EXPECTED_MAX_STAKE = 1_000_000n;
 const EXPECTED_STAKE_TOKEN = getAddress("0x754704Bc059F8C67012fEd69BC8A327a5aafb603");
-const v4HealthAbi = [
+const v5HealthAbi = [
   { type: "function", name: "stakeToken", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "VERSION", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { type: "function", name: "MAX_STAKE", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "MIN_STAKE", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "evidenceSigner", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "creationPaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
   { type: "function", name: "joiningPaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
-  { type: "function", name: "checkInsPaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
+  { type: "function", name: "evidencePaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
 ] as const;
 
 type ContractPauses = {
@@ -36,10 +41,13 @@ type HealthChecks = {
   contractCode: boolean;
   contractVersion: boolean;
   contractPauseControls: boolean;
+  flagPauseAlignment: boolean;
   stakeTokenAddress: boolean;
   stakeTokenCode: boolean;
   stakeTokenMetadata: boolean;
   oneUsdcCap: boolean;
+  proofConfiguration: boolean;
+  evidenceSigner: boolean;
 };
 
 function publicResponse(input: {
@@ -50,7 +58,11 @@ function publicResponse(input: {
   contractPauses: ContractPauses | null;
 }) {
   const product = readProductFlagState();
-  const checks = { ...input.checks, productFlags: product.configuration.allConfigured };
+  const flagPauseAlignment = Boolean(input.contractPauses)
+    && input.contractPauses!.creation === !product.actions.newPacts
+    && input.contractPauses!.joining === !product.actions.join
+    && input.contractPauses!.checkIns === !product.actions.checkIns;
+  const checks = { ...input.checks, productFlags: product.configuration.allConfigured, flagPauseAlignment };
   const ok = Object.values(checks).every(Boolean);
   const configuredEscrow = escrowAddress && isAddress(escrowAddress) ? getAddress(escrowAddress) : null;
   const actions = {
@@ -109,10 +121,19 @@ export async function GET() {
     contractCode: false,
     contractVersion: false,
     contractPauseControls: false,
+    flagPauseAlignment: false,
     stakeTokenAddress: false,
     stakeTokenCode: false,
     stakeTokenMetadata: false,
     oneUsdcCap: false,
+    proofConfiguration: Boolean(
+      process.env.ID?.trim()
+        && process.env.SECRET?.trim()
+        && process.env.SESSION_SIGNING_SECRET?.trim()
+        && process.env.DUOLINGO_PROVIDER_ID?.trim() === DUOLINGO_PROVIDER_ID
+        && process.env.EVIDENCE_SIGNER_PRIVATE_KEY?.trim()
+    ),
+    evidenceSigner: false,
   };
   let chainId: number | null = null;
   let contractVersion: bigint | null = null;
@@ -137,19 +158,27 @@ export async function GET() {
     checks.contractCode = Boolean(code && code !== "0x");
     if (!checks.contractCode) return publicResponse({ checks, chainId, contractVersion, stakeToken, contractPauses });
 
-    const [rawStakeToken, rawVersion, maxStake, creationPaused, joiningPaused, checkInsPaused] = await Promise.all([
-      client.readContract({ address: configuredEscrow, abi: v4HealthAbi, functionName: "stakeToken" }),
-      client.readContract({ address: configuredEscrow, abi: v4HealthAbi, functionName: "VERSION" }),
-      client.readContract({ address: configuredEscrow, abi: v4HealthAbi, functionName: "MAX_STAKE" }),
-      client.readContract({ address: configuredEscrow, abi: v4HealthAbi, functionName: "creationPaused" }),
-      client.readContract({ address: configuredEscrow, abi: v4HealthAbi, functionName: "joiningPaused" }),
-      client.readContract({ address: configuredEscrow, abi: v4HealthAbi, functionName: "checkInsPaused" }),
+    const [rawStakeToken, rawVersion, minStake, maxStake, rawEvidenceSigner, creationPaused, joiningPaused, checkInsPaused] = await Promise.all([
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "stakeToken" }),
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "VERSION" }),
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "MIN_STAKE" }),
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "MAX_STAKE" }),
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "evidenceSigner" }),
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "creationPaused" }),
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "joiningPaused" }),
+      client.readContract({ address: configuredEscrow, abi: v5HealthAbi, functionName: "evidencePaused" }),
     ]);
     stakeToken = getAddress(rawStakeToken);
     contractVersion = rawVersion;
     checks.contractVersion = rawVersion === EXPECTED_CONTRACT_VERSION;
     checks.stakeTokenAddress = stakeToken !== zeroAddress && stakeToken === EXPECTED_STAKE_TOKEN;
-    checks.oneUsdcCap = maxStake === EXPECTED_MAX_STAKE;
+    checks.oneUsdcCap = minStake === EXPECTED_MIN_STAKE && maxStake === EXPECTED_MAX_STAKE;
+    try {
+      const key = process.env.EVIDENCE_SIGNER_PRIVATE_KEY?.trim() as Hex | undefined;
+      checks.evidenceSigner = Boolean(key && privateKeyToAccount(key).address === getAddress(rawEvidenceSigner));
+    } catch {
+      checks.evidenceSigner = false;
+    }
     contractPauses = { creation: creationPaused, joining: joiningPaused, checkIns: checkInsPaused };
     checks.contractPauseControls = true;
   } catch {

@@ -12,28 +12,46 @@
     "witness": "0x244897572368Eadf65bfBc5aec98D8e5443a9072"
   },
   "escrow": {
-    "version": 4,
-    "address": "0xf41ad662af2240b387ecc96ec1faafe6c3ae9df4",
-    "deploymentTx": "0x4ff35d9585b18c8881cef180ed8cc825b43b5f6dae6b0565d55dff5c0676cc20",
-    "deploymentBlock": 87810767,
+    "version": 5,
+    "address": "0xA75375E11A8564b9DFe5fe2084Ff277Bb41c6a6a",
+    "deploymentTx": "0x1d67657eedb350206e49a44256bdb8c42625b987ed83884713e463a392cec3ba",
+    "deploymentBlock": 87825780,
     "stakeToken": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+    "minStakeAtomicUnits": "100000",
     "maxStakeAtomicUnits": "1000000",
     "maxDays": 30,
-    "mission": "MONAD_CHECK_IN@1",
+    "missions": ["LOCK_IN_STRAVA_RUN@5", "LOCK_IN_DUOLINGO_XP@5"],
+    "providers": {
+      "strava": "f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.3",
+      "duolingo": "cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.0"
+    },
     "owner": "0x344412229B3b581C19572f9BF1F5d08d4Ae897E6",
+    "evidenceSigner": "0xD81A3105eb76Ea129D68B82c445Fe94606eab211",
     "verification": {
       "provider": "Sourcify Monad",
       "status": "exact_match",
-      "jobId": "033dc672-d3eb-44e8-82bf-cad5bf7b401c",
-      "verifiedAt": "2026-07-15"
+      "jobId": "0ccebcfd-5536-46c8-8f62-4eb51cb4f2ac",
+      "verifiedAt": "2026-07-15T02:31:54Z"
     },
     "pausesAtRelease": {
       "creation": true,
       "joining": true,
-      "checkIns": true
+      "evidence": true
     }
   },
   "legacyEscrows": [
+    {
+      "version": 4,
+      "address": "0xf41ad662af2240b387ecc96ec1faafe6c3ae9df4",
+      "deploymentTx": "0x4ff35d9585b18c8881cef180ed8cc825b43b5f6dae6b0565d55dff5c0676cc20",
+      "deploymentBlock": 87810767,
+      "verification": {
+        "provider": "Sourcify Monad",
+        "status": "exact_match",
+        "jobId": "033dc672-d3eb-44e8-82bf-cad5bf7b401c",
+        "verifiedAt": "2026-07-15"
+      }
+    },
     {
       "version": 3,
       "address": "0x718faf8969e6924333d28450eaf9df6356f63ba1",

@@ -1,81 +1,76 @@
-# Lock In V4
+# Lock In V5
 
-**Your word. Locked in.** Create a small-stake pact with friends, check in on Monad, and let the contract settle the pool.
+**Your word. Locked in.** Challenge friends to run or learn, stake up to 1 USDC each, and let finishers split the pool funded by those who quit.
 
-Lock In V4 is an invitation-only hackathon beta using real USDC on Monad mainnet. The contract caps each participant at **1 USDC per pact**. This is not a cumulative wallet cap: the same wallet can enter several pacts and expose more than 1 USDC in total. Network gas is separate and is never refunded by the pact.
+Lock In V5 is a limited-cohort, adult-only hackathon beta on Monad mainnet. It supports two independent proof policies:
 
-## The proof, stated honestly
+- **Strava run:** a challenge-named GPS Run must reach the distance target. Manual, trainer, Strava-flagged, missing-GPS, and implausible motion records are rejected.
+- **Duolingo XP:** the user places a wallet-derived code in the public profile bio. A fresh cumulative-XP baseline is accepted atomically with the stake; only later XP above both the pact baseline and globally consumed XP can count.
 
-The only active V4 mission is a **Monad-native wallet check-in**.
+Reclaim zkTLS proves what each service returned over HTTPS. It does not prove physical movement, human learning, or the absence of GPS spoofing, account sharing, bots, modified devices, or upstream errors. The policies close username impersonation, replay, identity switching, old-progress reuse, obvious manual Strava entries, and several implausible-motion cases; they do not make fraud impossible.
 
-For each eligible pact day, the joined wallet calls `checkIn(pactId, dayIndex)`. The contract proves only that:
+## Product and settlement
 
-- the caller is a joined wallet;
-- the pact reached its required participant count;
-- the transaction concerns the current pact day;
-- that wallet has not already checked in for that pact and day.
+The app offers 3, 7, 14, and 30-day pacts with fixed completion targets. Registration closes at the published start. Every participant stakes the same amount, from 0.1 to 1 USDC. The cap is per participant per pact; Monad gas is separate.
 
-The transaction can be sent manually or automated by software. It does **not** prove who controlled the wallet, exercise, learning, attendance, location, a social post, or any other physical or mental activity. Product copy and support must never imply otherwise.
-
-Strava and Reclaim experiments remain in the repository as V3 development history, but they are not an active V4 mission and do not decide V4 completion. No Twitter/X, Duolingo, step-count, or other external-provider challenge is active.
-
-## Product model
-
-The consumer interface offers fixed 3, 7, 14, and 30-day templates. Every pact publishes its duration, required number of check-ins, minimum participant count, start time, equal stake, mission type, and configuration hash before joining closes.
-
-During each fixed 24-hour pact day, a participant can record at most one native check-in. Early, late, duplicate, outsider, and underfilled-pact submissions revert. The check-in event contains the wallet, pact, day, a deterministic event identifier, and the block timestamp.
-
-Settlement is permissionless after the pact ends:
-
-- with one or more finishers, finishers recover their stakes and split the non-finishers' stakes equally through the final pool calculation;
-- if everyone finishes, everyone receives their stake back;
-- if nobody finishes, every participant can recover their stake;
+- if anyone finishes, finishers recover their stakes and split non-finishers&apos; stakes;
+- if everyone or nobody finishes, each participant recovers their own stake;
 - underfilled and cancelled pacts refund every participant;
-- each eligible wallet must claim its own payout and pay the associated gas.
+- settlement and claims remain permissionless even while creation, joining, or evidence is paused;
+- there is no protocol fee or operator withdrawal path.
 
-See [`docs/product-model-v4.md`](docs/product-model-v4.md) for the exact semantics, examples, threat model, and admission rules for future missions.
+[`contracts/LockInEscrowV5.sol`](contracts/LockInEscrowV5.sol) verifies short-lived EIP-712 evidence attestations, binds one external identity per wallet inside each pact, enforces global event nullifiers, and prevents a consumed Duolingo XP range from settling another completion. Raw provider responses and GPS routes are never stored onchain.
 
-## Contract and operational controls
+V5 is unaudited. Keep all production controls paused until the provider canaries, contract review, and two-wallet real-flow rehearsal pass.
 
-[`contracts/LockInEscrowV4.sol`](contracts/LockInEscrowV4.sol) is a fixed-token social escrow for Monad-native check-ins. Its main invariants are:
+## Production deployment — paused
 
-- native Monad USDC with six decimals;
-- immutable 1,000,000 atomic-unit maximum stake;
-- durations from 3 to 30 days;
-- 2 to 100 required participants;
-- one completion per wallet, pact, and day;
-- no protocol fee or operator withdrawal path;
-- permissionless finalization and self-service claims;
-- creator cancellation only before the start;
-- owner emergency cancellation only into the participant-refund path.
+- App: https://lock-in-liart-theta.vercel.app
+- V5 escrow: `0xA75375E11A8564b9DFe5fe2084Ff277Bb41c6a6a`
+- Monad deployment transaction: `0x1d67657eedb350206e49a44256bdb8c42625b987ed83884713e463a392cec3ba`
+- Source verification: Sourcify exact match, job `0ccebcfd-5536-46c8-8f62-4eb51cb4f2ac`
+- Strava provider: `f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.3`
+- Duolingo provider: `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.0`
 
-The active V4 deployment is `0xF41AD662Af2240b387eCC96eC1Faafe6c3Ae9DF4` on Monad mainnet (deployment block `87810767`). Its source, compiler configuration, dependencies, bytecode, and constructor argument have a Sourcify `exact_match`. The official Circle USDC token is `0x754704Bc059F8C67012fEd69BC8A327a5aafb603`.
+Creation, joining, and evidence submission are paused in both the website configuration and the contract. Settlement, refunds, and claims remain available. The deployment is a canary target, not an open real-funds launch.
 
-The owner can pause contract creation, joining, and check-ins separately. Server-side `NEW_PACTS_ENABLED`, `JOIN_ENABLED`, and `CHECK_INS_ENABLED` flags add a fail-closed product gate. A website flag does not stop direct contract calls, so incidents may require the matching onchain pause. Settlement and claims deliberately have no product shutdown flag.
+## Duolingo impersonation decision
 
-The V4 contract has **not received an independent security audit**. Tests reduce known implementation risk but cannot eliminate smart-contract, wallet, token, RPC, or chain failure. The private beta, adult-only rule, low cap, and absence of a protocol fee do not guarantee legality, regulatory approval, reimbursement, or an exemption in any jurisdiction. Nothing in this repository is legal advice.
+The inspected public Reclaim provider `7c57a498-6b0e-4b3a-8235-de7ba938e823` is not used. It accepts a user-selected profile identifier and extracts only `totalXp`, so it can target somebody else&apos;s account.
 
-## Privacy model
+The Lock In provider in [`providers/duolingo-owned-xp.json`](providers/duolingo-owned-xp.json) extracts stable profile id, username, bio, and `totalXp` from one response. The backend accepts it only when the bio exactly matches the code derived from the proof-bound wallet. Contract creation/join and baseline acceptance are atomic: a failed ownership proof cannot leave the user&apos;s stake locked.
 
-V4 has no product user account, activity profile, or external-service credential flow. It does not request health, fitness, GPS, learning, social-media, or biometric data.
+## Privacy
 
-Monad still makes the financial and participation graph public. Wallet addresses, pact configuration and membership, stake and transfer amounts, day indexes, event identifiers, timestamps, cancellations, settlement, claims, transaction hashes, and block metadata are public and effectively permanent. The contract stores a configuration hash rather than raw mission/profile content.
+The website has no product account database. During verification, Reclaim and the server function process the minimum signed provider fields and return a short-lived attestation. They are not intentionally retained by Lock In.
 
-The web app does not maintain a product user database. Hosting, RPC, wallet, explorer, email, and any later-disclosed analytics provider may retain ordinary technical logs under their own policies. Read [`PRIVACY.md`](PRIVACY.md) and the in-product `/privacy` notice before inviting testers.
+Monad permanently exposes wallet, pact, stake, mission, day, completion metric, hashed identity, nullifier, timestamps, and settlement. The Strava metric is distance. The Duolingo metric is cumulative XP; username, raw profile id, bio, and GPS route are not published onchain. See [`app/privacy/page.tsx`](app/privacy/page.tsx) and [`PRIVACY.md`](PRIVACY.md).
 
 ## Local development
 
-Requirements: Node.js 22+, pnpm 10+, Foundry, and a Monad mainnet RPC for chain checks.
+Requirements: Node.js 22+, pnpm 10+, Foundry, and a Monad RPC.
 
 ```bash
 cp .env.example .env
 pnpm install
-pnpm exec tsc --noEmit --incremental false
+pnpm exec tsc --noEmit
 pnpm test
 pnpm build
 ```
 
-The V4 environment starts closed:
+Required server-only proof configuration:
+
+```dotenv
+ID=
+SECRET=
+EVIDENCE_SIGNER_PRIVATE_KEY=0x...
+SESSION_SIGNING_SECRET=
+DUOLINGO_PROVIDER_ID=
+```
+
+Never expose these through `NEXT_PUBLIC_*` and never upload the funded deployer key to Vercel.
+
+Every release starts closed:
 
 ```dotenv
 NEW_PACTS_ENABLED=false
@@ -83,35 +78,25 @@ JOIN_ENABLED=false
 CHECK_INS_ENABLED=false
 ```
 
-Configure `NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS` only with the verified V4 deployment. Never reuse the V3 escrow address. Keep deployer keys out of Vercel and never expose secrets through a `NEXT_PUBLIC_` variable.
+`/api/health` verifies chain 143, V5, native Monad USDC, the immutable 1 USDC cap, onchain pause state, explicit product flags, and privacy contact. Website flags do not stop direct contract calls; use the matching onchain pause during an incident.
 
-`/api/health` is the release gate for the web app. It checks chain ID 143, V4 bytecode and version, native Monad USDC, the immutable 1 USDC cap, contract pause state, explicit product-flag configuration, and privacy contact. It returns effective actions without returning environment values, private RPC URLs, or secrets.
+## Release gate
 
-## Private-beta release gate
-
-Do not accept a real-funds tester until all items below are complete:
-
-1. Typecheck, policy tests, Solidity tests, and the production build pass from the release commit.
-2. V4 source and constructor arguments are verified on a public explorer.
-3. Two internal wallets complete create, join, every required check-in, finalization, and claims with 0.1 USDC.
-4. A separate rehearsal verifies underfilled cancellation and full participant refunds.
-5. Rules, privacy, support email, contract/token addresses, and explorer links match production.
-6. `/api/health` monitoring and an at-risk-pact ledger are active.
-7. The owner wallet can execute a narrowly scoped emergency cancellation and the team has rehearsed the incident procedure.
-8. Every invited adult understands that the check-in is automatable, proves no offchain activity, uses real funds, and incurs non-refundable gas.
-
-Use [`docs/tester-runbook.md`](docs/tester-runbook.md) for controlled opening, pause decisions, monitoring, incident response, settlement, refunds, and cohort closure. Rules are in [`app/rules/page.tsx`](app/rules/page.tsx); the support/privacy contact is **mookipstore@hotmail.com**.
+1. Publish and pin the Lock In Duolingo provider; pass wrong-profile, wrong-bio, stale, replay, and live baseline/delta proofs.
+2. Pass all TypeScript, policy, Solidity, production-build, and static security checks.
+3. Deploy V5 paused, verify source and constructor arguments publicly, and confirm the evidence signer address.
+4. Rehearse Strava and Duolingo create, join, completion, settlement, payout, underfilled refund, and emergency refund with two internal wallets at 0.1 USDC.
+5. Confirm rules, privacy, addresses, support contact, monitoring, and at-risk-pact ledger from the production deployment.
+6. Obtain independent contract/security review before opening beyond the controlled hackathon cohort.
 
 ## Repository map
 
-- `contracts/LockInEscrowV4.sol` — active V4 escrow semantics.
-- `src/lock-in-abi.ts` — consumer ABI and Monad configuration.
-- `src/missions.ts` — fixed V4 pact templates.
-- `src/product-flags.ts` — fail-closed web action gates.
-- `app/api/health/route.ts` — non-secret production readiness signal.
-- `docs/product-model-v4.md` — product guarantees and non-guarantees.
-- `docs/tester-runbook.md` — real-funds private-beta operations.
-- `scripts/cancel-v4-pact.ts` — simulated, explicit-confirmation incident refund procedure.
-- `PRIVACY.md` — complete privacy notice.
+- `contracts/LockInEscrowV5.sol` — multi-mission fixed-stake escrow.
+- `src/strava-proof-policy.ts` — Strava anti-cheat and challenge binding.
+- `src/duolingo-proof-policy.ts` — wallet ownership code and XP snapshot policy.
+- `app/api/reclaim/*` — session, polling, zkTLS verification, and EIP-712 attestation.
+- `providers/*` — pinned private Strava and Duolingo provider configurations.
+- `test/LockInEscrowV5.t.sol` — settlement, replay, baseline, identity, cap, and refund tests.
+- `docs/tester-runbook.md` — controlled beta operations.
 
-Legacy V3 contracts, provider recipes, scripts, API routes, fixtures, and tests are retained only for audit history and regression work. Their presence in the repository is not a claim that their missions are available in V4.
+The production privacy/support contact is **mookipstore@hotmail.com**.

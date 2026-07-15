@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   clientIpFromRequest,
   FixedWindowRateLimiter,
+  rateLimitKeyForRequest,
   rateLimitResponseHeaders,
 } from "../src/rate-limit.js";
 
@@ -85,6 +86,15 @@ test("uses Vercel's client IP header first and rejects malformed values", () => 
     headers: { "x-forwarded-for": "arbitrary-unbounded-key" },
   });
   assert.equal(clientIpFromRequest(unknownRequest), "unknown");
+  assert.notEqual(
+    rateLimitKeyForRequest(vercelRequest, "signed-session-a"),
+    rateLimitKeyForRequest(vercelRequest, "signed-session-b"),
+    "two signed sessions on one Wi-Fi must not share a polling bucket",
+  );
+  assert.equal(
+    rateLimitKeyForRequest(vercelRequest, "signed-session-a"),
+    rateLimitKeyForRequest(vercelRequest, "signed-session-a"),
+  );
 });
 
 test("validates limiter configuration", () => {

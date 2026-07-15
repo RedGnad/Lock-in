@@ -9,13 +9,13 @@ import {
 import { STRAVA_DAILY_PROOF_CODE_PATTERN, STRAVA_PACT_CHALLENGE_PATTERN } from "./pact-code";
 
 export const STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-export const STRAVA_PROVIDER_VERSION = "1.0.2";
+export const STRAVA_PROVIDER_VERSION = "1.0.3";
 export const STRAVA_PROVIDER_KEY = keccak256(stringToHex(`${STRAVA_PROVIDER_ID}@${STRAVA_PROVIDER_VERSION}`));
 export const STRAVA_PROVIDER_HASHES = [
   "0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67",
   "0x2ef5ed61f33aa62f83c1ebf18c191b1b897db0d4a959368a365fff0c036dab2b",
-  "0x0bf30795f8148a6ec4d8609a71b7b6f7962f265169f6626e5b36b1f842460e27",
-  "0x26f22ca533a47f4af000231fd0a4de10b055985f2a32126bf2407de878a22040",
+  "0xdb71c7f76ee1b695648cbd13f8ec2f554d0efe6bfa0bab89fcc08d50bc99e208",
+  "0xefa53fe81b56a21d0aaa2f6cc34e0da3e2839480b0929ab761d131e8412c4b04",
 ] as const;
 export const STRAVA_CHALLENGE_PATTERN = STRAVA_PACT_CHALLENGE_PATTERN;
 
@@ -54,6 +54,7 @@ export type StravaPactPolicy = {
 
 export type StravaEvidence = {
   athleteId: string;
+  identityHash: `0x${string}`;
   activityId: string;
   activityName: string;
   sportType: "Run";
@@ -238,9 +239,14 @@ export function validateStravaEvidence(
     parseAbiParameters("bytes32 providerKey, string athleteMarker, uint256 activityId"),
     [STRAVA_PROVIDER_KEY, fields.marker, BigInt(fields.id)],
   ));
+  const identityHash = keccak256(encodeAbiParameters(
+    parseAbiParameters("bytes32 providerKey, string athleteMarker"),
+    [STRAVA_PROVIDER_KEY, fields.marker],
+  ));
 
   return {
     athleteId: athleteMatch[1],
+    identityHash,
     activityId: fields.id,
     activityName: fields.name,
     sportType: "Run",

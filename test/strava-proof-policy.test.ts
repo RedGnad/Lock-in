@@ -12,6 +12,7 @@ import {
 import { consumeSessionOnce } from "../src/proof-session-store.js";
 import { dailyProofCode } from "../src/pact-code.js";
 import { issueProofSessionToken, verifyProofSessionToken } from "../src/session-token.js";
+import { STRAVA_DAILY_PROOF_CODE_PATTERN, stravaActivityCode } from "../src/pact-code.js";
 
 const sessionId = "session_123456789";
 const walletAddress = "0x000000000000000000000000000000000000dEaD";
@@ -67,8 +68,8 @@ function validData(overrides: Record<string, string> = {}): ReclaimTrustedData[]
       elapsed: values.elapsed,
       elevation: values.elevation,
     } },
-    { context: context(), extractedParameters: { latlng: values.latlng } },
-    { context: context(), extractedParameters: { trainer: values.trainer } },
+    { context: context(), extractedParameters: { id: values.id, latlng: values.latlng } },
+    { context: context(), extractedParameters: { id: values.id, trainer: values.trainer } },
   ];
 }
 
@@ -84,6 +85,14 @@ test("derives deterministic, non-overlapping daily proof codes", () => {
   assert.equal(dailyProofCode(pactChallenge, 9), `${pactChallenge}D10`);
   assert.equal(dailyProofCode(pactChallenge, 29), `${pactChallenge}D30`);
   assert.notEqual(dailyProofCode(pactChallenge, 0), dailyProofCode(pactChallenge, 9));
+});
+
+test("derives a V5 activity code accepted by the Strava verifier", () => {
+  const dayOne = stravaActivityCode("42", walletAddress, 0);
+  const dayTwo = stravaActivityCode("42", walletAddress, 1);
+  assert.match(dayOne, STRAVA_DAILY_PROOF_CODE_PATTERN);
+  assert.match(dayTwo, STRAVA_DAILY_PROOF_CODE_PATTERN);
+  assert.notEqual(dayOne, dayTwo);
 });
 
 test("binds the deterministic daily code inside the signed session token", () => {
@@ -132,6 +141,15 @@ test("rejects a proof bound to another session", () => {
   const data = validData();
   data[0].context.reclaimSessionId = "session_attacker";
   assert.throws(() => validateStravaEvidence(data, policy), /initiated Reclaim session/);
+});
+
+test("rejects GPS or trainer flags extracted from another activity id", () => {
+  const data = validData();
+  data[2].extractedParameters.id = "99999999999";
+  assert.throws(
+    () => validateStravaEvidence(data, policy),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "CONFLICTING_FIELD",
+  );
 });
 
 test("rejects stale proof timestamps", () => {

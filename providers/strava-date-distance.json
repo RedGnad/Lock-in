@@ -1,6 +1,6 @@
 {
   "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "name": "Lock In Strava authenticated GPS activity",
   "status": "published-private",
   "loginUrl": "https://www.strava.com/athlete/training",
@@ -18,7 +18,7 @@
     "dailyCodeFormat": "<pactChallenge>D01 through <pactChallenge>D30",
     "distanceField": "distance_raw",
     "timeField": "start_time",
-    "providerVersionMustEqual": "1.0.2"
+    "providerVersionMustEqual": "1.0.3"
   },
   "requestData": [
     {
@@ -73,9 +73,11 @@
       "method": "GET",
       "credentials": "include",
       "responseMatches": [
+        { "type": "contains", "value": "\"id\":{{id}}" },
         { "type": "contains", "value": "\"has_latlng\":{{latlng}}" }
       ],
       "responseRedactions": [
+        { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
         { "jsonPath": "$.models[0].has_latlng", "regex": "\"has_latlng\":(?<latlng>true|false)" }
       ]
     },
@@ -86,9 +88,11 @@
       "method": "GET",
       "credentials": "include",
       "responseMatches": [
+        { "type": "contains", "value": "\"id\":{{id}}" },
         { "type": "contains", "value": "\"trainer\":{{trainer}}" }
       ],
       "responseRedactions": [
+        { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
         { "jsonPath": "$.models[0].trainer", "regex": "\"trainer\":(?<trainer>true|false)" }
       ]
     }

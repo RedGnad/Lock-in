@@ -1,0 +1,510 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.30;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+
+/// @notice Fixed-stake social pacts settled by short-lived, mission-specific evidence attestations.
+/// @dev The evidence signer may attest only to data that passed the pinned Reclaim provider policy.
+///      Raw Strava and Duolingo responses never enter contract storage or events.
+contract LockInEscrowV5 is Ownable, ReentrancyGuard, EIP712 {
+    using SafeERC20 for IERC20;
+
+    uint8 public constant MISSION_STRAVA_RUN = 1;
+    uint8 public constant MISSION_DUOLINGO_XP = 2;
+    bytes32 public constant STRAVA_MISSION_KEY = keccak256("LOCK_IN_STRAVA_RUN@5");
+    bytes32 public constant DUOLINGO_MISSION_KEY = keccak256("LOCK_IN_DUOLINGO_XP@5");
+    bytes32 public constant BASELINE_TYPEHASH = keccak256(
+        "Baseline(uint256 pactId,address account,bytes32 identityHash,uint64 totalMetric,bytes32 proofHash,uint64 observedAt,uint64 expiresAt)"
+    );
+    bytes32 public constant COMPLETION_TYPEHASH = keccak256(
+        "Completion(uint256 pactId,address account,uint8 dayIndex,uint8 missionType,bytes32 identityHash,bytes32 eventNullifier,uint64 metric,bytes32 proofHash,uint64 occurredAt,uint64 expiresAt)"
+    );
+
+    uint8 public constant MIN_DURATION_DAYS = 3;
+    uint8 public constant MAX_DURATION_DAYS = 30;
+    uint8 public constant MIN_PARTICIPANTS = 2;
+    uint8 public constant MAX_PARTICIPANTS = 100;
+    uint32 public constant MIN_STRAVA_DISTANCE_METERS = 500;
+    uint32 public constant MAX_STRAVA_DISTANCE_METERS = 20_000;
+    uint32 public constant MIN_DUOLINGO_XP = 5;
+    uint32 public constant MAX_DUOLINGO_XP = 200;
+    uint256 public constant MIN_STAKE = 100_000;
+    uint256 public constant MAX_STAKE = 1_000_000;
+    uint256 public constant MAX_ATTESTATION_AGE = 10 minutes;
+    uint256 public constant MAX_START_DELAY = 3 hours;
+    uint256 public constant VERSION = 5;
+
+    struct Pact {
+        address creator;
+        uint64 startsAt;
+        uint96 stake;
+        uint32 dailyTarget;
+        uint32 participantCount;
+        uint32 finisherCount;
+        uint32 claimsRemaining;
+        uint8 durationDays;
+        uint8 requiredCompletions;
+        uint8 minParticipants;
+        uint8 missionType;
+        bytes32 missionKey;
+        uint256 remainingPool;
+        bool finalized;
+        bool cancelled;
+    }
+
+    struct BaselineEvidence {
+        bytes32 identityHash;
+        uint64 totalMetric;
+        bytes32 proofHash;
+        uint64 observedAt;
+        uint64 expiresAt;
+        bytes signature;
+    }
+
+    struct CompletionEvidence {
+        bytes32 identityHash;
+        bytes32 eventNullifier;
+        uint64 metric;
+        bytes32 proofHash;
+        uint64 occurredAt;
+        uint64 expiresAt;
+        bytes signature;
+    }
+
+    IERC20 public immutable stakeToken;
+    address public evidenceSigner;
+    uint256 public nextPactId = 1;
+
+    bool public creationPaused;
+    bool public joiningPaused;
+    bool public evidencePaused;
+
+    mapping(uint256 => Pact) public pacts;
+    mapping(uint256 => mapping(address => bool)) public joined;
+    mapping(uint256 => mapping(address => uint256)) public completionBitmap;
+    mapping(uint256 => mapping(address => uint8)) public completionCount;
+    mapping(uint256 => mapping(address => bytes32)) public participantIdentity;
+    mapping(uint256 => mapping(bytes32 => address)) public identityOwner;
+    mapping(uint256 => mapping(address => uint64)) public lastMetric;
+    mapping(uint256 => mapping(address => bool)) public claimed;
+    mapping(bytes32 => uint64) public consumedDuolingoMetric;
+    mapping(bytes32 => bool) public usedEventNullifiers;
+
+    event PactCreated(
+        uint256 indexed pactId,
+        address indexed creator,
+        uint8 indexed missionType,
+        uint256 stake,
+        uint32 dailyTarget,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
+        uint64 startsAt,
+        bytes32 missionKey
+    );
+    event PactJoined(uint256 indexed pactId, address indexed account);
+    event IdentityBound(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
+    event BaselineAccepted(
+        uint256 indexed pactId, address indexed account, bytes32 indexed identityHash, uint64 totalMetric
+    );
+    event CompletionAccepted(
+        uint256 indexed pactId,
+        address indexed account,
+        uint8 indexed dayIndex,
+        uint8 missionType,
+        bytes32 eventNullifier,
+        uint64 metric,
+        uint64 occurredAt
+    );
+    event PactCancelled(uint256 indexed pactId);
+    event PactFinalized(
+        uint256 indexed pactId, uint256 pool, uint256 eligibleClaimants, uint256 finishers, bool cancelled
+    );
+    event PayoutClaimed(uint256 indexed pactId, address indexed account, uint256 amount);
+    event EvidenceSignerUpdated(address indexed previousSigner, address indexed newSigner);
+    event CreationPauseUpdated(bool paused);
+    event JoiningPauseUpdated(bool paused);
+    event EvidencePauseUpdated(bool paused);
+
+    error InvalidAddress();
+    error InvalidTokenDecimals();
+    error InvalidStake();
+    error InvalidGoal();
+    error InvalidSchedule();
+    error UnsupportedMission();
+    error PactNotFound();
+    error CreationIsPaused();
+    error JoiningIsPaused();
+    error EvidenceIsPaused();
+    error JoinClosed();
+    error AlreadyJoined();
+    error PactFull();
+    error NotParticipant();
+    error InvalidDay();
+    error CompletionOutsideDay();
+    error DayAlreadyCompleted();
+    error TargetAlreadyMet();
+    error UnderfilledPact();
+    error SubmissionClosed();
+    error EventAlreadyUsed();
+    error InvalidEvidenceSigner();
+    error AttestationExpired();
+    error StaleEvidence();
+    error InvalidProofHash();
+    error InvalidMetric();
+    error BaselineRequired();
+    error IdentityAlreadyUsed();
+    error IdentityMismatch();
+    error NotCreator();
+    error CancellationClosed();
+    error AlreadyCancelled();
+    error FinalizationTooEarly();
+    error AlreadyFinalized();
+    error NotFinalized();
+    error NotEligible();
+    error AlreadyClaimed();
+
+    constructor(IERC20 stakeToken_, address evidenceSigner_) EIP712("Lock In", "5") {
+        if (address(stakeToken_) == address(0) || evidenceSigner_ == address(0)) revert InvalidAddress();
+        if (IERC20Metadata(address(stakeToken_)).decimals() != 6) revert InvalidTokenDecimals();
+        stakeToken = stakeToken_;
+        evidenceSigner = evidenceSigner_;
+        creationPaused = true;
+        joiningPaused = true;
+        evidencePaused = true;
+    }
+
+    /// @notice Creates and atomically joins a pact. Duolingo creation requires a fresh XP baseline.
+    function createPact(
+        uint96 stake,
+        uint32 dailyTarget,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
+        uint64 startsAt,
+        uint8 missionType,
+        BaselineEvidence calldata baseline
+    ) external nonReentrant returns (uint256 pactId) {
+        if (creationPaused) revert CreationIsPaused();
+        _validateConfiguration(stake, dailyTarget, durationDays, requiredCompletions, minParticipants, startsAt, missionType);
+
+        pactId = nextPactId++;
+        Pact storage pact = pacts[pactId];
+        pact.creator = msg.sender;
+        pact.startsAt = startsAt;
+        pact.stake = stake;
+        pact.dailyTarget = dailyTarget;
+        pact.participantCount = 1;
+        pact.durationDays = durationDays;
+        pact.requiredCompletions = requiredCompletions;
+        pact.minParticipants = minParticipants;
+        pact.missionType = missionType;
+        pact.missionKey = _missionKey(missionType);
+
+        joined[pactId][msg.sender] = true;
+        if (missionType == MISSION_DUOLINGO_XP) _acceptBaseline(pactId, 0, msg.sender, baseline);
+        stakeToken.safeTransferFrom(msg.sender, address(this), stake);
+
+        emit PactCreated(
+            pactId,
+            msg.sender,
+            missionType,
+            stake,
+            dailyTarget,
+            durationDays,
+            requiredCompletions,
+            minParticipants,
+            startsAt,
+            pact.missionKey
+        );
+        emit PactJoined(pactId, msg.sender);
+    }
+
+    /// @notice Joins before the published start. Duolingo joining and baseline acceptance are atomic.
+    function joinPact(uint256 pactId, BaselineEvidence calldata baseline) external nonReentrant {
+        if (joiningPaused) revert JoiningIsPaused();
+        Pact storage pact = _pact(pactId);
+        if (pact.cancelled || pact.finalized || block.timestamp >= pact.startsAt) revert JoinClosed();
+        if (joined[pactId][msg.sender]) revert AlreadyJoined();
+        if (pact.participantCount >= MAX_PARTICIPANTS) revert PactFull();
+
+        joined[pactId][msg.sender] = true;
+        ++pact.participantCount;
+        if (pact.missionType == MISSION_DUOLINGO_XP) _acceptBaseline(pactId, pactId, msg.sender, baseline);
+        stakeToken.safeTransferFrom(msg.sender, address(this), pact.stake);
+        emit PactJoined(pactId, msg.sender);
+    }
+
+    /// @notice Accepts one policy-checked mission completion for a pact day.
+    function submitCompletion(uint256 pactId, uint8 dayIndex, CompletionEvidence calldata evidence)
+        external
+        nonReentrant
+    {
+        if (evidencePaused) revert EvidenceIsPaused();
+        Pact storage pact = _pact(pactId);
+        if (pact.cancelled || pact.finalized) revert SubmissionClosed();
+        if (pact.participantCount < pact.minParticipants) revert UnderfilledPact();
+        if (!joined[pactId][msg.sender]) revert NotParticipant();
+        if (completionCount[pactId][msg.sender] >= pact.requiredCompletions) revert TargetAlreadyMet();
+        if (dayIndex >= pact.durationDays) revert InvalidDay();
+
+        uint256 dayStart = uint256(pact.startsAt) + uint256(dayIndex) * 1 days;
+        if (evidence.occurredAt < dayStart || evidence.occurredAt >= dayStart + 1 days) revert CompletionOutsideDay();
+        if (block.timestamp < dayStart || block.timestamp >= dayStart + 1 days) revert CompletionOutsideDay();
+
+        uint256 dayMask = uint256(1) << dayIndex;
+        uint256 previousBitmap = completionBitmap[pactId][msg.sender];
+        if (previousBitmap & dayMask != 0) revert DayAlreadyCompleted();
+        if (evidence.proofHash == bytes32(0) || evidence.eventNullifier == bytes32(0)) revert InvalidProofHash();
+        if (usedEventNullifiers[evidence.eventNullifier]) revert EventAlreadyUsed();
+
+        _verifyCompletionSignature(pactId, msg.sender, dayIndex, pact.missionType, evidence);
+        _bindIdentity(pactId, msg.sender, evidence.identityHash);
+
+        if (pact.missionType == MISSION_STRAVA_RUN) {
+            if (evidence.metric < pact.dailyTarget) revert InvalidMetric();
+        } else {
+            uint64 previousMetric = lastMetric[pactId][msg.sender];
+            uint64 globallyConsumed = consumedDuolingoMetric[evidence.identityHash];
+            if (globallyConsumed > previousMetric) previousMetric = globallyConsumed;
+            if (evidence.metric < previousMetric || uint256(evidence.metric) - previousMetric < pact.dailyTarget) {
+                revert InvalidMetric();
+            }
+            lastMetric[pactId][msg.sender] = evidence.metric;
+            consumedDuolingoMetric[evidence.identityHash] = evidence.metric;
+        }
+
+        usedEventNullifiers[evidence.eventNullifier] = true;
+        completionBitmap[pactId][msg.sender] = previousBitmap | dayMask;
+        uint8 updatedCount = completionCount[pactId][msg.sender] + 1;
+        completionCount[pactId][msg.sender] = updatedCount;
+        if (updatedCount == pact.requiredCompletions) ++pact.finisherCount;
+
+        emit CompletionAccepted(
+            pactId,
+            msg.sender,
+            dayIndex,
+            pact.missionType,
+            evidence.eventNullifier,
+            evidence.metric,
+            evidence.occurredAt
+        );
+    }
+
+    function cancelPact(uint256 pactId) external {
+        Pact storage pact = _pact(pactId);
+        if (msg.sender != pact.creator) revert NotCreator();
+        if (pact.finalized) revert AlreadyFinalized();
+        if (pact.cancelled) revert AlreadyCancelled();
+        if (block.timestamp >= pact.startsAt) revert CancellationClosed();
+        pact.cancelled = true;
+        emit PactCancelled(pactId);
+    }
+
+    /// @notice Emergency action can only move an unsettled pact into participant refunds.
+    function cancelPactByOwner(uint256 pactId) external onlyOwner {
+        Pact storage pact = _pact(pactId);
+        if (pact.finalized) revert AlreadyFinalized();
+        if (pact.cancelled) revert AlreadyCancelled();
+        pact.cancelled = true;
+        emit PactCancelled(pactId);
+    }
+
+    /// @notice Permissionless finalization. Pause flags never block settlement or claims.
+    function finalizePact(uint256 pactId) public {
+        Pact storage pact = _pact(pactId);
+        if (pact.finalized) revert AlreadyFinalized();
+
+        if (!pact.cancelled && block.timestamp >= pact.startsAt && pact.participantCount < pact.minParticipants) {
+            pact.cancelled = true;
+            emit PactCancelled(pactId);
+        }
+        if (!pact.cancelled && block.timestamp < _endsAt(pact)) revert FinalizationTooEarly();
+
+        uint32 eligibleClaimants =
+            pact.cancelled || pact.finisherCount == 0 ? pact.participantCount : pact.finisherCount;
+        pact.finalized = true;
+        pact.claimsRemaining = eligibleClaimants;
+        pact.remainingPool = uint256(pact.stake) * pact.participantCount;
+        emit PactFinalized(pactId, pact.remainingPool, eligibleClaimants, pact.finisherCount, pact.cancelled);
+    }
+
+    function claim(uint256 pactId) external nonReentrant returns (uint256 amount) {
+        Pact storage pact = _pact(pactId);
+        if (!pact.finalized) revert NotFinalized();
+        if (!joined[pactId][msg.sender]) revert NotParticipant();
+        if (claimed[pactId][msg.sender]) revert AlreadyClaimed();
+        if (
+            !pact.cancelled && pact.finisherCount != 0 && completionCount[pactId][msg.sender] < pact.requiredCompletions
+        ) revert NotEligible();
+
+        claimed[pactId][msg.sender] = true;
+        amount = pact.remainingPool / pact.claimsRemaining;
+        pact.remainingPool -= amount;
+        --pact.claimsRemaining;
+        stakeToken.safeTransfer(msg.sender, amount);
+        emit PayoutClaimed(pactId, msg.sender, amount);
+    }
+
+    function pactEndsAt(uint256 pactId) external view returns (uint256) {
+        return _endsAt(_pact(pactId));
+    }
+
+    function getPact(uint256 pactId) external view returns (Pact memory) {
+        return _pact(pactId);
+    }
+
+    function isFinisher(uint256 pactId, address account) external view returns (bool) {
+        Pact storage pact = _pact(pactId);
+        return joined[pactId][account] && completionCount[pactId][account] >= pact.requiredCompletions;
+    }
+
+    function setEvidenceSigner(address newSigner) external onlyOwner {
+        if (newSigner == address(0)) revert InvalidAddress();
+        address previous = evidenceSigner;
+        evidenceSigner = newSigner;
+        emit EvidenceSignerUpdated(previous, newSigner);
+    }
+
+    function setCreationPaused(bool paused) external onlyOwner {
+        creationPaused = paused;
+        emit CreationPauseUpdated(paused);
+    }
+
+    function setJoiningPaused(bool paused) external onlyOwner {
+        joiningPaused = paused;
+        emit JoiningPauseUpdated(paused);
+    }
+
+    function setEvidencePaused(bool paused) external onlyOwner {
+        evidencePaused = paused;
+        emit EvidencePauseUpdated(paused);
+    }
+
+    function _acceptBaseline(
+        uint256 pactId,
+        uint256 signedPactId,
+        address account,
+        BaselineEvidence calldata evidence
+    ) private {
+        if (evidencePaused) revert EvidenceIsPaused();
+        if (evidence.identityHash == bytes32(0) || evidence.proofHash == bytes32(0)) revert InvalidProofHash();
+        if (evidence.expiresAt < block.timestamp) revert AttestationExpired();
+        if (
+            evidence.observedAt > block.timestamp + 1 minutes
+                || uint256(evidence.observedAt) + MAX_ATTESTATION_AGE < block.timestamp
+                || evidence.observedAt >= pacts[pactId].startsAt
+        ) revert StaleEvidence();
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                BASELINE_TYPEHASH,
+                signedPactId,
+                account,
+                evidence.identityHash,
+                evidence.totalMetric,
+                evidence.proofHash,
+                evidence.observedAt,
+                evidence.expiresAt
+            )
+        );
+        if (ECDSA.recover(_hashTypedDataV4(structHash), evidence.signature) != evidenceSigner) {
+            revert InvalidEvidenceSigner();
+        }
+
+        _bindIdentity(pactId, account, evidence.identityHash);
+        lastMetric[pactId][account] = evidence.totalMetric;
+        emit BaselineAccepted(pactId, account, evidence.identityHash, evidence.totalMetric);
+    }
+
+    function _verifyCompletionSignature(
+        uint256 pactId,
+        address account,
+        uint8 dayIndex,
+        uint8 missionType,
+        CompletionEvidence calldata evidence
+    ) private view {
+        if (evidence.expiresAt < block.timestamp) revert AttestationExpired();
+        bytes32 structHash = keccak256(
+            abi.encode(
+                COMPLETION_TYPEHASH,
+                pactId,
+                account,
+                dayIndex,
+                missionType,
+                evidence.identityHash,
+                evidence.eventNullifier,
+                evidence.metric,
+                evidence.proofHash,
+                evidence.occurredAt,
+                evidence.expiresAt
+            )
+        );
+        if (ECDSA.recover(_hashTypedDataV4(structHash), evidence.signature) != evidenceSigner) {
+            revert InvalidEvidenceSigner();
+        }
+    }
+
+    function _bindIdentity(uint256 pactId, address account, bytes32 identityHash) private {
+        if (identityHash == bytes32(0)) revert InvalidProofHash();
+        bytes32 existing = participantIdentity[pactId][account];
+        if (existing != bytes32(0) && existing != identityHash) revert IdentityMismatch();
+        address owner = identityOwner[pactId][identityHash];
+        if (owner != address(0) && owner != account) revert IdentityAlreadyUsed();
+        if (existing == bytes32(0)) {
+            participantIdentity[pactId][account] = identityHash;
+            identityOwner[pactId][identityHash] = account;
+            emit IdentityBound(pactId, account, identityHash);
+        }
+    }
+
+    function _validateConfiguration(
+        uint96 stake,
+        uint32 dailyTarget,
+        uint8 durationDays,
+        uint8 requiredCompletions,
+        uint8 minParticipants,
+        uint64 startsAt,
+        uint8 missionType
+    ) private view {
+        if (stake < MIN_STAKE || stake > MAX_STAKE) revert InvalidStake();
+        if (
+            durationDays < MIN_DURATION_DAYS || durationDays > MAX_DURATION_DAYS || requiredCompletions == 0
+                || requiredCompletions > durationDays || minParticipants < MIN_PARTICIPANTS
+                || minParticipants > MAX_PARTICIPANTS
+        ) revert InvalidGoal();
+        if (startsAt <= block.timestamp || uint256(startsAt) > block.timestamp + MAX_START_DELAY) {
+            revert InvalidSchedule();
+        }
+        if (missionType == MISSION_STRAVA_RUN) {
+            if (dailyTarget < MIN_STRAVA_DISTANCE_METERS || dailyTarget > MAX_STRAVA_DISTANCE_METERS) {
+                revert InvalidGoal();
+            }
+        } else if (missionType == MISSION_DUOLINGO_XP) {
+            if (dailyTarget < MIN_DUOLINGO_XP || dailyTarget > MAX_DUOLINGO_XP) revert InvalidGoal();
+        } else {
+            revert UnsupportedMission();
+        }
+    }
+
+    function _missionKey(uint8 missionType) private pure returns (bytes32) {
+        if (missionType == MISSION_STRAVA_RUN) return STRAVA_MISSION_KEY;
+        if (missionType == MISSION_DUOLINGO_XP) return DUOLINGO_MISSION_KEY;
+        revert UnsupportedMission();
+    }
+
+    function _pact(uint256 pactId) private view returns (Pact storage pact) {
+        pact = pacts[pactId];
+        if (pact.creator == address(0)) revert PactNotFound();
+    }
+
+    function _endsAt(Pact storage pact) private view returns (uint256) {
+        return uint256(pact.startsAt) + uint256(pact.durationDays) * 1 days;
+    }
+}

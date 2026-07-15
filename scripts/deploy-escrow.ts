@@ -34,6 +34,11 @@ if (expectedChainId !== 143) throw new Error("Lock In is pinned to Monad mainnet
 
 const token = required("STAKE_TOKEN_ADDRESS");
 if (!isAddress(token)) throw new Error("STAKE_TOKEN_ADDRESS must be a valid address");
+const evidenceSignerKey = (
+  process.env.EVIDENCE_SIGNER_PRIVATE_KEY?.trim() || process.env.RECLAIM_PRIVATE_KEY?.trim() || ""
+) as Hex;
+if (!/^0x[0-9a-fA-F]{64}$/.test(evidenceSignerKey)) throw new Error("EVIDENCE_SIGNER_PRIVATE_KEY must be a 32-byte hex value");
+const evidenceSigner = privateKeyToAccount(evidenceSignerKey).address;
 
 const chain = defineChain({
   id: expectedChainId,
@@ -48,9 +53,9 @@ const actualChainId = await publicClient.getChainId();
 if (actualChainId !== expectedChainId) throw new Error(`Refusing deployment: RPC chain ID is ${actualChainId}`);
 
 const artifact = JSON.parse(
-  await readFile("out/LockInEscrowV4.sol/LockInEscrowV4.json", "utf8"),
+  await readFile("out/LockInEscrowV5.sol/LockInEscrowV5.json", "utf8"),
 ) as { abi: Abi; bytecode: { object: Hex } };
-const args = [getAddress(token)] as const;
+const args = [getAddress(token), evidenceSigner] as const;
 const deploymentData = encodeDeployData({ abi: artifact.abi, bytecode: artifact.bytecode.object, args } as never);
 const gasEstimate = await publicClient.estimateGas({ account, data: deploymentData });
 const gasWithMargin = addMonadGasBuffer(gasEstimate);
@@ -66,8 +71,11 @@ if (dryRun) {
     deployer: account.address,
     deployerBalanceWei: balance.toString(),
     stakeToken: getAddress(token),
-    contractVersion: 4,
+    evidenceSigner,
+    contractVersion: 5,
+    minStakeAtomicUnits: "100000",
     maxStakeAtomicUnits: "1000000",
+    initialPauses: { creation: true, joining: true, evidence: true },
     gasEstimate: gasEstimate.toString(),
     gasLimit: gasWithMargin.toString(),
     estimatedMaxFeeWei: estimatedMaxFee.toString(),
@@ -88,8 +96,11 @@ if (dryRun) {
     deployer: account.address,
     owner: account.address,
     stakeToken: getAddress(token),
-    contractVersion: 4,
+    evidenceSigner,
+    contractVersion: 5,
+    minStakeAtomicUnits: "100000",
     maxStakeAtomicUnits: "1000000",
+    initialPauses: { creation: true, joining: true, evidence: true },
     escrow: receipt.contractAddress,
     deploymentBlock: receipt.blockNumber.toString(),
     deploymentTx: deploymentHash,

@@ -13,7 +13,7 @@ export const monad = defineChain({
 });
 
 export const escrowAddress = process.env.NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS as Address | undefined;
-export const escrowDeploymentBlock = 87_810_767n;
+export const escrowDeploymentBlock = 87_825_780n;
 
 export function lockInPublicClient() {
   return createPublicClient({

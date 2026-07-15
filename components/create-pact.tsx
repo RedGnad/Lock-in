@@ -3,29 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  formatUnits,
-  keccak256,
-  parseEventLogs,
-  parseUnits,
-  toBytes,
-  zeroAddress,
-  type Address,
-  type Hash,
-} from "viem";
-import {
-  useAccount,
-  useChainId,
-  useConfig,
-  usePublicClient,
-  useReadContract,
-  useWriteContract,
-} from "wagmi";
+import { formatUnits, parseEventLogs, parseUnits, zeroAddress, type Address, type Hash } from "viem";
+import { useAccount, useChainId, useConfig, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
-import { erc20Abi, lockInAbi, MONAD_CHECK_IN_MISSION } from "@/src/lock-in-abi";
+import {
+  DUOLINGO_XP_MISSION,
+  emptyBaselineEvidence,
+  erc20Abi,
+  lockInAbi,
+  type BaselineEvidence,
+} from "@/src/lock-in-abi";
 import { escrowAddress, monad } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
-import { PACT_TEMPLATES, pactTemplate } from "@/src/missions";
+import { MISSIONS, PACT_TEMPLATES, pactTemplate, type MissionId } from "@/src/missions";
+import { duolingoOwnershipCode } from "@/src/duolingo-proof-policy";
+import { runReclaimProofV5 } from "@/src/reclaim-client-v5";
 import { ActionDialog } from "@/components/action-dialog";
 
 const JOIN_WINDOW_SECONDS = 2 * 60 * 60;
@@ -43,31 +35,24 @@ function friendlyError(error: unknown) {
   if (/insufficient funds|exceeds balance/i.test(message)) return "You need more MON for network gas.";
   if (/CreationIsPaused/i.test(message)) return "New pacts are paused for safety.";
   if (/InvalidStake/i.test(message)) return "Choose a stake from 0.1 to 1 USDC.";
-  if (/InvalidSchedule/i.test(message)) return "The join window expired. Review the pact again.";
-  return "The transaction did not complete. Check your wallet and try again.";
+  if (/InvalidSchedule|next pact ID changed/i.test(message)) return "The join window changed. Review the pact again.";
+  if (/popup/i.test(message)) return message;
+  return message.length < 180 ? message : "The transaction did not complete. Check your wallet and try again.";
 }
 
-function pendingKey(account: Address) {
-  return `lock-in:pending-create:${account.toLowerCase()}`;
-}
-
+function pendingKey(account: Address) { return `lock-in:pending-create:${account.toLowerCase()}`; }
 function savePending(account: Address, value: PendingCreate | null) {
   try {
     if (value) window.localStorage.setItem(pendingKey(account), JSON.stringify(value));
     else window.localStorage.removeItem(pendingKey(account));
-  } catch {
-    // Transaction safety still relies on the wallet when storage is unavailable.
-  }
+  } catch {}
 }
-
 function readPending(account: Address): PendingCreate | null {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(pendingKey(account)) || "null") as PendingCreate | null;
     if (!parsed || !/^0x[0-9a-f]{64}$/i.test(parsed.hash) || !/^0x[0-9a-f]{40}$/i.test(parsed.account)) return null;
     return parsed;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export function CreatePact() {
@@ -77,8 +62,11 @@ export function CreatePact() {
   const chainId = useChainId();
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
+  const [missionId, setMissionId] = useState<MissionId>("strava");
+  const [dailyTarget, setDailyTarget] = useState(3_000);
   const [durationDays, setDurationDays] = useState(3);
   const [stakeInput, setStakeInput] = useState("0.1");
+  const [duolingoUsername, setDuolingoUsername] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -88,51 +76,33 @@ export function CreatePact() {
   const [creationEnabled, setCreationEnabled] = useState(false);
 
   const contract = escrowAddress || zeroAddress;
-  const { data: tokenAddress } = useReadContract({
-    address: contract,
-    abi: lockInAbi,
-    functionName: "stakeToken",
-    query: { enabled: Boolean(escrowAddress) },
-  });
-  const { data: maxStake } = useReadContract({
-    address: contract,
-    abi: lockInAbi,
-    functionName: "MAX_STAKE",
-    query: { enabled: Boolean(escrowAddress) },
-  });
+  const { data: tokenAddress } = useReadContract({ address: contract, abi: lockInAbi, functionName: "stakeToken", query: { enabled: Boolean(escrowAddress) } });
+  const { data: minStake } = useReadContract({ address: contract, abi: lockInAbi, functionName: "MIN_STAKE", query: { enabled: Boolean(escrowAddress) } });
+  const { data: maxStake } = useReadContract({ address: contract, abi: lockInAbi, functionName: "MAX_STAKE", query: { enabled: Boolean(escrowAddress) } });
   const token = (tokenAddress || zeroAddress) as Address;
   const { data: decimals = 6 } = useReadContract({ address: token, abi: erc20Abi, functionName: "decimals", query: { enabled: token !== zeroAddress } });
   const { data: symbol = "USDC" } = useReadContract({ address: token, abi: erc20Abi, functionName: "symbol", query: { enabled: token !== zeroAddress } });
   const { data: allowance = 0n, refetch: refetchAllowance } = useReadContract({
-    address: token,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: [address || zeroAddress, contract],
+    address: token, abi: erc20Abi, functionName: "allowance", args: [address || zeroAddress, contract],
     query: { enabled: Boolean(address && escrowAddress && token !== zeroAddress) },
   });
   const { data: tokenBalance = 0n } = useReadContract({
-    address: token,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [address || zeroAddress],
+    address: token, abi: erc20Abi, functionName: "balanceOf", args: [address || zeroAddress],
     query: { enabled: Boolean(address && token !== zeroAddress), refetchInterval: 15_000 },
   });
 
-  const amount = useMemo(() => {
-    try { return parseUnits(stakeInput, decimals); } catch { return 0n; }
-  }, [stakeInput, decimals]);
+  const amount = useMemo(() => { try { return parseUnits(stakeInput, decimals); } catch { return 0n; } }, [stakeInput, decimals]);
   const template = useMemo(() => pactTemplate(durationDays), [durationDays]);
+  const mission = useMemo(() => MISSIONS.find((item) => item.id === missionId)!, [missionId]);
+  const ownershipCode = useMemo(() => address ? duolingoOwnershipCode(address) : "LI-<YOUR WALLET CODE>", [address]);
 
   useEffect(() => {
     let alive = true;
     async function syncFlag() {
       try {
-        const response = await fetch("/api/health", { cache: "no-store" });
-        const health = await response.json();
+        const health = await (await fetch("/api/health", { cache: "no-store" })).json();
         if (alive) setCreationEnabled(Boolean(health.actions?.newPacts));
-      } catch {
-        if (alive) setCreationEnabled(false);
-      }
+      } catch { if (alive) setCreationEnabled(false); }
     }
     void syncFlag();
     const timer = window.setInterval(() => void syncFlag(), 15_000);
@@ -154,20 +124,15 @@ export function CreatePact() {
         if (receipt.status !== "success") throw new Error("Transaction reverted");
         if (pending.action === "create") {
           const logs = parseEventLogs({ abi: lockInAbi, eventName: "PactCreated", logs: receipt.logs });
-          const pactId = logs[0]?.args.pactId;
-          if (pactId !== undefined) router.replace(`/pact/${pactId}`);
+          const id = logs[0]?.args.pactId;
+          if (id !== undefined) router.replace(`/pact/${id}`);
         } else {
           void refetchAllowance();
-          setStatus("Approval confirmed. You can create the pact now.");
+          setStatus("USDC approved. Review again to finish creating your pact.");
         }
       })
       .catch(() => setStatus("Your last transaction is still pending or failed. Check it in your wallet before retrying."))
-      .finally(() => {
-        if (alive) {
-          setBusy(false);
-          busyRef.current = false;
-        }
-      });
+      .finally(() => { if (alive) { setBusy(false); busyRef.current = false; } });
     return () => { alive = false; };
   }, [address, config, refetchAllowance, router]);
 
@@ -175,10 +140,7 @@ export function CreatePact() {
     if (!address || !publicClient) throw new Error("Wallet or Monad RPC unavailable");
     const estimate = await publicClient.estimateContractGas({ ...request, account: address } as never);
     const gas = addMonadGasBuffer(estimate);
-    const [nativeBalance, gasPrice] = await Promise.all([
-      publicClient.getBalance({ address }),
-      publicClient.getGasPrice(),
-    ]);
+    const [nativeBalance, gasPrice] = await Promise.all([publicClient.getBalance({ address }), publicClient.getGasPrice()]);
     if (nativeBalance < gas * gasPrice) throw new Error("insufficient funds for gas");
     const hash = await writeContractAsync({ ...request, gas } as never);
     savePending(address, { account: address, action, hash });
@@ -191,12 +153,15 @@ export function CreatePact() {
   async function create() {
     if (busyRef.current) return;
     if (!address || !escrowAddress || !publicClient) return setStatus("Connect your wallet first.");
-    if (readPending(address)) return setStatus("A previous transaction is still pending. Check it in your wallet before retrying.");
+    if (readPending(address)) return setStatus("A previous transaction is still pending.");
     if (chainId !== monad.id) return setStatus("Switch your wallet to Monad mainnet.");
     if (!creationEnabled) return setStatus("New pacts are paused for safety.");
     if (!entryAccepted) return setStatus("Accept the Rules to continue.");
-    if (amount <= 0n || (maxStake !== undefined && amount > maxStake)) return setStatus("Choose a stake from 0.1 to 1 USDC.");
+    if ((minStake !== undefined && amount < minStake) || (maxStake !== undefined && amount > maxStake)) return setStatus("Choose a stake from 0.1 to 1 USDC.");
     if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this pact.`);
+    if (mission.type === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) {
+      return setStatus("Enter your Duolingo username.");
+    }
 
     setReviewOpen(false);
     setBusy(true);
@@ -206,21 +171,39 @@ export function CreatePact() {
         setStatus(`Approve ${stakeInput} ${symbol} in your wallet…`);
         await writeWithGas({ address: token, abi: erc20Abi, functionName: "approve", args: [escrowAddress, amount] }, "approval");
         await refetchAllowance();
+        if (mission.type === DUOLINGO_XP_MISSION) {
+          setStatus("USDC approved. Review again to link Duolingo and create the pact.");
+          return;
+        }
       }
+
+      let baseline: BaselineEvidence = emptyBaselineEvidence;
+      if (mission.type === DUOLINGO_XP_MISSION) {
+        const result = await runReclaimProofV5({
+          walletAddress: address,
+          pactId: "0",
+          phase: "baseline",
+          intent: "create",
+          missionType: mission.type,
+          username: duolingoUsername.trim(),
+        }, setStatus);
+        if (!result.baseline) throw new Error("Duolingo baseline was not returned");
+        baseline = result.baseline;
+      }
+
       const latestBlock = await publicClient.getBlock({ blockTag: "latest" });
       const startsAt = scheduledStart(latestBlock.timestamp);
-      const missionConfigHash = keccak256(toBytes(`LOCK_IN:${template.id}:${template.requiredCompletions}/${template.durationDays}`));
       setStatus("Locking your pact on Monad…");
       const receipt = await writeWithGas({
         address: escrowAddress,
         abi: lockInAbi,
         functionName: "createPact",
-        args: [amount, template.durationDays, template.requiredCompletions, 2, startsAt, MONAD_CHECK_IN_MISSION, missionConfigHash],
+        args: [amount, dailyTarget, template.durationDays, template.requiredCompletions, 2, startsAt, mission.type, baseline],
       }, "create");
       const logs = parseEventLogs({ abi: lockInAbi, eventName: "PactCreated", logs: receipt.logs });
-      const pactId = logs[0]?.args.pactId;
-      if (pactId === undefined) throw new Error("PactCreated event not found");
-      router.push(`/pact/${pactId}`);
+      const id = logs[0]?.args.pactId;
+      if (id === undefined) throw new Error("PactCreated event not found");
+      router.push(`/pact/${id}`);
     } catch (error) {
       setStatus(friendlyError(error));
     } finally {
@@ -229,51 +212,42 @@ export function CreatePact() {
     }
   }
 
+  function chooseMission(id: MissionId) {
+    const next = MISSIONS.find((item) => item.id === id)!;
+    setMissionId(id);
+    setDailyTarget(next.defaultTarget);
+  }
+
   function review() {
     if (!address) return setStatus("Connect your wallet to create a pact.");
     if (chainId !== monad.id) return setStatus("Switch your wallet to Monad mainnet.");
     if (!creationEnabled) return setStatus("New pacts are paused for safety.");
     if (!entryAccepted) return setStatus("Accept the Rules to continue.");
+    if ((minStake !== undefined && amount < minStake) || (maxStake !== undefined && amount > maxStake)) return setStatus("Choose a stake from 0.1 to 1 USDC.");
     if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this pact.`);
+    if (mission.type === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) return setStatus("Enter your Duolingo username.");
     setStatus("");
     setReviewOpen(true);
   }
 
   return (
     <section className="create-card" id="create">
-      <div className="create-heading">
-        <div><span className="card-kicker">Create a crew challenge</span><h2>Build your pact</h2></div>
-        <span className="step-count">{step + 1} / 2</span>
-      </div>
-      <div className="step-track" aria-label={`Step ${step + 1} of 2`}>
-        {[0, 1].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`} aria-current={index === step ? "step" : undefined}/>) }
-      </div>
+      <div className="create-heading"><div><span className="card-kicker">CREATE A CHALLENGE</span><h2>Build your pact</h2></div><span className="step-count">{step + 1} / 3</span></div>
+      <div className="step-track" aria-label={`Step ${step + 1} of 3`}>{[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`}/>)}</div>
       <div className="form-stage">
-        {step === 0 && <fieldset className="form-field">
-          <legend><b>Pick your streak</b><span>Check in before the current 24-hour window closes.</span></legend>
-          <div className="segmented schedule-options">{PACT_TEMPLATES.map((item) => <button type="button" aria-pressed={durationDays === item.durationDays} className={durationDays === item.durationDays ? "active" : ""} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} CHECK-INS</small></button>)}</div>
-        </fieldset>}
-        {step === 1 && <fieldset className="form-field">
-          <legend><b>Your stake</b><span>Every player stakes the same amount.</span></legend>
-          <div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); const unavailable = maxStake !== undefined && option > maxStake; return <button type="button" aria-pressed={stakeInput === value} className={stakeInput === value ? "active" : ""} disabled={unavailable} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div>
-        </fieldset>}
+        {step === 0 && <fieldset className="form-field"><legend><b>Choose your mission</b><span>Fitness or learning. Each has its own proof.</span></legend><div className="mission-options">{MISSIONS.map((item) => <button type="button" className={missionId === item.id ? "active" : ""} onClick={() => chooseMission(item.id)} key={item.id}><strong>{item.name}</strong><span>{item.description}</span></button>)}</div></fieldset>}
+        {step === 1 && <fieldset className="form-field"><legend><b>Set the pace</b><span>{mission.name} · choose a daily target and duration.</span></legend><div className="segmented target-options">{mission.targets.map((item) => <button type="button" className={dailyTarget === item.value ? "active" : ""} onClick={() => setDailyTarget(item.value)} key={item.value}>{item.label}</button>)}</div><div className="segmented schedule-options">{PACT_TEMPLATES.map((item) => <button type="button" className={durationDays === item.durationDays ? "active" : ""} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} WINS</small></button>)}</div>{mission.type === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="duolingo-username">Duolingo username</label><input id="duolingo-username" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username" autoComplete="off"/><p>Set your Duolingo bio to <code>{ownershipCode}</code> before verifying. This proves the profile is yours.</p><a href="https://www.duolingo.com/settings/profile" target="_blank" rel="noreferrer">OPEN DUOLINGO SETTINGS ↗</a></div>}</fieldset>}
+        {step === 2 && <fieldset className="form-field"><legend><b>Your stake</b><span>Every player stakes the same amount.</span></legend><div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); return <button type="button" className={stakeInput === value ? "active" : ""} disabled={maxStake !== undefined && option > maxStake} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div></fieldset>}
       </div>
-      <div className="pact-summary"><strong>{template.requiredCompletions} check-ins in {durationDays} days</strong><span>{stakeInput} {symbol} each · 2+ players · starts in about 2 hours</span></div>
-      {step === 1 && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
-      <div className="stage-actions">
-        {step > 0 && <button className="secondary-button" type="button" onClick={() => setStep(0)}>BACK</button>}
-        {step === 0 ? <button className="lock-button" type="button" onClick={() => setStep(1)}>CONTINUE</button> : <button className="lock-button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW PACT</button>}
-      </div>
+      <div className="pact-summary"><strong>{mission.name} · {template.requiredCompletions}/{durationDays} days</strong><span>{mission.targets.find((item) => item.value === dailyTarget)?.label} · {stakeInput} {symbol} each</span></div>
+      {step === 2 && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
+      <div className="stage-actions">{step > 0 && <button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>}{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW PACT</button>}</div>
       {!creationEnabled && <p className="form-status safety-status" role="status">New pacts are temporarily paused for safety.</p>}
       {status && <p className="form-status" aria-live="polite">{status}</p>}
-      <ActionDialog open={reviewOpen} title="Lock in this pact?" eyebrow="Transaction review" confirmLabel={`Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
-        <dl className="review-list">
-          <div><dt>Challenge</dt><dd>{template.requiredCompletions} check-ins / {template.durationDays} days</dd></div>
-          <div><dt>Stake</dt><dd>{stakeInput} {symbol} per player</dd></div>
-          <div><dt>Join window</dt><dd>About 2 hours</dd></div>
-        </dl>
-        <p>Real USDC and gas are used on Monad mainnet. This unaudited beta proves only a wallet check-in, which software can automate—not a real-world activity. The 1 USDC cap is per pact.</p>
-        <Link className="dialog-link" href="/rules">Read the rules ↗</Link>
+      <ActionDialog open={reviewOpen} title="Lock in this pact?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
+        <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {mission.targets.find((item) => item.value === dailyTarget)?.label}</dd></div><div><dt>Schedule</dt><dd>{template.requiredCompletions} of {durationDays} days</dd></div><div><dt>Crew</dt><dd>2+ players · starts in about 2 hours</dd></div><div><dt>Stake</dt><dd>{stakeInput} {symbol} per player</dd></div></dl>
+        <p>{mission.type === DUOLINGO_XP_MISSION ? "Reclaim checks your wallet code and current XP before any stake enters the pact. Only XP earned after that baseline can count." : "Each completion requires a challenge-named GPS run from the same Strava account. Suspicious, manual, trainer, flagged, or implausible runs are rejected."}</p>
+        <p>Wallet gas is separate. If fewer than two players join, each participant can reclaim their full stake.</p>
       </ActionDialog>
     </section>
   );

@@ -1,0 +1,52 @@
+{
+  "providerId": "cdf8cb3b-2976-4413-ab2d-693ae5028380",
+  "version": "1.0.0",
+  "name": "Lock In Duolingo owned XP",
+  "status": "published-private",
+  "requestHash": "0xeee21aafba194b3d8e48a5a538d8920c69aac0924ab04c63a408571f8291f61a",
+  "loginUrl": "https://www.duolingo.com/settings/profile",
+  "description": "Proves a stable Duolingo profile id, username, wallet ownership code in the public bio, and cumulative XP in one HTTPS response.",
+  "securityModel": {
+    "accountOwnership": "Before proving, the wallet owner sets their Duolingo bio to the exact 128-bit LI-<32 HEX> code derived from their wallet.",
+    "baseline": "A fresh snapshot is accepted atomically with create/join and becomes the minimum consumed XP.",
+    "completion": "Only new totalXp above both the pact baseline and the globally consumed value can count.",
+    "antiReplay": "The identity and totalXp snapshot form a global nullifier; one XP range cannot settle multiple days or pacts.",
+    "knownLimit": "This proves control of a profile and XP credited by Duolingo, not human learning or the absence of account sharing/automation."
+  },
+  "requestData": [
+    {
+      "purpose": "Bind a wallet-controlled Duolingo profile and its cumulative XP in one response",
+      "url": "https://www.duolingo.com/2017-06-30/users?username={{duolingo_username}}",
+      "urlType": "TEMPLATE",
+      "method": "GET",
+      "responseMatches": [
+        { "type": "contains", "value": "\"id\":{{id}}" },
+        { "type": "contains", "value": "\"bio\":\"{{bio}}\"" },
+        { "type": "contains", "value": "\"username\":\"{{username}}\"" },
+        { "type": "contains", "value": "\"totalXp\":{{totalXp}}" }
+      ],
+      "responseRedactions": [
+        { "jsonPath": "$.users[0].id", "regex": "\"id\":(?<id>\\d+)" },
+        { "jsonPath": "$.users[0].bio", "regex": "\"bio\":\"(?<bio>LI-[0-9A-F]{32})\"" },
+        { "jsonPath": "$.users[0].username", "regex": "\"username\":\"(?<username>[A-Za-z0-9._-]+)\"" },
+        { "jsonPath": "$.users[0].totalXp", "regex": "\"totalXp\":(?<totalXp>\\d+)" }
+      ]
+    }
+  ],
+  "runtimePolicy": {
+    "bioMustEqual": "128-bit LI-<32 HEX> code derived from the proof-bound wallet",
+    "stableIdentityField": "id",
+    "metricField": "totalXp",
+    "metricMode": "monotonic delta after fresh atomic baseline",
+    "providerVersionMustEqual": "1.0.0",
+    "proofMaxAgeSeconds": 600
+  },
+  "publicationChecklist": {
+    "captureReplay": true,
+    "wrongProfileRejected": true,
+    "wrongBioRejected": true,
+    "baselineReplayRejectedOnchain": true,
+    "xpReuseRejectedOnchain": true,
+    "liveProofCanary": false
+  }
+}
