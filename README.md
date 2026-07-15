@@ -1,97 +1,117 @@
-# Lock In
+# Lock In V4
 
-Lock in. Verify it. Miss the target, and qualifying finishers share the forfeited stake.
+**Your word. Locked in.** Create a small-stake pact with friends, check in on Monad, and let the contract settle the pool.
 
-Lock In est une app d’engagement à mise plafonnée : un utilisateur verrouille au plus 1 USDC, réalise une mission réelle puis présente une preuve zkTLS. La surface consumer ne montre qu’une mission réellement utilisable, Strava GPS Run. Les intégrations sans preuve testée ne sont pas affichées.
+Lock In V4 is an invitation-only hackathon beta using real USDC on Monad mainnet. The contract caps each participant at **1 USDC per pact**. This is not a cumulative wallet cap: the same wallet can enter several pacts and expose more than 1 USDC in total. Network gas is separate and is never refunded by the pact.
 
-## État réel du développement
+## The proof, stated honestly
 
-La preuve Strava v2 est publiée et son moteur de décision est implémenté :
+The only active V4 mission is a **Monad-native wallet check-in**.
 
-- provider Reclaim privé `f3ec8292-d8f3-487c-a79d-f53f482f88e2`, version verrouillée `1.0.2` ;
-- preuve du compte Strava connecté, de l’activité recherchée par challenge, de `has_latlng`, `trainer`, `flagged` et des métriques de mouvement ;
-- contrôles du titre/challenge, sport `Run`, fenêtre temporelle, distance entière en mètres, GPS présent, trainer absent, activité non signalée et cinématique plausible ;
-- liaison au portefeuille, pacte et session Reclaim initiée par Lock In ;
-- vérification de la configuration Reclaim exacte, TEE obligatoire par défaut, fraîcheur de dix minutes ;
-- validation SDK exacte + TEE attestée au contrat par un signataire dédié, en complément des signatures Reclaim onchain ;
-- nullifier d’activité calculé par le serveur puis imposé globalement onchain contre le rejeu ;
-- tests TypeScript et Solidity couvrant activité manuelle, trainer, signalement Strava, cinématique impossible, mauvais sport/challenge, date/distance, autre wallet, mauvais provider, attestation absente, rejeu et Sybil.
+For each eligible pact day, the joined wallet calls `checkIn(pactId, dayIndex)`. The contract proves only that:
 
-La fixture Strava créée pendant le spike est manuelle et renvoie `has_latlng=false`. Elle sert désormais de cas négatif : la v2 la rejette. Elle n’est pas présentée comme une course réelle.
+- the caller is a joined wallet;
+- the pact reached its required participant count;
+- the transaction concerns the current pact day;
+- that wallet has not already checked in for that pact and day.
 
-Le contrat V3, l’API et l’interface responsive sont implémentés et déployés sur Monad mainnet à l’adresse `0x718faf8969e6924333d28450eaf9df6356f63ba1`. Son source, ses dépendances, sa configuration de compilation et ses arguments constructeur ont obtenu un `exact_match` Sourcify le 15 juillet 2026. `LockInEscrow.sol` couvre les programmes 1/3/7/14/30 jours ; l’UI consumer concentre le parcours compétitif sur 3/7/14/30 jours. Le contrat sépare durée et nombre de runs requis, impose le plafond immuable de 1 USDC **par participation**, annule les pools sous-remplis, lie une identité Strava unique à chaque participant du pool et conserve les quatre preuves Reclaim vérifiées onchain.
+The transaction can be sent manually or automated by software. It does **not** prove who controlled the wallet, exercise, learning, attendance, location, a social post, or any other physical or mental activity. Product copy and support must never imply otherwise.
 
-L’interface anglaise expose désormais deux entrées explicites, Start et Join, une création en trois décisions, les challenges ouverts réellement lus sur Monad, les pactes du wallet reconstruits depuis les événements, une room sociale avec crew et progression par participant, l’action du jour et un partage enrichi. Les notices de confidentialité ont quitté les écrans permanents : elles apparaissent au moment exact de la transaction et avant Reclaim. Le runtime Vercel n’a aucune vulnérabilité connue selon `pnpm audit --prod`, les dépendances sont épinglées et les transactions utilisent une estimation de gas assortie d’une marge Monad limitée à 5 %. Cette version est publiable comme bêta hackathon contrainte ; une ouverture consumer large exige encore le vrai parcours GPS E2E à deux wallets, rate limiting/monitoring, identité opérateur et revue légale, puis l’architecture privacy V4. `LockInReclaimSpike.sol` reste uniquement l’ancien spike minimal et n’est pas déployé par défaut.
+Strava and Reclaim experiments remain in the repository as V3 development history, but they are not an active V4 mission and do not decide V4 completion. No Twitter/X, Duolingo, step-count, or other external-provider challenge is active.
 
-## Flux V3
+## Product model
 
-1. Lock In crée un programme standard 1/3/7/14/30 jours, son objectif de complétions, sa distance et un challenge aléatoire `LI-…`.
-2. Pour chaque jour crédité, le backend crée une session Reclaim exactement sur le provider `1.0.2`, liée à `pactId:dayIndex`.
-3. Chaque jour reçoit un code unique et déterministe, par exemple `LI-…D01`, `LI-…D02`, jusqu’à `D30`. L’utilisateur donne exactement ce titre à l’activité ; le provider peut ainsi sélectionner chaque run même lors d’une preuve tardive, sans publier de titre libre.
-4. Reclaim lit quatre réponses authentifiées sans transmettre les identifiants de connexion ; les champs minimaux de l’activité parviennent temporairement au backend de vérification.
-5. Le backend prévalide la version publiée, le TEE, le contexte et les règles métier, puis signe une attestation de cinq minutes sans conserver la preuve brute côté serveur.
-6. Le portefeuille publie ensuite les preuves transformées dans le calldata Monad : leurs champs Strava minimisés sont publics et permanents, mais aucun tracé GPS détaillé ni identifiant de connexion n’est inclus.
-7. Le portefeuille soumet les quatre preuves et cette attestation ; le contrat exige les deux et revérifie signatures Reclaim, hashes provider, contexte, date, distance, GPS et nullifier.
+The consumer interface offers fixed 3, 7, 14, and 30-day templates. Every pact publishes its duration, required number of check-ins, minimum participant count, start time, equal stake, mission type, and configuration hash before joining closes.
 
-Le détail exact des garanties et des attaques résiduelles est dans [SECURITY.md](SECURITY.md). La politique de minimisation est dans [PRIVACY.md](PRIVACY.md).
+During each fixed 24-hour pact day, a participant can record at most one native check-in. Early, late, duplicate, outsider, and underfilled-pact submissions revert. The check-in event contains the wallet, pact, day, a deterministic event identifier, and the block timestamp.
 
-## Configuration locale
+Settlement is permissionless after the pact ends:
 
-Copier `.env.example` vers `.env`, puis renseigner les identifiants Reclaim et l’adresse de test. `SECRET`, les clés privées, `sessions/` et `proofs/` sont ignorés par Git et ne doivent jamais être exposés au navigateur.
+- with one or more finishers, finishers recover their stakes and split the non-finishers' stakes equally through the final pool calculation;
+- if everyone finishes, everyone receives their stake back;
+- if nobody finishes, every participant can recover their stake;
+- underfilled and cancelled pacts refund every participant;
+- each eligible wallet must claim its own payout and pay the associated gas.
+
+See [`docs/product-model-v4.md`](docs/product-model-v4.md) for the exact semantics, examples, threat model, and admission rules for future missions.
+
+## Contract and operational controls
+
+[`contracts/LockInEscrowV4.sol`](contracts/LockInEscrowV4.sol) is a fixed-token social escrow for Monad-native check-ins. Its main invariants are:
+
+- native Monad USDC with six decimals;
+- immutable 1,000,000 atomic-unit maximum stake;
+- durations from 3 to 30 days;
+- 2 to 100 required participants;
+- one completion per wallet, pact, and day;
+- no protocol fee or operator withdrawal path;
+- permissionless finalization and self-service claims;
+- creator cancellation only before the start;
+- owner emergency cancellation only into the participant-refund path.
+
+The active V4 deployment is `0xF41AD662Af2240b387eCC96eC1Faafe6c3Ae9DF4` on Monad mainnet (deployment block `87810767`). Its source, compiler configuration, dependencies, bytecode, and constructor argument have a Sourcify `exact_match`. The official Circle USDC token is `0x754704Bc059F8C67012fEd69BC8A327a5aafb603`.
+
+The owner can pause contract creation, joining, and check-ins separately. Server-side `NEW_PACTS_ENABLED`, `JOIN_ENABLED`, and `CHECK_INS_ENABLED` flags add a fail-closed product gate. A website flag does not stop direct contract calls, so incidents may require the matching onchain pause. Settlement and claims deliberately have no product shutdown flag.
+
+The V4 contract has **not received an independent security audit**. Tests reduce known implementation risk but cannot eliminate smart-contract, wallet, token, RPC, or chain failure. The private beta, adult-only rule, low cap, and absence of a protocol fee do not guarantee legality, regulatory approval, reimbursement, or an exemption in any jurisdiction. Nothing in this repository is legal advice.
+
+## Privacy model
+
+V4 has no product user account, activity profile, or external-service credential flow. It does not request health, fitness, GPS, learning, social-media, or biometric data.
+
+Monad still makes the financial and participation graph public. Wallet addresses, pact configuration and membership, stake and transfer amounts, day indexes, event identifiers, timestamps, cancellations, settlement, claims, transaction hashes, and block metadata are public and effectively permanent. The contract stores a configuration hash rather than raw mission/profile content.
+
+The web app does not maintain a product user database. Hosting, RPC, wallet, explorer, email, and any later-disclosed analytics provider may retain ordinary technical logs under their own policies. Read [`PRIVACY.md`](PRIVACY.md) and the in-product `/privacy` notice before inviting testers.
+
+## Local development
+
+Requirements: Node.js 22+, pnpm 10+, Foundry, and a Monad mainnet RPC for chain checks.
 
 ```bash
+cp .env.example .env
 pnpm install
-pnpm exec tsc --noEmit
+pnpm exec tsc --noEmit --incremental false
 pnpm test
 pnpm build
 ```
 
-Créer ensuite une session. Sans `STRAVA_CHALLENGE`, le script génère un challenge cryptographiquement aléatoire :
+The V4 environment starts closed:
 
-```bash
-pnpm proof:request
+```dotenv
+NEW_PACTS_ENABLED=false
+JOIN_ENABLED=false
+CHECK_INS_ENABLED=false
 ```
 
-Le résultat indique le code journalier exact à placer dans le titre de la nouvelle course GPS. Après le flux Reclaim, placer la réponse JSON sous `proofs/` puis vérifier :
+Configure `NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS` only with the verified V4 deployment. Never reuse the V3 escrow address. Keep deployer keys out of Vercel and never expose secrets through a `NEXT_PUBLIC_` variable.
 
-```bash
-pnpm proof:inspect -- proofs/strava-v2.json
-```
+`/api/health` is the release gate for the web app. It checks chain ID 143, V4 bytecode and version, native Monad USDC, the immutable 1 USDC cap, contract pause state, explicit product-flag configuration, and privacy contact. It returns effective actions without returning environment values, private RPC URLs, or secrets.
 
-Le deuxième passage du même fichier est rejeté comme rejeu. `REQUIRE_TEE_ATTESTATION=false` existe uniquement pour examiner d’anciennes fixtures MCP ; il ne doit jamais être utilisé pour un règlement.
+## Private-beta release gate
 
-Le prototype verrouille l’USDC natif Circle sur Monad (`0x754704Bc059F8C67012fEd69BC8A327a5aafb603`), contrôlé onchain comme `USDC` à six décimales. Renseigner le vérifieur Reclaim déployé, le signataire dédié et le plafond, puis déployer l’escrow :
+Do not accept a real-funds tester until all items below are complete:
 
-```bash
-pnpm build:contracts
-pnpm deploy:reclaim
-# Reporter l’adresse `reclaim` dans RECLAIM_CONTRACT_ADDRESS.
-pnpm deploy:escrow
-# Reporter l’adresse `escrow` dans NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS.
-pnpm provider:check
-pnpm production:check
-```
+1. Typecheck, policy tests, Solidity tests, and the production build pass from the release commit.
+2. V4 source and constructor arguments are verified on a public explorer.
+3. Two internal wallets complete create, join, every required check-in, finalization, and claims with 0.1 USDC.
+4. A separate rehearsal verifies underfilled cancellation and full participant refunds.
+5. Rules, privacy, support email, contract/token addresses, and explorer links match production.
+6. `/api/health` monitoring and an at-risk-pact ledger are active.
+7. The owner wallet can execute a narrowly scoped emergency cancellation and the team has rehearsed the incident procedure.
+8. Every invited adult understands that the check-in is automatable, proves no offchain activity, uses real funds, and incurs non-refundable gas.
 
-`MAX_STAKE_ATOMIC_UNITS=1000000` impose un maximum de 1 USDC. Source primaire : [registre officiel Circle des adresses USDC](https://developers.circle.com/stablecoins/usdc-contract-addresses).
+Use [`docs/tester-runbook.md`](docs/tester-runbook.md) for controlled opening, pause decisions, monitoring, incident response, settlement, refunds, and cohort closure. Rules are in [`app/rules/page.tsx`](app/rules/page.tsx); the support/privacy contact is **mookipstore@hotmail.com**.
 
-## Provider et vie privée
+## Repository map
 
-La recette relue depuis Reclaim est conservée dans `providers/strava-date-distance.json`. Lock In ne stocke ni mot de passe/cookie Strava, ni token Strava, ni tracé GPS détaillé. L’API web est stateless : sa politique tient dans un token HMAC de vingt minutes et le serveur ne conserve pas la preuve après la réponse. Pour la vérification directe onchain, le portefeuille publie néanmoins les preuves transformées et leurs champs Strava minimisés dans le calldata public et permanent. Le CLI local garde seulement ses fixtures ignorées par Git.
+- `contracts/LockInEscrowV4.sol` — active V4 escrow semantics.
+- `src/lock-in-abi.ts` — consumer ABI and Monad configuration.
+- `src/missions.ts` — fixed V4 pact templates.
+- `src/product-flags.ts` — fail-closed web action gates.
+- `app/api/health/route.ts` — non-secret production readiness signal.
+- `docs/product-model-v4.md` — product guarantees and non-guarantees.
+- `docs/tester-runbook.md` — real-funds private-beta operations.
+- `scripts/cancel-v4-pact.ts` — simulated, explicit-confirmation incident refund procedure.
+- `PRIVACY.md` — complete privacy notice.
 
-L’ouverture au-delà de la bêta expérimentale exige de compléter l’identité juridique du responsable de traitement et la revue locale du modèle de mise ; le contact opérationnel est déjà publié dans `PRIVACY.md`.
-
-## Interface et API
-
-`pnpm dev` lance la home, la page publique `/pact/[id]`, les trois routes stateless `/api/reclaim/*` et `/api/health`. Il faut configurer `NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS`, les secrets Reclaim, `SESSION_SIGNING_SECRET`, `EVIDENCE_SIGNER_PRIVATE_KEY`, `NEXT_PUBLIC_PRIVACY_EMAIL` et l’URL publique du dépôt. Aucun secret ne doit utiliser le préfixe `NEXT_PUBLIC_`.
-
-Le polling Reclaim est exécuté dans le navigateur par requêtes courtes. Avant une navigation mobile dans l’onglet courant, la session signée est conservée dans `sessionStorage`, liée au wallet/pact/jour et reprise au retour pendant sa fenêtre de vingt minutes ; le flux popup desktop reste inchangé. Les routes Node Vercel créent la session, lisent son état et vérifient la preuve ; aucune base ni processus long n’est nécessaire. Un backend Render séparé n’est donc pas requis pour le flux web V3 actuel. Les décisions produit et leurs sources sont consignées dans [`docs/product-ux-v4.md`](docs/product-ux-v4.md).
-
-## Mise en production
-
-1. Utiliser une clé de déploiement Monad distincte et approvisionnée uniquement du MON nécessaire.
-2. Générer une clé EIP-712 dédiée au validator et un secret HMAC d’au moins 32 caractères.
-3. Déployer le vérifieur Reclaim puis `LockInEscrow`, vérifier le bytecode sur les explorateurs et exécuter `pnpm production:check`.
-4. Publier le dépôt, relier le projet Vercel et configurer les variables pour Production et Preview.
-5. Déployer avec `vercel deploy --prod`, contrôler `/api/health`, puis réaliser le parcours complet avec une nouvelle activité Strava GPS.
-
-Les routes limitent les corps JSON, refusent les requêtes navigateur cross-origin et vérifient que la clé validator Vercel correspond au signer du contrat avant de signer. Elles appliquent aussi, par IP et par instance, des fenêtres anti-abus distinctes pour créer une session, la suivre et la vérifier. Cette barrière mémoire est volontairement best-effort sur Vercel : une ouverture à grande échelle demandera Vercel Firewall ou un store distribué. La page pacte présente une disclosure contextuelle juste avant d’ouvrir Reclaim ; elle ne transforme pas l’information RGPD en faux consentement contractuel.
+Legacy V3 contracts, provider recipes, scripts, API routes, fixtures, and tests are retained only for audit history and regression work. Their presence in the repository is not a claim that their missions are available in V4.

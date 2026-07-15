@@ -28,7 +28,7 @@ export function PactHub() {
     <section className="pact-hub" id="play" aria-labelledby="pact-hub-title">
       <header className="hub-heading">
         <div><span className="eyebrow"><span>PLAY</span> Your crew, your terms</span><h2 id="pact-hub-title">Ready to lock in?</h2></div>
-        <p>Create a running pact or join one already forming on Monad.</p>
+        <p>Create a competitive streak or join one already forming on Monad.</p>
       </header>
       <div className="hub-tabs" role="tablist" aria-label="Choose how to start">
         <button type="button" role="tab" id="create-tab" aria-selected={view === "create"} aria-controls="create-panel" onClick={() => choose("create")}>START A PACT</button>

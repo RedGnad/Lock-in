@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 type ActionDialogProps = {
   open: boolean;
@@ -23,16 +23,33 @@ export function ActionDialog({
   onConfirm,
   children,
 }: ActionDialogProps) {
+  const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!open) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && !busy) onClose();
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(dialog.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) || []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener("keydown", onKeyDown);
     document.body.classList.add("dialog-open");
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.body.classList.remove("dialog-open");
+      previousFocus?.focus();
     };
   }, [busy, onClose, open]);
 
@@ -41,6 +58,7 @@ export function ActionDialog({
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={() => !busy && onClose()}>
       <section
+        ref={dialog}
         className="action-dialog"
         role="dialog"
         aria-modal="true"

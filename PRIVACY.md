@@ -1,46 +1,61 @@
-# Politique de confidentialité — Lock In (prototype hackathon)
+# Politique de confidentialité — Lock In V4
 
-Version du 14 juillet 2026.
+Version du 15 juillet 2026. Cette politique couvre la bêta privée, sur invitation, de Lock In V4. Le contact public pour les demandes relatives à la confidentialité, les incidents et le support bêta est **mookipstore@hotmail.com**.
 
-Cette politique décrit le prototype Lock In limité à des engagements symboliques d’au plus 1 USD. Le contact public du responsable du prototype est **mookipstore@hotmail.com**.
+## Limite fondamentale de la mission
 
-## Données traitées
+La seule mission active de V4 est un **check-in natif sur Monad**. Pendant la journée admissible d’un pacte, le portefeuille participant appelle le contrat. Le contrat vérifie seulement que l’appel provient de ce portefeuille, concerne le bon pacte et la bonne journée, arrive dans la fenêtre prévue et n’a pas déjà été compté.
 
-Pour vérifier un pacte Strava, Lock In traite uniquement :
+Ce check-in peut être envoyé manuellement ou automatisé par un logiciel. Il ne prouve ni l’identité d’une personne, ni une présence, ni un déplacement, ni un exercice physique, ni un apprentissage, ni aucune autre activité physique ou mentale. V4 ne connecte et n’utilise ni Strava, ni Reclaim, ni compte social pour déterminer une réussite.
 
-- l’adresse de portefeuille, l’identifiant du pacte et son challenge aléatoire ;
-- l’identifiant de session Reclaim ;
-- l’identifiant du compte athlète et de l’activité Strava ;
-- le titre, le type de sport, l’heure de départ et la distance en mètres ;
-- les booléens Strava `has_latlng`, `trainer` et `flagged` ;
-- les temps de mouvement/écoulé et le dénivelé nécessaires aux contrôles de plausibilité ;
-- le résultat de validation, un nullifier cryptographique et, après déploiement, la transaction onchain.
+## Données traitées par le produit
 
-Lock In ne demande, ne reçoit et ne stocke ni mot de passe Strava, ni cookie Strava, ni jeton d’accès Strava, ni tracé GPS détaillé. La connexion s’effectue dans le flux isolé de Reclaim.
+Lock In V4 ne crée pas de compte utilisateur ni de profil d’activité et ne demande aucune donnée de santé, de fitness, d’apprentissage, de localisation, de biométrie ou de réseau social.
 
-Pour permettre la vérification onchain, le portefeuille soumet toutefois les preuves Reclaim transformées dans le calldata d’une transaction Monad. Le contexte public de ces preuves contient le marqueur du compte athlète, l’identifiant et le titre de l’activité, le sport, l’heure de départ, la distance, les booléens GPS/trainer/flag, les temps de mouvement et écoulé, le dénivelé, le pacte et les métadonnées de preuve. Ces données deviennent publiques et permanentes. Les réglages de confidentialité Strava ne masquent pas la copie publiée dans le calldata.
+Le site lit :
 
-## Finalités et base
+- l’adresse publique du portefeuille connecté ;
+- les pacts, événements, soldes et transactions déjà publics sur Monad ;
+- l’état nécessaire pour préparer les transactions expressément demandées par l’utilisateur.
 
-Ces données servent exclusivement à créer le pacte, vérifier que ses conditions sont satisfaites, empêcher le rejeu d’une preuve, régler l’engagement et traiter un éventuel incident. Le traitement est nécessaire à l’exécution du service demandé par l’utilisateur ; le consentement explicite est demandé avant l’ouverture du flux Strava/Reclaim.
+Si une personne écrit au support, Lock In traite les informations qu’elle transmet volontairement, par exemple son adresse publique, un identifiant de pacte, un hash de transaction et son message. Il ne faut jamais transmettre de phrase de récupération, clé privée, signature réutilisable, donnée de santé ou autre donnée sensible au support.
 
-## Conservation et minimisation
+## Données publiques et permanentes
 
-- L’API web encode la politique de session dans un token HMAC qui expire après vingt minutes et n’est pas inscrit dans une base utilisateur.
-- La preuve brute est vérifiée en mémoire et n’est pas conservée par le backend applicatif.
-- Après acceptation, le backend web ne conserve pas l’identifiant de session ni la preuve ; le bitmap et le nullifier onchain empêchent la réutilisation de l’activité.
-- Les preuves transformées et leurs champs minimisés sont ensuite publiés par le portefeuille dans le calldata Monad. L’adresse, le pacte, les champs listés ci-dessus, le nullifier et la transaction sont publics et ne peuvent pas être supprimés par Lock In.
+Les transactions, transferts de jetons et événements du contrat rendent publics :
 
-Les scripts CLI de développement peuvent créer des fichiers locaux sous `sessions/` et `proofs/`. Ils sont ignorés par Git, automatiquement élagués pour les sessions et doivent être supprimés après les tests.
+- les adresses de portefeuille et la participation à un pacte ;
+- l’identifiant et la configuration du pacte, dont la mise, le calendrier, l’objectif, le minimum de participants, le type de mission et un hash de configuration ;
+- l’index de journée de chaque check-in, son identifiant d’événement et son horodatage ;
+- les annulations, finalisations, réclamations, montants versés et soldes restants ;
+- les hashes de transaction et métadonnées ordinaires des blocs Monad.
 
-## Destinataires et sécurité
+Le hash de configuration est un engagement technique, pas un profil ni le contenu brut d’une mission. Ces enregistrements onchain sont consultables et copiables par toute personne. Lock In ne peut ni les modifier ni les effacer après publication.
 
-Les données sont traitées par Lock In et par les services strictement nécessaires : Reclaim pour la preuve zkTLS, Strava comme source déclarative et la blockchain choisie pour le règlement. Les secrets applicatifs restent côté serveur. Les versions de provider sont verrouillées, les sessions sont liées au portefeuille et au pacte, et chaque session/nullifier n’est accepté qu’une fois.
+## Données hors chaîne et conservation
 
-## Droits
+Lock In V4 ne maintient pas de base de profils utilisateurs. L’hébergeur, les fournisseurs RPC et explorateurs Monad, le portefeuille, le fournisseur d’email et tout outil de mesure qui serait ultérieurement déclaré peuvent traiter des données techniques telles que l’adresse IP, l’heure d’une requête, le type d’appareil et des journaux, selon leurs propres politiques.
 
-Selon la juridiction applicable, l’utilisateur peut demander l’accès, la rectification, l’effacement ou la limitation des données hors chaîne, ainsi que s’opposer au traitement, via l’adresse affichée sur `/privacy` et configurée dans `NEXT_PUBLIC_PRIVACY_EMAIL`. Il peut également saisir son autorité locale de protection des données. Les données déjà inscrites sur une blockchain publique ne peuvent matériellement pas être effacées ; Lock In peut seulement supprimer ses copies hors chaîne.
+Les messages de support sont conservés uniquement le temps nécessaire pour répondre, sécuriser la bêta, satisfaire une obligation applicable ou résoudre un incident affectant des fonds. Lock In ne vend pas de profil utilisateur.
 
-## Enfants et évolution
+## Finalités
 
-Le prototype n’est pas destiné aux mineurs. Toute extension à Duolingo ou à un nouveau fournisseur fera l’objet d’une analyse séparée des données et d’une mise à jour de cette politique avant activation.
+Les données sont traitées pour :
+
+- afficher l’état public des pacts ;
+- préparer les transactions choisies par l’utilisateur ;
+- exploiter et sécuriser la bêta privée ;
+- comptabiliser les mises, remboursements et paiements ;
+- répondre au support et enquêter sur un incident.
+
+Les prestataires pertinents peuvent inclure Vercel, les services RPC et explorateurs Monad, le fournisseur du portefeuille, le contrat USDC de Circle et le fournisseur d’email configuré. Lock In est indépendant de ces services, qui appliquent aussi leurs propres conditions et politiques.
+
+## Choix et droits
+
+Déconnecter le portefeuille empêche le site de continuer à le lire via la connexion active, mais ne supprime aucun historique public. Selon le droit applicable, une personne peut demander l’accès, la rectification, l’effacement, la limitation ou l’opposition concernant les informations hors chaîne contrôlées par Lock In en écrivant à **mookipstore@hotmail.com**. Elle peut également contacter son autorité locale de protection des données.
+
+Les données déjà publiées sur Monad ne peuvent pas être effacées ou retirées par Lock In. Le caractère privé de la bêta, la faible mise et cette politique ne constituent ni un avis juridique, ni une garantie de conformité ou d’exemption dans une juridiction donnée.
+
+## Mineurs et évolution
+
+La bêta est réservée aux personnes âgées d’au moins 18 ans. Avant d’activer une mission reposant sur une plateforme externe, Lock In devra documenter exactement ce que cette source permet de prouver, les possibilités d’automatisation et de fraude, les données traitées, les conditions de la plateforme et les nouvelles informations à fournir aux utilisateurs.

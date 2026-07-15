@@ -24,24 +24,16 @@ function deployerPrivateKey(): Hex {
   const raw = process.env.DEPLOYER_PRIVATE_KEY?.trim() || process.env.PRIVATE_KEY?.trim();
   if (!raw) throw new Error("Missing DEPLOYER_PRIVATE_KEY or PRIVATE_KEY in .env");
   const value = raw.startsWith("0x") ? raw : `0x${raw}`;
-  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
-    throw new Error("Deployment private key must be a 32-byte hex value");
-  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error("Deployment private key must be a 32-byte hex value");
   return value as Hex;
 }
 
 const rpcUrl = process.env.MONAD_RPC_URL?.trim() || "https://rpc.monad.xyz";
 const expectedChainId = Number(process.env.MONAD_CHAIN_ID?.trim() || "143");
-if (expectedChainId !== 143) throw new Error("Lock In hackathon deployment is pinned to Monad chain ID 143");
+if (expectedChainId !== 143) throw new Error("Lock In is pinned to Monad mainnet chain ID 143");
 
 const token = required("STAKE_TOKEN_ADDRESS");
-const reclaim = required("RECLAIM_CONTRACT_ADDRESS");
-const evidenceSigner = required("EVIDENCE_SIGNER_ADDRESS");
-if (!isAddress(token) || !isAddress(reclaim) || !isAddress(evidenceSigner)) {
-  throw new Error("STAKE_TOKEN_ADDRESS, RECLAIM_CONTRACT_ADDRESS and EVIDENCE_SIGNER_ADDRESS must be valid addresses");
-}
-const maxStake = BigInt(required("MAX_STAKE_ATOMIC_UNITS"));
-if (maxStake <= 0n) throw new Error("MAX_STAKE_ATOMIC_UNITS must be positive");
+if (!isAddress(token)) throw new Error("STAKE_TOKEN_ADDRESS must be a valid address");
 
 const chain = defineChain({
   id: expectedChainId,
@@ -53,40 +45,32 @@ const account = privateKeyToAccount(deployerPrivateKey());
 const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
 const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) });
 const actualChainId = await publicClient.getChainId();
-if (actualChainId !== expectedChainId) {
-  throw new Error(`Refusing deployment: RPC chain ID is ${actualChainId}`);
-}
+if (actualChainId !== expectedChainId) throw new Error(`Refusing deployment: RPC chain ID is ${actualChainId}`);
 
 const artifact = JSON.parse(
-  await readFile("out/LockInEscrow.sol/LockInEscrow.json", "utf8"),
+  await readFile("out/LockInEscrowV4.sol/LockInEscrowV4.json", "utf8"),
 ) as { abi: Abi; bytecode: { object: Hex } };
-const args = [getAddress(token), getAddress(reclaim), getAddress(evidenceSigner), maxStake] as const;
-const deploymentData = encodeDeployData({
-  abi: artifact.abi,
-  bytecode: artifact.bytecode.object,
-  args,
-} as never);
+const args = [getAddress(token)] as const;
+const deploymentData = encodeDeployData({ abi: artifact.abi, bytecode: artifact.bytecode.object, args } as never);
 const gasEstimate = await publicClient.estimateGas({ account, data: deploymentData });
 const gasWithMargin = addMonadGasBuffer(gasEstimate);
-const dryRun = ["1", "true"].includes((process.env.DRY_RUN || "").toLowerCase());
+const [balance, gasPrice] = await Promise.all([publicClient.getBalance({ address: account.address }), publicClient.getGasPrice()]);
+const estimatedMaxFee = gasWithMargin * gasPrice;
+if (balance < estimatedMaxFee) throw new Error("Deployer does not have enough MON for the deployment gas limit");
 
+const dryRun = ["1", "true"].includes((process.env.DRY_RUN || "").toLowerCase());
 if (dryRun) {
-  const [balance, gasPrice] = await Promise.all([
-    publicClient.getBalance({ address: account.address }),
-    publicClient.getGasPrice(),
-  ]);
   console.log(JSON.stringify({
     dryRun: true,
     chainId: actualChainId,
     deployer: account.address,
     deployerBalanceWei: balance.toString(),
     stakeToken: getAddress(token),
-    reclaim: getAddress(reclaim),
-    evidenceSigner: getAddress(evidenceSigner),
-    maxStakeAtomicUnits: maxStake.toString(),
+    contractVersion: 4,
+    maxStakeAtomicUnits: "1000000",
     gasEstimate: gasEstimate.toString(),
     gasLimit: gasWithMargin.toString(),
-    estimatedMaxFeeWei: (gasWithMargin * gasPrice).toString(),
+    estimatedMaxFeeWei: estimatedMaxFee.toString(),
   }, null, 2));
 } else {
   const deploymentHash = await walletClient.deployContract({
@@ -102,11 +86,12 @@ if (dryRun) {
   console.log(JSON.stringify({
     chainId: actualChainId,
     deployer: account.address,
+    owner: account.address,
     stakeToken: getAddress(token),
-    reclaim: getAddress(reclaim),
-    evidenceSigner: getAddress(evidenceSigner),
-    maxStakeAtomicUnits: maxStake.toString(),
+    contractVersion: 4,
+    maxStakeAtomicUnits: "1000000",
     escrow: receipt.contractAddress,
+    deploymentBlock: receipt.blockNumber.toString(),
     deploymentTx: deploymentHash,
   }, null, 2));
 }

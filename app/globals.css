@@ -52,6 +52,12 @@ a { color: inherit; }
 .wallet-button:hover { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
 .wallet-button.connected { color: var(--paper); background: var(--ink); box-shadow: none; }
 .wallet-button.warning { color: var(--ink); background: var(--lime); }
+.wallet-control { position: relative; }
+.wallet-button.connected span { margin-left: 5px; color: var(--lime); }
+.wallet-menu { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: 210px; padding: 7px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 5px 5px 0 var(--ink); }
+.wallet-menu button, .wallet-menu a { width: 100%; min-height: 38px; padding: 9px 10px; display: flex; align-items: center; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; cursor: pointer; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-decoration: none; }
+.wallet-menu button:last-child { border-bottom: 0; color: var(--acid); }
+.wallet-menu button:hover, .wallet-menu a:hover { background: #e9e5db; }
 
 .hero {
   position: relative;
@@ -104,7 +110,6 @@ a { color: inherit; }
 }
 .primary-link { color: white; background: var(--acid); box-shadow: 5px 5px 0 var(--ink); }
 .secondary-link { background: transparent; }
-.beta-note { display: block; margin-top: 26px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .hero-mark { position: relative; width: min(34vw, 470px); aspect-ratio: 1; justify-self: center; display: grid; place-items: center; }
 .orbit { position: absolute; inset: 5%; border: 2px solid var(--ink); border-radius: 50%; }
 .orbit::before, .orbit::after { content: ""; position: absolute; width: 14px; height: 14px; border: 2px solid var(--ink); border-radius: 50%; background: var(--acid); }
@@ -344,7 +349,6 @@ footer div { display: flex; gap: 22px; }
   .hero h1 { margin: 36px 0 26px; font-size: clamp(54px, 17vw, 72px); }
   .hero-actions { align-items: stretch; flex-direction: column; }
   .primary-link, .secondary-link { width: 100%; }
-  .beta-note { font-size: 10px; line-height: 1.5; }
   .proof-strip { padding: 0 13px; justify-content: space-between; font-size: 8px; }
   .pact-hub { padding: 54px 14px; }
   .hub-heading h2 { font-size: 42px; }

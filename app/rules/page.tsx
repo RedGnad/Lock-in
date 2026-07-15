@@ -1,16 +1,48 @@
 export default function RulesPage() {
   return (
     <main className="legal-page">
-      <p className="eyebrow"><span>BETA</span> Experimental hackathon rules · July 14, 2026</p>
-      <h1>Clear rules.<br/><em>Real limits.</em></h1>
-      <section><h2>Eligibility</h2><p>Lock In is an experimental public beta for adults aged 18 or older. Do not participate where a stake-based accountability contest is restricted or prohibited. Access to the website does not establish local eligibility.</p></section>
-      <section><h2>Stake limit</h2><p>Each participant deposits the same amount into a pact, capped by the contract at 1 USDC. Lock In currently charges no protocol fee. Network fees are separate and are never part of the prize pool.</p></section>
-      <section><h2>Pool outcome</h2><p>Participants who reach the published completion target split the pact pool. If every participant succeeds, each receives their stake back. If nobody succeeds, all participants may recover their stake. An underfilled pact is cancelled and refundable.</p></section>
-      <section><h2>Proof rules</h2><p>Only one qualifying activity can count in each fixed 24-hour pact day, starting at the displayed UTC time. A Strava record must use that day&apos;s exact code (prefix plus `D01`–`D30`), meet the distance, be a Run with GPS, not be trainer-tagged or Strava-flagged, average between 0.5 and 9 m/s while moving, and keep elapsed time within four times moving time plus 15 minutes. Past eligible days can be proved until the displayed proof deadline. One Strava identity cannot back multiple wallets in the same pact, and one activity cannot settle twice.</p></section>
-      <section><h2>Onchain data</h2><p>The transformed Reclaim proofs and the required Strava fields listed in the privacy notice are submitted in public Monad transaction calldata. They remain permanently accessible even if the source activity is private or later deleted. Detailed GPS routes and Strava credentials are not included.</p></section>
-      <section><h2>Residual risk</h2><p>zkTLS proves what an authenticated service returned; it does not make GPS spoofing, account sharing, bots, compromised devices, or service errors impossible. The contract owner may cancel a beta pact so participants can recover stakes when a provider or verifier incident makes fair settlement unreliable.</p></section>
-      <section><h2>Admin powers</h2><p>The contract owner can cancel an unsettled pact and rotate the Lock In evidence signer. The owner cannot withdraw pact funds or change the immutable 1 USDC cap, token, Reclaim verifier, provider hashes, or payout formula. Cancellation still requires an onchain finalization and claim; network gas is never refunded.</p></section>
-      <section><h2>Third parties</h2><p>Lock In is independent from Strava, Reclaim, Circle, and Monad. Their names identify external services or infrastructure and do not imply sponsorship or endorsement.</p></section>
+      <p className="eyebrow"><span>PRIVATE BETA</span> Updated July 15, 2026</p>
+      <h1>Small stakes.<br/><em>Clear limits.</em></h1>
+
+      <section>
+        <h2>Who may test</h2>
+        <p>Lock In V4 is a private, invitation-only beta for adults aged 18 or older. Do not use it where a stake-based challenge is restricted or prohibited. An invitation, access to the website, or the 1 USDC cap does not guarantee that participation is lawful where you live. These product rules are not legal advice.</p>
+      </section>
+
+      <section>
+        <h2>What a check-in proves</h2>
+        <p>The only active mission is a Monad wallet check-in. During an eligible pact day, a joined wallet sends a transaction to the contract. The contract records that wallet, pact, day, event identifier, and timestamp. A check-in may be submitted manually or automated by software. It does not prove exercise, learning, attendance, location, identity, or any other physical or mental activity. Lock In V4 does not use Strava or Reclaim to decide completion.</p>
+      </section>
+
+      <section>
+        <h2>Pact schedule</h2>
+        <p>A pact lasts 3 to 30 fixed 24-hour days and publishes its required number of check-ins before anyone joins. Registration closes at the displayed start time. Only one check-in per joined wallet can count in each current pact day; early, late, duplicate, and non-participant check-ins are rejected. A pact must reach its published minimum participant count before check-ins can count.</p>
+      </section>
+
+      <section>
+        <h2>Real funds and exposure</h2>
+        <p>Every participant deposits the same amount, greater than zero and no more than 1 USDC, into each pact. The cap applies per participant, per pact—not per wallet in total. A wallet may join several pacts and therefore put more than 1 USDC at risk overall. Lock In currently charges no protocol fee. Monad network fees are separate, can vary, and are never refunded by the pact.</p>
+      </section>
+
+      <section>
+        <h2>Payouts and refunds</h2>
+        <p>If at least one participant reaches the target, finishers recover their stake and split the non-finishers&apos; stakes equally through the final pool calculation. If everyone finishes, each participant receives their stake back. If nobody finishes, every participant can recover their stake. A cancelled or underfilled pact is refundable to its participants. Finalization and each claim require onchain transactions; payout division may leave the final eligible claimant with minor integer-rounding dust.</p>
+      </section>
+
+      <section>
+        <h2>Public records</h2>
+        <p>Monad transactions and contract events are public and effectively permanent. They include wallet addresses, pact configuration and participation, stake and transfer amounts, check-in days, event identifiers and timestamps, cancellations, finalization, and claims. Lock In V4 does not create a user profile or publish health, fitness, learning, social-account, or location data.</p>
+      </section>
+
+      <section>
+        <h2>Controls and contract risk</h2>
+        <p>The creator may cancel before the pact starts. The contract owner can pause creation, joining, or check-ins and can cancel an unsettled pact only into the refund path; pauses do not block finalization or claims. The V4 contract has not received an independent security audit. Smart-contract bugs, wallet errors, RPC failures, token issues, chain incidents, and lost keys can still cause delay or loss. The beta and its limits do not guarantee reimbursement, regulatory approval, or any legal exemption.</p>
+      </section>
+
+      <section>
+        <h2>Independent services</h2>
+        <p>Lock In is independent from Monad, Circle, wallet providers, RPC services, and explorers. Their names identify external infrastructure and do not imply sponsorship or endorsement. Their own terms and availability also apply when you use them.</p>
+      </section>
     </main>
   );
 }

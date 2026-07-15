@@ -1,37 +1,35 @@
-# Modèle de preuve Strava v2
+# Lock In V4 security model
 
-## Ce que l’acceptation prouve
+Lock In V4 is a small-stake, Monad-native social escrow. Its only active completion signal is an onchain wallet check-in. It does not use Strava, Reclaim, GPS, a social network, or a learning service to settle funds.
 
-Une acceptation v2 signifie que quatre réponses Strava authentifiées ont été attestées par Reclaim et validées contre le provider privé exact `f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.2`. Ensemble, elles établissent que :
+## What a check-in proves
 
-1. la session correspond au compte Strava actuellement connecté ;
-2. ce compte expose un `Run` dont le titre est exactement le code journalier imprévisible du pacte (`challenge + D01…D30`), ce qui rend la sélection multi-jours déterministe et évite de publier un titre libre dans le calldata ;
-3. l’heure de départ est dans la fenêtre du pacte ;
-4. `distance_raw` atteint la distance minimale en mètres ;
-5. Strava renvoie `has_latlng=true`, `trainer=false` et `flagged=false` ;
-6. les temps de mouvement/écoulé et le dénivelé sont signés ; la vitesse moyenne doit rester entre 0,5 et 9 m/s et les pauses dans les bornes prévues ;
-7. la preuve est liée au portefeuille, au pacte et à la session initiée par Lock In ;
-8. la configuration du provider, le TEE, la fraîcheur et l’usage unique sont validés par le SDK ; une attestation EIP-712 de cinq minutes engage ce résultat, et le contrat exige en plus les signatures Reclaim, les quatre hashes du provider et le nullifier.
+The contract proves that the transaction sender is a joined wallet, the pact reached its minimum crew, the submitted day is the current pact day, and that wallet has not already checked in for that day. The wallet can check in once per eligible day until it reaches the published target.
 
-L’activité manuelle de test créée pendant le spike renvoie `has_latlng=false` : elle est donc volontairement une fixture négative et la politique la rejette avec `NO_GPS`.
+A check-in can be automated. It does not prove identity, presence, exercise, learning, or any other offchain action. This limitation is shown in the transaction review and Rules; it must never be weakened in marketing or support.
 
-## Limite incompressible
+## Fund safety properties
 
-Strava et zkTLS attestent des données numériques, pas le déplacement biologique d’une personne. Un utilisateur déterminé peut encore fabriquer ou importer un fichier GPS vraisemblable, partager son compte ou faire transporter un appareil. Aucun provider Strava ne peut rendre ces attaques mathématiquement impossibles, car Strava lui-même accepte des données importées.
+- The immutable stake cap is 1,000,000 atomic units of a six-decimal token: 1 USDC per participant per pact.
+- Every participant in a pact deposits the same amount. The creator is auto-joined.
+- New pacts require 3–30 days, 1–duration required completions, and 2–100 minimum participants.
+- Registration closes at the exact start timestamp. Check-ins are accepted only in their strict 24-hour pact window; there is no early or retroactive completion.
+- Settlement is permissionless. Eligible wallets claim their own payout; no operator can redirect it.
+- Finishers split the entire pool. If there are no finishers, or the pact is underfilled or cancelled, every participant can reclaim the original stake.
+- Rounding dust goes to the last eligible claimant. There is no protocol fee, admin withdrawal, or abandoned-funds sweep.
+- The creator may cancel only before start. The owner may emergency-cancel an unfinalized pact only into the participant-refund path.
+- Creation, joining, and check-ins have independent onchain pauses. Finalization and claims cannot be paused.
 
-Pour le hackathon à mise maximale de 1 USD, la v2 réduit fortement la fraude opportuniste : challenge créé après engagement, compte authentifié, GPS obligatoire, trainer et activité signalée interdits, date/distance exactes, cinématique plausible, preuve fraîche et non rejouable. Une version à enjeu supérieur devrait exiger en plus une attestation signée par un wearable/OS de confiance, analyser le tracé complet, introduire un délai de contestation et plafonner le risque cumulé. Même cet ensemble ne constitue pas une preuve physique absolue.
+The website adds fail-closed flags for new pacts, joining, and check-ins. These flags are UX gates, not contract enforcement; an incident involving direct calls requires the corresponding onchain pause.
 
-## Règles de règlement
+## Operational and residual risk
 
-- Aucun règlement ne dépend du seul contenu client, de la seule signature applicative ou de la seule signature Reclaim : les trois doivent concorder.
-- La validation SDK Reclaim et `validateStravaEvidence` s’exécutent avant soumission ; `LockInEscrow` refait les contrôles déterminants onchain et vérifie l’attestation SDK EIP-712.
-- La version du provider est exactement `1.0.2`, sans fallback vers `latest`.
-- Le token HMAC lie la session attendue pendant vingt minutes ; onchain, le bitmap journalier et `usedActivityNullifiers` rendent tout rejeu inexécutable même si l’API stateless revoit la preuve.
-- La clé EIP-712 est dédiée, hors du navigateur et distincte des clés de déploiement ; le propriétaire du contrat peut la faire tourner si elle est compromise.
-- Le constructeur du contrat fixe un plafond immuable en unités du token stable sélectionné ; un token volatil ne doit pas être présenté comme un plafond USD sans oracle.
-- En cas d’indisponibilité de Reclaim ou Strava, le pacte doit être remboursable, jamais automatiquement perdu.
-- Avant chaque signature, l’API relit `evidenceSigner` onchain et refuse une clé serveur qui ne correspond pas au contrat.
-- Les routes API bornent la taille JSON et refusent les appels navigateur cross-origin ; les en-têtes de sécurité empêchent notamment l’embarquement de l’app dans une frame.
-- Les transactions estiment leur gas puis ajoutent seulement 5 % : sur Monad, une limite volontairement surévaluée serait directement facturée à l’utilisateur.
-- Les paquets Solidity/Foundry restent des dépendances de développement ; le graphe réellement embarqué dans Vercel passe `pnpm audit --prod` sans vulnérabilité connue au 14 juillet 2026.
-- `.vercelignore` exclut explicitement tout `.env`, fixture de preuve, session et artefact de build des uploads CLI ; les secrets de production doivent venir uniquement du coffre de variables Vercel.
+The contract is source-verified with a Sourcify exact match and has automated tests, but it has not received an independent security audit. Smart-contract bugs, compromised wallets, malicious approvals, RPC or chain outages, token behavior, operator mistakes, and undiscovered economic attacks remain possible.
+
+The 1 USDC limit is per pact, not per wallet across all pacts. MON gas is separate and never refunded by the contract. The beta must remain invitation-only until the two-wallet success-path and underfilled/refund mainnet canaries in `docs/tester-runbook.md` are complete.
+
+Before every release, verify from chain state that the configured contract reports V4, the official six-decimal Monad USDC address, the 1 USDC cap, and the expected pause state. Keep the deployer key out of Vercel. Never collect a seed phrase or private key in support.
+
+## Reporting
+
+Report a suspected vulnerability privately to **mookipstore@hotmail.com**. Include the affected contract or pact, transaction hash, UTC time, and impact. Do not include seed phrases, private keys, wallet exports, or private RPC credentials.

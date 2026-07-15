@@ -5,8 +5,22 @@ import { WalletButton } from "@/components/wallet-button";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lock In — Stake-backed accountability",
-  description: "Stake up to 1 USDC, prove your Strava runs, and settle the challenge on Monad.",
+  metadataBase: new URL("https://lock-in-liart-theta.vercel.app"),
+  title: "Lock In — Accountability that pays",
+  description: "Challenge your friends to an onchain streak. Finishers split the pool funded by those who quit.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    title: "Lock In — Accountability that pays",
+    description: "Challenge your friends to an onchain streak. Finishers split the pool funded by those who quit.",
+    url: "/",
+    siteName: "Lock In",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Lock In — Accountability that pays",
+    description: "Challenge your friends to an onchain streak. Finishers split the pool funded by those who quit.",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

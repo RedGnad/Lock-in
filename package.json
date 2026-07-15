@@ -14,6 +14,7 @@
     "deploy:monad": "tsx scripts/deploy-monad.ts",
     "deploy:reclaim": "tsx scripts/deploy-monad.ts",
     "deploy:escrow": "tsx scripts/deploy-escrow.ts",
+    "incident:cancel-pact": "tsx scripts/cancel-v4-pact.ts",
     "proof:request": "tsx scripts/create-proof-request.ts",
     "proof:inspect": "tsx scripts/inspect-proof.ts",
     "provider:check": "tsx scripts/check-provider-hashes.ts",

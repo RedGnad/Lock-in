@@ -1,57 +1,44 @@
 export type PactTemplate = {
   id: string;
   name: string;
-  durationDays: 1 | 3 | 7 | 14 | 30;
+  durationDays: 3 | 7 | 14 | 30;
   requiredCompletions: number;
   description: string;
-  publicCompetition: boolean;
 };
 
-export const STRAVA_TEMPLATES: readonly PactTemplate[] = [
+export const PACT_TEMPLATES: readonly PactTemplate[] = [
   {
-    id: "proof-sprint",
-    name: "Proof Sprint",
-    durationDays: 1,
-    requiredCompletions: 1,
-    description: "Practice or invite rehearsal with no protocol rewards. A solo stake is refundable; network gas is not.",
-    publicCompetition: false,
-  },
-  {
-    id: "kickstart",
-    name: "Kickstart",
+    id: "quickfire",
+    name: "Quickfire",
     durationDays: 3,
     requiredCompletions: 3,
-    description: "Three runs in three days. The shortest serious commitment.",
-    publicCompetition: true,
+    description: "Three days. No misses.",
   },
   {
     id: "momentum",
     name: "Momentum",
     durationDays: 7,
     requiredCompletions: 5,
-    description: "Five runs in seven days, with two recovery days.",
-    publicCompetition: true,
+    description: "Five check-ins in seven days.",
   },
   {
-    id: "consistency",
-    name: "Consistency",
+    id: "discipline",
+    name: "Discipline",
     durationDays: 14,
-    requiredCompletions: 8,
-    description: "Eight runs across two weeks, with six non-required days.",
-    publicCompetition: true,
+    requiredCompletions: 10,
+    description: "Ten check-ins across two weeks.",
   },
   {
-    id: "build",
-    name: "Build",
+    id: "long-game",
+    name: "Long Game",
     durationDays: 30,
-    requiredCompletions: 12,
-    description: "Twelve runs in a month, roughly three per week.",
-    publicCompetition: true,
+    requiredCompletions: 20,
+    description: "Twenty check-ins across a month.",
   },
 ] as const;
 
-export function stravaTemplate(durationDays: number): PactTemplate {
-  const template = STRAVA_TEMPLATES.find((item) => item.durationDays === durationDays);
-  if (!template) throw new Error("Unsupported Strava pact template");
+export function pactTemplate(durationDays: number): PactTemplate {
+  const template = PACT_TEMPLATES.find((item) => item.durationDays === durationDays);
+  if (!template) throw new Error("Unsupported pact template");
   return template;
 }

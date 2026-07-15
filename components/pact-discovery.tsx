@@ -3,32 +3,13 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { formatUnits, zeroAddress, type Address, type Hash } from "viem";
+import { formatUnits, zeroAddress, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useReadContracts } from "wagmi";
 import { escrowAddress, escrowDeploymentBlock } from "@/src/chain";
-import { lockInAbi } from "@/src/lock-in-abi";
+import { lockInAbi, type PactTuple } from "@/src/lock-in-abi";
 
 const DISCOVERY_LIMIT = 12;
 const MAX_PARTICIPANTS = 100;
-
-type PactTuple = readonly [
-  Address,
-  bigint,
-  bigint,
-  bigint,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  number,
-  Hash,
-  Hash,
-  bigint,
-  boolean,
-  boolean,
-];
 
 type OpenPact = {
   id: bigint;
@@ -45,14 +26,8 @@ function formatStart(seconds: bigint) {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "UTC",
     timeZoneName: "short",
   }).format(Number(seconds) * 1_000);
-}
-
-function formatDistance(meters: number) {
-  const kilometers = meters / 1_000;
-  return Number.isInteger(kilometers) ? String(kilometers) : kilometers.toFixed(1);
 }
 
 export function PactDiscovery() {
@@ -68,7 +43,7 @@ export function PactDiscovery() {
   useEffect(() => {
     const syncClock = () => setNowSeconds(Math.floor(Date.now() / 1_000));
     syncClock();
-    const timer = window.setInterval(syncClock, 30_000);
+    const timer = window.setInterval(syncClock, 10_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -95,7 +70,7 @@ export function PactDiscovery() {
       }
     }
     void loadMyPacts();
-    const timer = window.setInterval(() => void loadMyPacts(), 30_000);
+    const timer = window.setInterval(() => void loadMyPacts(), 10_000);
     return () => {
       alive = false;
       window.clearInterval(timer);
@@ -108,7 +83,7 @@ export function PactDiscovery() {
     functionName: "nextPactId",
     query: {
       enabled: Boolean(escrowAddress),
-      refetchInterval: 30_000,
+      refetchInterval: 10_000,
     },
   });
 
@@ -129,13 +104,13 @@ export function PactDiscovery() {
     })),
     query: {
       enabled: Boolean(escrowAddress && recentPactIds.length),
-      refetchInterval: 30_000,
+      refetchInterval: 10_000,
     },
   });
 
   const myPactReads = useReadContracts({
     contracts: myPactIds.map((id) => ({ address: contract, abi: lockInAbi, functionName: "pacts" as const, args: [id] as const })),
-    query: { enabled: Boolean(escrowAddress && myPactIds.length), refetchInterval: 30_000 },
+    query: { enabled: Boolean(escrowAddress && myPactIds.length), refetchInterval: 10_000 },
   });
 
   const openPacts = useMemo<OpenPact[]>(() => {
@@ -147,9 +122,9 @@ export function PactDiscovery() {
         !pact
         || pact[0] === zeroAddress
         || Number(pact[1]) <= nowSeconds
-        || pact[5] >= MAX_PARTICIPANTS
+        || pact[3] >= MAX_PARTICIPANTS
+        || pact[13]
         || pact[14]
-        || pact[15]
       ) return [];
 
       return [{ id, pact }];
@@ -213,9 +188,9 @@ export function PactDiscovery() {
         <div className="my-pact-list">{myPactIds.map((id, index) => {
           const pact = myPactReads.data?.[index]?.result as PactTuple | undefined;
           if (!pact || pact[0] === zeroAddress) return null;
-          const ended = nowSeconds !== null && nowSeconds >= Number(pact[1]) + pact[8] * 86_400;
-          const state = pact[14] ? "SETTLED" : pact[15] ? "CANCELLED" : nowSeconds !== null && nowSeconds < Number(pact[1]) ? "FORMING" : ended ? "ENDING" : "ACTIVE";
-          return <Link href={`/pact/${id}`} className="my-pact-row" key={id.toString()}><span>#{id.toString().padStart(4, "0")}</span><strong>{formatDistance(pact[4])} km · {pact[9]}/{pact[8]} days</strong><b>{state} →</b></Link>;
+          const ended = nowSeconds !== null && nowSeconds >= Number(pact[1]) + pact[6] * 86_400;
+          const state = pact[13] && pact[14] ? "REFUND READY" : pact[13] ? "SETTLED" : pact[14] ? "CANCELLED" : nowSeconds !== null && nowSeconds < Number(pact[1]) ? "FORMING" : ended ? "ENDING" : "ACTIVE";
+          return <Link href={`/pact/${id}`} className="my-pact-row" key={id.toString()}><span>#{id.toString().padStart(4, "0")}</span><strong>{pact[7]}/{pact[6]} day check-in</strong><b>{state} →</b></Link>;
         })}</div>
       </section>}
 
@@ -231,18 +206,18 @@ export function PactDiscovery() {
       ) : (
         <div className="discovery-grid">
           {openPacts.map(({ id, pact }) => {
-            const playersNeeded = Math.max(0, pact[10] - pact[5]);
+            const playersNeeded = Math.max(0, pact[8] - pact[3]);
             return (
               <Link className="discovery-card" href={`/pact/${id}`} key={id.toString()}>
                 <div className="discovery-card-topline">
                   <span>PACT #{id.toString().padStart(4, "0")}</span>
                   <b>REGISTRATION OPEN</b>
                 </div>
-                <h3>{formatDistance(pact[4])} km</h3>
-                <p>{pact[9]} runs in {pact[8]} days</p>
+                <h3>{pact[7]} check-ins</h3>
+                <p>in {pact[6]} days</p>
                 <dl>
-                  <div><dt>Stake</dt><dd>{formatUnits(pact[3], 6)} USDC</dd></div>
-                  <div><dt>Crew</dt><dd>{pact[5]} joined · {playersNeeded > 0 ? `${playersNeeded} needed` : "ready"}</dd></div>
+                  <div><dt>Stake</dt><dd>{formatUnits(pact[2], 6)} USDC</dd></div>
+                  <div><dt>Crew</dt><dd>{pact[3]} joined · {playersNeeded > 0 ? `${playersNeeded} needed` : "ready"}</dd></div>
                   <div><dt>Starts</dt><dd>{formatStart(pact[1])}</dd></div>
                 </dl>
                 <small>Created by {compactAddress(pact[0])} <b>→</b></small>
