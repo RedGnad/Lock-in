@@ -69,18 +69,14 @@ contract LockInDuolingoRealProofTest {
         return string(b);
     }
 
-    /// @dev Documents the confirmed release gap: the REAL captured Duolingo 1.0.8 proof
-    ///      pair passes the identifier, witness signature and freshness checks (the canonical
-    ///      context reconstructed by the app's toDirectProofBundle hashes to the signed
-    ///      identifier, and the pinned Reclaim witness recovers), but the final grammar
-    ///      REVERTS with InvalidContext at the TEE-group equality check
-    ///      (`ownership.teeGroupHash != xp.teeGroupHash`). Root cause, verified off-chain:
-    ///      Reclaim generated the two requests in DIFFERENT enclaves, so pcr0_t and
-    ///      tee_session_id differ between the ownership and XP proofs, while the verifier
-    ///      requires both proofs to share an identical TEE group. LIVE_SCHEMA_CONFIRMED must
-    ///      stay false until the verifier's cross-proof TEE binding is reconciled with real
-    ///      Reclaim behaviour. Flip this assertion to expect success once that is fixed.
-    function testRealCapturedDuolingoProofIsRejectedByCurrentTeeGrouping() public {
+    /// @dev The REAL captured Duolingo 1.0.8 proof pair now passes the FINAL grammar:
+    ///      identifier (canonical context from the app's toDirectProofBundle hashes to the
+    ///      signed identifier), the pinned Reclaim witness signature, freshness, and the
+    ///      cross-proof TEE group. The two proofs come from different enclave instances so
+    ///      pcr0_t and tee_session_id differ; the group binds the shared invariants
+    ///      (attestationNonce, attestation timestamp, pcr0_k) plus the witness. Passing this
+    ///      is the evidence required before flipping LIVE_SCHEMA_CONFIRMED.
+    function testRealCapturedDuolingoProofPassesFinalGrammar() public {
         string memory json = VM.readFile(string.concat(VM.projectRoot(), "/test/fixtures/duolingo-real-onchain.json"));
 
         Reclaim.Proof[] memory proofs = new Reclaim.Proof[](2);
@@ -91,19 +87,18 @@ contract LockInDuolingoRealProofTest {
         string memory sessionId = VM.parseJsonString(json, ".sessionId");
         uint256 pactId = VM.parseJsonUint(json, ".pactId");
         bool baseline = VM.parseJsonBool(json, ".baseline");
+        uint256 expectedXp = VM.parseJsonUint(json, ".totalXp");
 
         uint32 newest = proofs[1].signedClaim.claim.timestampS;
         if (proofs[0].signedClaim.claim.timestampS > newest) newest = proofs[0].signedClaim.claim.timestampS;
         VM.warp(uint256(newest) + 5);
 
         RealProofHarness verifier = new RealProofHarness(REAL_WITNESS);
-        (bool ok, bytes memory reason) = address(verifier).staticcall(
-            abi.encodeCall(RealProofHarness.validateForTesting, (proofs, account, pactId, baseline, 0, sessionId))
-        );
-        require(!ok, "real proof unexpectedly accepted; revisit the gap analysis");
-        require(reason.length >= 4, "no revert selector");
-        bytes4 sel = bytes4(reason);
-        // InvalidContext() selector.
-        require(sel == bytes4(keccak256("InvalidContext()")), "unexpected revert reason");
+        (bytes32 identityHash, uint64 totalXp,, uint32 timestampS) =
+            verifier.validateForTesting(proofs, account, pactId, baseline, 0, sessionId);
+
+        require(identityHash != bytes32(0), "identityHash empty");
+        require(uint256(totalXp) == expectedXp, "totalXp mismatch");
+        require(timestampS == proofs[1].signedClaim.claim.timestampS, "timestamp unexpected");
     }
 }

@@ -285,7 +285,16 @@ contract LockInReclaimVerifier {
             } else if (rank == 6 || rank == 7) {
                 (string memory pcr, uint256 afterValue) = _readSecurityString(json, cursor);
                 if (!_validPcr(bytes(pcr))) revert InvalidContext();
-                result.teeGroupHash = keccak256(abi.encode(result.teeGroupHash, keccak256(bytes(pcr))));
+                // pcr0_k (rank 6) is the stable enclave-image measurement and is folded
+                // into the cross-proof TEE group. pcr0_t (rank 7) is a per-instance
+                // transient measurement: Reclaim runs the ownership and XP requests in
+                // separate enclave instances, so it differs between the two proofs and is
+                // format-checked per proof but excluded from the group. The two proofs stay
+                // bound by the shared attestationNonce, attestation timestamp, pcr0_k and the
+                // pinned witness signature.
+                if (rank == 6) {
+                    result.teeGroupHash = keccak256(abi.encode(result.teeGroupHash, keccak256(bytes(pcr))));
+                }
                 cursor = afterValue;
             } else if (rank == 8) {
                 (string memory value, uint256 afterValue) = _readSecurityString(json, cursor);
