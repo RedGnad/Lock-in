@@ -43,7 +43,7 @@ What users currently see. It contains:
 
 - stable pre-release app behavior from `a71f7a9`;
 - consistent tactile button/card shadows;
-- mission cards with equal neutral surfaces and black shadows;
+- mission cards with equal neutral surfaces and black shadows, with no initial visual selection;
 - orange outline on hover/selection;
 - mission click advances directly to pace selection, so no first-step Continue button;
 - complete visible terminology migration from PACT to LOCK;
