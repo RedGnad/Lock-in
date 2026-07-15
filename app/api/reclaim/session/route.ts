@@ -7,6 +7,7 @@ import { issueProofSessionV5 } from "@/src/proof-session-v5";
 import { DUOLINGO_PROVIDER_VERSION, duolingoProviderId } from "@/src/duolingo-proof-policy";
 import { STRAVA_PROVIDER_ID, STRAVA_PROVIDER_VERSION } from "@/src/strava-proof-policy";
 import { DUOLINGO_XP_MISSION } from "@/src/lock-in-abi";
+import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,11 +31,18 @@ export async function POST(request: Request) {
     const body = await readJsonBody<Record<string, unknown>>(request, 16 * 1_024);
     const phase = body.phase === "baseline" ? "baseline" : body.phase === "completion" ? "completion" : null;
     if (!phase) throw new Error("Invalid proof phase");
+    const intent = body.intent === "create" || body.intent === "join" ? body.intent : undefined;
+    if (!isProofActionEnabled(readProductFlagState(), { phase, intent })) {
+      return NextResponse.json({ error: "Proof verification is paused. Settlement and claims remain available." }, {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     const policy = await loadProofPolicyV5({
       walletAddress: String(body.walletAddress || ""),
       pactId: String(body.pactId || ""),
       phase,
-      intent: body.intent === "create" || body.intent === "join" ? body.intent : undefined,
+      intent,
       dayIndex: body.dayIndex === undefined ? undefined : Number(body.dayIndex),
       missionType: body.missionType === undefined ? undefined : Number(body.missionType),
     });

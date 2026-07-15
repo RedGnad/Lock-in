@@ -3,6 +3,7 @@ import { fetchStatusUrl } from "@reclaimprotocol/js-sdk";
 import { readJsonBody } from "@/src/api-guard";
 import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 import { verifyProofSessionV5 } from "@/src/proof-session-v5";
+import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,12 @@ export async function POST(request: Request) {
   try {
     const { token } = await readJsonBody<{ token?: string }>(request, 32 * 1_024);
     const session = verifyProofSessionV5(token || "");
+    if (!isProofActionEnabled(readProductFlagState(), session)) {
+      return NextResponse.json({ error: "Proof verification is paused. Settlement and claims remain available." }, {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     const rateLimit = checkReclaimRateLimit("status", request, session.sessionId);
     if (!rateLimit.allowed) {
       return NextResponse.json({ error: "Proof status polling is temporarily limited." }, {

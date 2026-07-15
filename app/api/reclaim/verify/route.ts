@@ -9,6 +9,7 @@ import { proofSetHash, signBaseline, signCompletion } from "@/src/completion-att
 import { DUOLINGO_XP_MISSION, lockInAbi } from "@/src/lock-in-abi";
 import { loadProofPolicyV5 } from "@/src/pact-server-v5";
 import { verifyProofSessionV5 } from "@/src/proof-session-v5";
+import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
 import {
   DUOLINGO_PROVIDER_VERSION,
   validateDuolingoEvidence,
@@ -44,6 +45,12 @@ export async function POST(request: Request) {
   try {
     const body = await readJsonBody<{ token?: string; proofs?: Proof | Proof[] }>(request, 2 * 1_024 * 1_024);
     const token = verifyProofSessionV5(body.token || "");
+    if (!isProofActionEnabled(readProductFlagState(), token)) {
+      return NextResponse.json({ error: "Proof verification is paused. Settlement and claims remain available." }, {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     const rateLimit = checkReclaimRateLimit("verify", request, token.sessionId);
     if (!rateLimit.allowed) {
       return NextResponse.json({ error: "Too many verification attempts for this proof session." }, {

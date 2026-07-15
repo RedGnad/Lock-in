@@ -25,6 +25,11 @@ export type ProductFlagState = Readonly<{
   mode: "paused" | "restricted" | "open";
 }>;
 
+export type ProofAction = Readonly<{
+  phase: "baseline" | "completion";
+  intent?: "create" | "join";
+}>;
+
 type ProductFlagEnvironment = { [name: string]: string | undefined };
 
 function readBooleanFlag(value: string | undefined): { enabled: boolean; configured: boolean } {
@@ -72,4 +77,16 @@ export function readProductFlagState(
     },
     mode: enabledCount === 0 ? "paused" : enabledCount === 3 ? "open" : "restricted",
   };
+}
+
+/**
+ * Maps every proof request to the same fail-closed release gate used by the UI.
+ * This prevents paused deployments from spending provider quota or issuing a
+ * short-lived evidence signature through a direct API call.
+ */
+export function isProofActionEnabled(state: ProductFlagState, action: ProofAction): boolean {
+  if (action.phase === "completion") return state.actions.checkIns;
+  if (action.intent === "create") return state.actions.newPacts;
+  if (action.intent === "join") return state.actions.join;
+  return false;
 }

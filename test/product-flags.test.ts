@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readProductFlagState } from "../src/product-flags.js";
+import { isProofActionEnabled, readProductFlagState } from "../src/product-flags.js";
 
 test("product actions fail closed when flags are missing", () => {
   const state = readProductFlagState({});
@@ -60,4 +60,25 @@ test("explicit false flags form a healthy paused configuration", () => {
   assert.equal(state.mode, "paused");
   assert.equal(state.actions.settlement, true);
   assert.equal(state.actions.claim, true);
+});
+
+test("proof API actions follow the matching fail-closed product gate", () => {
+  const paused = readProductFlagState({
+    NEW_PACTS_ENABLED: "false",
+    JOIN_ENABLED: "false",
+    CHECK_INS_ENABLED: "false",
+  });
+  assert.equal(isProofActionEnabled(paused, { phase: "baseline", intent: "create" }), false);
+  assert.equal(isProofActionEnabled(paused, { phase: "baseline", intent: "join" }), false);
+  assert.equal(isProofActionEnabled(paused, { phase: "completion" }), false);
+
+  const restricted = readProductFlagState({
+    NEW_PACTS_ENABLED: "true",
+    JOIN_ENABLED: "false",
+    CHECK_INS_ENABLED: "true",
+  });
+  assert.equal(isProofActionEnabled(restricted, { phase: "baseline", intent: "create" }), true);
+  assert.equal(isProofActionEnabled(restricted, { phase: "baseline", intent: "join" }), false);
+  assert.equal(isProofActionEnabled(restricted, { phase: "baseline" }), false);
+  assert.equal(isProofActionEnabled(restricted, { phase: "completion" }), true);
 });
