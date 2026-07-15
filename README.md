@@ -34,6 +34,7 @@ The direct proof is not private. The Reclaim SDK's `transformForOnchain` output 
 - Historical canary transaction: `0x1d67657eedb350206e49a44256bdb8c42625b987ed83884713e463a392cec3ba`
 - Strava proof provider: `f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.3`
 - Duolingo proof provider: `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.3`
+- Release owner Safe: `0xf1be884698B9Ba4438f529699eC92320427b4dA1` (2/2)
 
 The listed escrow is historical test infrastructure, not the Lock In release contract and not an invitation to deposit funds. The release contract address will be published only after a fresh paused deployment, source and constructor verification, signer checks, independent review, and complete two-wallet rehearsals for every enabled mission.
 

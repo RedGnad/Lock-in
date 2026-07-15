@@ -11,5 +11,16 @@
     "currentEpoch": 1,
     "witness": "0x244897572368Eadf65bfBc5aec98D8e5443a9072"
   },
+  "ownership": {
+    "safe": "0xf1be884698B9Ba4438f529699eC92320427b4dA1",
+    "version": "1.4.1",
+    "owners": [
+      "0x344412229B3b581C19572f9BF1F5d08d4Ae897E6",
+      "0x79C53151315FaD9163f75a65A8Bd4D04a10e1e45"
+    ],
+    "threshold": 2,
+    "deployTx": "0x7dc01682b59c74c8af75bfaf9cde28a1f8cc2b0844e6328c834830bd4032bd38",
+    "deployBlock": 87910950
+  },
   "release": null
 }
