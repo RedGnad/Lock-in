@@ -12,6 +12,7 @@ import { escrowAddress, lockInPublicClient } from "@/src/chain";
 import { proofSetHash, signCompletion } from "@/src/completion-attestation";
 import { lockInAbi } from "@/src/lock-in-abi";
 import { readJsonBody } from "@/src/api-guard";
+import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 import {
   assertFreshProofTimestamps,
   STRAVA_PROVIDER_ID,
@@ -35,6 +36,13 @@ async function assertConfiguredEvidenceSigner(privateKey: Hex, contract: Address
 }
 
 export async function POST(request: Request) {
+  const rateLimit = checkReclaimRateLimit("verify", request);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many proof verification attempts. Try again later." },
+      { status: 429, headers: rateLimitResponseHeaders(rateLimit) },
+    );
+  }
   try {
     const body = await readJsonBody<{ token?: string; proofs?: Proof | Proof[] }>(request, 2 * 1_024 * 1_024);
     const token = verifyProofSessionToken(body.token || "");

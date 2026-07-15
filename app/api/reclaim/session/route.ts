@@ -4,6 +4,7 @@ import { loadOnchainPactPolicy } from "@/src/pact-server";
 import { issueProofSessionToken } from "@/src/session-token";
 import { STRAVA_PROVIDER_ID, STRAVA_PROVIDER_VERSION } from "@/src/strava-proof-policy";
 import { readJsonBody } from "@/src/api-guard";
+import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,13 @@ function required(name: string): string {
 }
 
 export async function POST(request: Request) {
+  const rateLimit = checkReclaimRateLimit("session", request);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many proof sessions. Try again later." },
+      { status: 429, headers: rateLimitResponseHeaders(rateLimit) },
+    );
+  }
   try {
     const body = await readJsonBody<Record<string, unknown>>(request, 16 * 1_024);
     const policy = await loadOnchainPactPolicy({

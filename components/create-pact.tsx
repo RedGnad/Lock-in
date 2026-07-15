@@ -22,6 +22,7 @@ import { erc20Abi, lockInAbi } from "@/src/lock-in-abi";
 import { escrowAddress } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { STRAVA_TEMPLATES, stravaTemplate } from "@/src/missions";
+import { ActionDialog } from "@/components/action-dialog";
 
 const DISTANCES = ["1", "3", "5", "10"] as const;
 const PUBLIC_TEMPLATES = STRAVA_TEMPLATES.filter((item) => item.publicCompetition);
@@ -56,6 +57,8 @@ export function CreatePact() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [entryAccepted, setEntryAccepted] = useState(false);
+  const [step, setStep] = useState(0);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const contract = escrowAddress || zeroAddress;
   const { data: tokenAddress } = useReadContract({
@@ -106,6 +109,7 @@ export function CreatePact() {
     if (!Number.isSafeInteger(minDistance) || minDistance <= 0) return setStatus("Invalid distance.");
     const pactChallenge = challenge || freshChallenge();
     setChallenge(pactChallenge);
+    setReviewOpen(false);
     setBusy(true);
     try {
       if (allowance < amount) {
@@ -146,28 +150,53 @@ export function CreatePact() {
     }
   }
 
+  function review() {
+    if (!address || !escrowAddress || !publicClient) return setStatus("Connect your wallet to create this pact.");
+    if (!entryAccepted) return setStatus("Accept the rules to continue.");
+    if (amount <= 0n || (maxStake && amount > maxStake)) return setStatus(`Choose a stake no higher than ${maxStake ? formatUnits(maxStake, decimals) : "1"} ${symbol}.`);
+    setStatus("");
+    setReviewOpen(true);
+  }
+
   return (
     <section className="create-card" id="create">
-      <div className="card-kicker">Create a running challenge</div>
-      <div className="form-stack">
-        <fieldset className="form-field">
-          <legend>Distance</legend>
-          <div className="segmented distance-options">{DISTANCES.map((value) => <button type="button" aria-pressed={distanceKm === value} className={distanceKm === value ? "active" : ""} onClick={() => setDistanceKm(value)} key={value}>{value}<small>KM</small></button>)}</div>
-        </fieldset>
-        <fieldset className="form-field">
-          <legend>Schedule</legend>
-          <div className="segmented schedule-options">{PUBLIC_TEMPLATES.map((item) => <button type="button" aria-pressed={durationDays === item.durationDays} className={durationDays === item.durationDays ? "active" : ""} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} RUNS</small></button>)}</div>
-        </fieldset>
-        <fieldset className="form-field">
-          <legend>Stake</legend>
-          <div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); const unavailable = maxStake !== undefined && option > maxStake; return <button type="button" aria-pressed={stakeInput === value} className={stakeInput === value ? "active" : ""} disabled={unavailable} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div>
-        </fieldset>
+      <div className="create-heading">
+        <div><span className="card-kicker">Create a crew challenge</span><h2>Build your pact</h2></div>
+        <span className="step-count">{step + 1} / 3</span>
       </div>
-      <div className="pact-summary"><strong>{template.requiredCompletions} runs in {durationDays} days</strong><span>{distanceKm} km each · {stakeInput} {symbol} · starts in 12–36h · 2+ players</span></div>
-      <p className="proof-disclosure">Proof summary is public on Monad. Your GPS route is not shared. <Link href="/privacy">Privacy</Link></p>
-      <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>
-      <button className="lock-button" onClick={create} disabled={busy || !escrowAddress || !entryAccepted}>{busy ? "CONFIRMING…" : `STAKE ${stakeInput} ${symbol} & CREATE`}</button>
+      <div className="step-track" aria-label={`Step ${step + 1} of 3`}>
+        {[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`} aria-current={index === step ? "step" : undefined}/>) }
+      </div>
+      <div className="form-stage">
+        {step === 0 && <fieldset className="form-field">
+          <legend><b>How far?</b><span>Distance for each qualifying run.</span></legend>
+          <div className="segmented distance-options">{DISTANCES.map((value) => <button type="button" aria-pressed={distanceKm === value} className={distanceKm === value ? "active" : ""} onClick={() => setDistanceKm(value)} key={value}>{value}<small>KM</small></button>)}</div>
+        </fieldset>}
+        {step === 1 && <fieldset className="form-field">
+          <legend><b>How long?</b><span>Consistency wins; extra distance does not change the payout.</span></legend>
+          <div className="segmented schedule-options">{PUBLIC_TEMPLATES.map((item) => <button type="button" aria-pressed={durationDays === item.durationDays} className={durationDays === item.durationDays ? "active" : ""} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} RUNS</small></button>)}</div>
+        </fieldset>}
+        {step === 2 && <fieldset className="form-field">
+          <legend><b>Your stake</b><span>Every participant stakes the same amount.</span></legend>
+          <div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); const unavailable = maxStake !== undefined && option > maxStake; return <button type="button" aria-pressed={stakeInput === value} className={stakeInput === value ? "active" : ""} disabled={unavailable} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div>
+        </fieldset>}
+      </div>
+      <div className="pact-summary"><strong>{template.requiredCompletions} runs in {durationDays} days</strong><span>{distanceKm} km each · {stakeInput} {symbol} each · 2+ runners</span></div>
+      {step === 2 && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
+      <div className="stage-actions">
+        {step > 0 && <button className="secondary-button" type="button" onClick={() => setStep((current) => current - 1)}>BACK</button>}
+        {step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((current) => current + 1)}>CONTINUE</button> : <button className="lock-button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted}>REVIEW PACT</button>}
+      </div>
       {status && <p className="form-status" aria-live="polite">{status}</p>}
+      <ActionDialog open={reviewOpen} title="Lock in this pact?" eyebrow="Transaction review" confirmLabel={`Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
+        <dl className="review-list">
+          <div><dt>Goal</dt><dd>{distanceKm} km · {template.requiredCompletions} runs / {durationDays} days</dd></div>
+          <div><dt>Stake</dt><dd>{stakeInput} {symbol} per runner</dd></div>
+          <div><dt>Start</dt><dd>Next UTC boundary after at least 12 hours</dd></div>
+        </dl>
+        <p>Lock In uses your wallet and pact details to run this challenge. This transaction is public and permanent on Monad. No Strava data is published when you create.</p>
+        <Link className="dialog-link" href="/privacy">Privacy &amp; rights ↗</Link>
+      </ActionDialog>
     </section>
   );
 }

@@ -19,7 +19,13 @@
     "maxStakeAtomicUnits": "1000000",
     "maxDays": 30,
     "evidenceSigner": "0xD81A3105eb76Ea129D68B82c445Fe94606eab211",
-    "providerKey": "0x91b0a8891dcf07b6c94d36b3b23124ded3986687265eb03d831f44a08b35efb0"
+    "providerKey": "0x91b0a8891dcf07b6c94d36b3b23124ded3986687265eb03d831f44a08b35efb0",
+    "verification": {
+      "provider": "Sourcify Monad",
+      "status": "exact_match",
+      "jobId": "502b3667-fbcc-4b79-b069-324db04252b9",
+      "verifiedAt": "2026-07-14T23:46:51Z"
+    }
   },
   "legacyEscrows": [
     {

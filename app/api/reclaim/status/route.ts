@@ -2,12 +2,20 @@ import { NextResponse } from "next/server";
 import { fetchStatusUrl } from "@reclaimprotocol/js-sdk";
 import { verifyProofSessionToken } from "@/src/session-token";
 import { readJsonBody } from "@/src/api-guard";
+import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function POST(request: Request) {
+  const rateLimit = checkReclaimRateLimit("status", request);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many proof status checks. Try again later." },
+      { status: 429, headers: rateLimitResponseHeaders(rateLimit) },
+    );
+  }
   try {
     const { token } = await readJsonBody<{ token?: string }>(request, 32 * 1_024);
     const session = verifyProofSessionToken(token || "");

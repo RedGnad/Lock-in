@@ -1,6 +1,13 @@
 export const lockInAbi = [
   {
     type: "function",
+    name: "nextPactId",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "pacts",
     stateMutability: "view",
     inputs: [{ name: "", type: "uint256" }],
@@ -190,6 +197,28 @@ export const lockInAbi = [
       { indexed: true, name: "pactId", type: "uint256" },
       { indexed: true, name: "account", type: "address" },
       { indexed: true, name: "identityHash", type: "bytes32" },
+    ],
+  },
+  {
+    type: "event",
+    name: "PactJoined",
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "pactId", type: "uint256" },
+      { indexed: true, name: "account", type: "address" },
+    ],
+  },
+  {
+    type: "event",
+    name: "DayProved",
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: "pactId", type: "uint256" },
+      { indexed: true, name: "account", type: "address" },
+      { indexed: true, name: "dayIndex", type: "uint8" },
+      { indexed: false, name: "activityNullifier", type: "bytes32" },
+      { indexed: false, name: "distanceMeters", type: "uint256" },
+      { indexed: false, name: "activityTimestamp", type: "uint256" },
     ],
   },
   {
