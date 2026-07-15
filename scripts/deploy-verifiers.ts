@@ -21,8 +21,9 @@ const PINNED_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e5443a9072");
 const STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
 const STRAVA_PROVIDER_VERSION = "1.0.3";
 const DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-const DUOLINGO_PROVIDER_VERSION = "1.0.3";
-const DUOLINGO_PROVIDER_HASH = "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80";
+const DUOLINGO_PROVIDER_VERSION = "1.0.4";
+const DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
+const DUOLINGO_XP_REQUEST_HASH = "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac";
 
 type Artifact = { abi: Abi; bytecode: { object: Hex } };
 
@@ -104,7 +105,8 @@ const plan = {
     strava: `${STRAVA_PROVIDER_ID}@${STRAVA_PROVIDER_VERSION}`,
     duolingo: {
       provider: `${DUOLINGO_PROVIDER_ID}@${DUOLINGO_PROVIDER_VERSION}`,
-      providerHash: DUOLINGO_PROVIDER_HASH,
+      ownershipRequestHash: DUOLINGO_OWNERSHIP_REQUEST_HASH,
+      xpRequestHash: DUOLINGO_XP_REQUEST_HASH,
     },
   },
   artifactInitCodeHashes: artifactHashes,
@@ -171,7 +173,8 @@ const metadataAbi = [
   { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
 ] as const;
 const [
   parserLive,
@@ -187,7 +190,8 @@ const [
   duolingoWitness,
   duolingoProviderId,
   duolingoProviderVersion,
-  duolingoProviderHash,
+  duolingoOwnershipRequestHash,
+  duolingoXpRequestHash,
 ] = await Promise.all([
   publicClient.readContract({ address: parser.address, abi: metadataAbi, functionName: "LIVE_SCHEMA_CONFIRMED" }),
   publicClient.readContract({ address: parser.address, abi: metadataAbi, functionName: "SCHEMA_ID" }),
@@ -202,14 +206,16 @@ const [
   publicClient.readContract({ address: duolingo.address, abi: metadataAbi, functionName: "WITNESS" }),
   publicClient.readContract({ address: duolingo.address, abi: metadataAbi, functionName: "DUOLINGO_PROVIDER_ID" }),
   publicClient.readContract({ address: duolingo.address, abi: metadataAbi, functionName: "DUOLINGO_PROVIDER_VERSION" }),
-  publicClient.readContract({ address: duolingo.address, abi: metadataAbi, functionName: "DUOLINGO_PROVIDER_HASH" }),
+  publicClient.readContract({ address: duolingo.address, abi: metadataAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH" }),
+  publicClient.readContract({ address: duolingo.address, abi: metadataAbi, functionName: "DUOLINGO_XP_REQUEST_HASH" }),
 ]);
 if (
   !parserLive || !stravaLive || !duolingoLive
     || parserProviderId !== STRAVA_PROVIDER_ID || parserProviderVersion !== STRAVA_PROVIDER_VERSION
     || stravaProviderId !== STRAVA_PROVIDER_ID || stravaProviderVersion !== STRAVA_PROVIDER_VERSION
     || duolingoProviderId !== DUOLINGO_PROVIDER_ID || duolingoProviderVersion !== DUOLINGO_PROVIDER_VERSION
-    || duolingoProviderHash !== DUOLINGO_PROVIDER_HASH
+    || duolingoOwnershipRequestHash !== DUOLINGO_OWNERSHIP_REQUEST_HASH
+    || duolingoXpRequestHash !== DUOLINGO_XP_REQUEST_HASH
     || getAddress(stravaWitness) !== PINNED_WITNESS || getAddress(duolingoWitness) !== PINNED_WITNESS
     || getAddress(stravaParser) !== parser.address
 ) {

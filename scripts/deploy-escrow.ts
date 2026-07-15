@@ -23,8 +23,9 @@ const EXPECTED_RECLAIM_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e54
 const EXPECTED_STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
 const EXPECTED_STRAVA_PROVIDER_VERSION = "1.0.3";
 const EXPECTED_DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.3";
-const EXPECTED_DUOLINGO_PROVIDER_HASH = "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80";
+const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.4";
+const EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
+const EXPECTED_DUOLINGO_XP_REQUEST_HASH = "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac";
 const EXPECTED_CONTRACT_SCHEMA_ID = 1n;
 const OWNERSHIP_TRANSFER_GAS_RESERVE = 100_000n;
 
@@ -97,7 +98,8 @@ const verifierAbi = [
   { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "PARSER", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
 ] as const;
@@ -113,7 +115,8 @@ const [
   stravaProviderVersion,
   duolingoProviderId,
   duolingoProviderVersion,
-  duolingoProviderHash,
+  duolingoOwnershipRequestHash,
+  duolingoXpRequestHash,
   deployedStravaParser,
 ] = await Promise.all([
   publicClient.getCode({ address: stravaVerifier, blockNumber: verificationBlock.number }),
@@ -126,7 +129,8 @@ const [
   publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", blockNumber: verificationBlock.number }),
   publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_ID", blockNumber: verificationBlock.number }),
   publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_VERSION", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_HASH", blockNumber: verificationBlock.number }),
+  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH", blockNumber: verificationBlock.number }),
+  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_XP_REQUEST_HASH", blockNumber: verificationBlock.number }),
   publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "PARSER", blockNumber: verificationBlock.number }),
 ]);
 if (!stravaVerifierCode || stravaVerifierCode === "0x" || !duolingoVerifierCode || duolingoVerifierCode === "0x") {
@@ -144,7 +148,8 @@ if (stravaProviderId !== EXPECTED_STRAVA_PROVIDER_ID || stravaProviderVersion !=
 if (
   duolingoProviderId !== EXPECTED_DUOLINGO_PROVIDER_ID
     || duolingoProviderVersion !== EXPECTED_DUOLINGO_PROVIDER_VERSION
-    || duolingoProviderHash !== EXPECTED_DUOLINGO_PROVIDER_HASH
+    || duolingoOwnershipRequestHash !== EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH
+    || duolingoXpRequestHash !== EXPECTED_DUOLINGO_XP_REQUEST_HASH
 ) {
   throw new Error("The Duolingo verifier does not pin the release provider schema");
 }
@@ -230,7 +235,15 @@ const plan = {
     reclaimWitness: EXPECTED_RECLAIM_WITNESS,
     stravaParser: { address: stravaParser, codeHash: stravaParserCodeHash, schemaId: stravaParserSchemaId, providerId: stravaParserProviderId, providerVersion: stravaParserProviderVersion, liveSchemaConfirmed: stravaParserLive },
     strava: { address: stravaVerifier, codeHash: stravaVerifierCodeHash, parser: stravaParser, providerId: stravaProviderId, providerVersion: stravaProviderVersion, liveSchemaConfirmed: stravaLive },
-    duolingo: { address: duolingoVerifier, codeHash: duolingoVerifierCodeHash, providerId: duolingoProviderId, providerVersion: duolingoProviderVersion, providerHash: duolingoProviderHash, liveSchemaConfirmed: duolingoLive },
+    duolingo: {
+      address: duolingoVerifier,
+      codeHash: duolingoVerifierCodeHash,
+      providerId: duolingoProviderId,
+      providerVersion: duolingoProviderVersion,
+      ownershipRequestHash: duolingoOwnershipRequestHash,
+      xpRequestHash: duolingoXpRequestHash,
+      liveSchemaConfirmed: duolingoLive,
+    },
   },
   signerBalancesWei: {
     evidence: evidenceSignerBalance.toString(),

@@ -78,21 +78,25 @@ contract MockDuolingoDirectVerifier is ILockInDuolingoVerifier {
         return true;
     }
 
-    function validateDuolingoProof(
-        Reclaim.Proof calldata proof,
+    function validateDuolingoProofs(
+        Reclaim.Proof[] calldata proofs,
         address account,
         uint256 pactId,
         bool baseline,
         uint8 dayIndex,
         string calldata expectedSessionId
     ) external pure returns (LockInProofTypes.DuolingoEvidence memory evidence) {
+        if (proofs.length != 2) revert InvalidMockProof();
         if (
-            proof.signedClaim.claim.owner != account || keccak256(bytes(proof.claimInfo.provider)) != keccak256("duo")
-                || keccak256(bytes(proof.claimInfo.context)) != keccak256(bytes(expectedSessionId))
+            proofs[0].signedClaim.claim.owner != account || proofs[1].signedClaim.claim.owner != account
+                || keccak256(bytes(proofs[0].claimInfo.provider)) != keccak256("duo-ownership")
+                || keccak256(bytes(proofs[1].claimInfo.provider)) != keccak256("duo-xp")
+                || keccak256(bytes(proofs[0].claimInfo.context)) != keccak256(bytes(expectedSessionId))
+                || keccak256(bytes(proofs[1].claimInfo.context)) != keccak256(bytes(expectedSessionId))
         ) revert InvalidMockProof();
-        evidence.identityHash = proof.signedClaim.claim.identifier;
-        evidence.totalXp = proof.signedClaim.claim.epoch;
-        evidence.proofTimestamp = proof.signedClaim.claim.timestampS;
+        evidence.identityHash = proofs[1].signedClaim.claim.identifier;
+        evidence.totalXp = proofs[1].signedClaim.claim.epoch;
+        evidence.proofTimestamp = proofs[1].signedClaim.claim.timestampS;
         evidence.proofSetHash = keccak256(
             abi.encode(
                 keccak256("MOCK_DUO_PROOF"),
@@ -472,6 +476,145 @@ contract LockInEscrowReleaseTest {
         (bool replayOk, bytes memory replayData) =
             address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, evidence, directProof)));
         _requireSelector(replayOk, replayData, LockInEscrow.EventAlreadyUsed.selector);
+    }
+
+    function testLockScoreCountsOneOverallDayAndOneDayPerMission() public {
+        uint256 firstStrava = _createStrava(2, keccak256("score-first-create"));
+        uint256 secondStrava = _createStrava(2, keccak256("score-second-create"));
+        uint256 duolingo = _createDuolingo(ALICE, ALICE_DUO, 1_000, keccak256("score-duo-create"));
+        _joinStrava(firstStrava, BOB, keccak256("score-first-join"));
+        _joinStrava(secondStrava, BOB, keccak256("score-second-join"));
+        _joinDuolingo(duolingo, BOB, BOB_DUO, 500, keccak256("score-duo-join"));
+
+        VM.warp(START + 1 hours);
+        _submit(
+            ALICE, firstStrava, 0, 1, keccak256("strava:alice"), keccak256("score-first-run"), 1_200, START + 1 hours
+        );
+        _submit(
+            ALICE, secondStrava, 0, 1, keccak256("strava:alice"), keccak256("score-second-run"), 1_900, START + 1 hours
+        );
+        _submit(ALICE, duolingo, 0, 2, ALICE_DUO, keccak256("ignored-duo-nullifier"), 1_020, START + 1 hours);
+
+        require(escrow.lockScore(ALICE) == 10, "multiple locks farmed overall score");
+        require(escrow.verifiedDays(ALICE) == 1, "overall day counted more than once");
+        require(escrow.missionVerifiedDays(ALICE, 1) == 1, "running day counted more than once");
+        require(escrow.missionVerifiedDays(ALICE, 2) == 1, "learning day was not counted");
+    }
+
+    function testSharedStravaIdentitySettlesBothLocksButScoresOnlyFirstWallet() public {
+        bytes32 sharedIdentity = keccak256("strava:shared-athlete");
+        uint256 aliceLock =
+            _createStravaTerms(uint96(ONE_USDC), 3, 1, 2, 2, uint64(START), keccak256("shared-identity-alice-lock"));
+        uint256 bobLock =
+            _createStravaTerms(uint96(ONE_USDC), 3, 1, 2, 2, uint64(START), keccak256("shared-identity-bob-lock"));
+        _joinStrava(aliceLock, BOB, keccak256("shared-identity-alice-lock-join"));
+        _joinStrava(bobLock, BOB, keccak256("shared-identity-bob-lock-join"));
+
+        VM.warp(START + 1 hours);
+        _submit(
+            ALICE, aliceLock, 0, 1, sharedIdentity, keccak256("shared-identity-alice-activity"), 1_200, START + 1 hours
+        );
+        _submit(BOB, bobLock, 0, 1, sharedIdentity, keccak256("shared-identity-bob-activity"), 1_300, START + 1 hours);
+
+        require(escrow.completionCount(aliceLock, ALICE) == 1, "first wallet completion was rejected");
+        require(escrow.completionCount(bobLock, BOB) == 1, "second wallet completion was rejected");
+        require(escrow.isFinisher(aliceLock, ALICE), "first wallet did not finish its Lock");
+        require(escrow.isFinisher(bobLock, BOB), "second wallet did not finish its Lock");
+        require(escrow.missionIdentityOwner(1, sharedIdentity) == ALICE, "identity owner was not first wallet");
+        require(escrow.lockScore(ALICE) == 10 && escrow.verifiedDays(ALICE) == 1, "first wallet was not scored");
+        require(escrow.missionVerifiedDays(ALICE, 1) == 1, "first wallet mission day was not scored");
+        require(
+            escrow.lockScore(BOB) == 0 && escrow.verifiedDays(BOB) == 0 && escrow.missionVerifiedDays(BOB, 1) == 0,
+            "second wallet farmed the shared identity"
+        );
+
+        VM.warp(START + 4 days);
+        escrow.finalizePact(aliceLock);
+        escrow.finalizePact(bobLock);
+        VM.prank(ALICE);
+        require(escrow.claim(aliceLock) == 2 * ONE_USDC, "first Lock payout changed");
+        VM.prank(BOB);
+        require(escrow.claim(bobLock) == 2 * ONE_USDC, "second Lock payout changed");
+    }
+
+    function testPlayerHandlesAreOptionalCanonicalAndUnique() public {
+        VM.prank(ALICE);
+        escrow.setPlayerHandle("red_g");
+        require(keccak256(bytes(escrow.playerHandle(ALICE))) == keccak256("red_g"), "handle not stored");
+        require(escrow.handleOwner(keccak256("red_g")) == ALICE, "handle owner not stored");
+
+        VM.prank(BOB);
+        (bool duplicate, bytes memory duplicateData) =
+            address(escrow).call(abi.encodeCall(escrow.setPlayerHandle, ("red_g")));
+        _requireSelector(duplicate, duplicateData, LockInEscrow.HandleAlreadyUsed.selector);
+
+        for (uint256 i; i < 3; ++i) {
+            string memory invalid = i == 0 ? "ab" : i == 1 ? "RedG" : "red-g";
+            VM.prank(BOB);
+            (bool accepted, bytes memory data) = address(escrow).call(abi.encodeCall(escrow.setPlayerHandle, (invalid)));
+            _requireSelector(accepted, data, LockInEscrow.InvalidHandle.selector);
+        }
+
+        VM.prank(ALICE);
+        escrow.setPlayerHandle("redgnad");
+        require(escrow.handleOwner(keccak256("red_g")) == address(0), "old handle was not released");
+    }
+
+    function testPlayerHandleCanBeClearedAndReused() public {
+        bytes32 handleKey = keccak256("red_g");
+        VM.prank(ALICE);
+        escrow.setPlayerHandle("red_g");
+
+        VM.prank(ALICE);
+        escrow.clearPlayerHandle();
+        require(bytes(escrow.playerHandle(ALICE)).length == 0, "cleared handle remained on player");
+        require(escrow.handleOwner(handleKey) == address(0), "cleared handle remained reserved");
+
+        VM.prank(BOB);
+        escrow.setPlayerHandle("red_g");
+        require(keccak256(bytes(escrow.playerHandle(BOB))) == handleKey, "released handle was not reusable");
+        require(escrow.handleOwner(handleKey) == BOB, "reused handle has wrong owner");
+
+        VM.prank(ALICE);
+        escrow.clearPlayerHandle();
+        require(escrow.handleOwner(handleKey) == BOB, "empty clear released another player's handle");
+    }
+
+    function testOnlyOwnerCanTogglePlayerProfileVisibility() public {
+        VM.prank(ALICE);
+        (bool outsider,) = address(escrow).call(abi.encodeCall(escrow.setPlayerProfileHidden, (BOB, true)));
+        require(!outsider, "non-owner changed profile visibility");
+        require(!escrow.playerProfileHidden(BOB), "failed outsider call changed visibility");
+
+        escrow.setPlayerProfileHidden(BOB, true);
+        require(escrow.playerProfileHidden(BOB), "owner did not hide profile");
+        escrow.setPlayerProfileHidden(BOB, false);
+        require(!escrow.playerProfileHidden(BOB), "owner did not unhide profile");
+
+        (bool zeroAccount, bytes memory zeroData) =
+            address(escrow).call(abi.encodeCall(escrow.setPlayerProfileHidden, (address(0), true)));
+        _requireSelector(zeroAccount, zeroData, LockInEscrow.InvalidAddress.selector);
+    }
+
+    function testHighFivesRequireVerifiedCrewAndNeverChangeScore() public {
+        uint256 pactId = _createStrava(2, keccak256("high-five-create"));
+        _joinStrava(pactId, BOB, keccak256("high-five-join"));
+        VM.warp(START + 1 hours);
+        _submit(ALICE, pactId, 0, 1, keccak256("strava:alice"), keccak256("high-five-run"), 1_200, START + 1 hours);
+        uint64 scoreBefore = escrow.lockScore(ALICE);
+        VM.prank(BOB);
+        escrow.highFive(pactId, ALICE, 0);
+        require(escrow.lockScore(ALICE) == scoreBefore && escrow.lockScore(BOB) == 0, "reaction changed score");
+
+        VM.prank(BOB);
+        (bool repeated, bytes memory repeatedData) =
+            address(escrow).call(abi.encodeCall(escrow.highFive, (pactId, ALICE, 0)));
+        _requireSelector(repeated, repeatedData, LockInEscrow.HighFiveAlreadySent.selector);
+
+        VM.prank(CAROL);
+        (bool outsider, bytes memory outsiderData) =
+            address(escrow).call(abi.encodeCall(escrow.highFive, (pactId, ALICE, 0)));
+        _requireSelector(outsider, outsiderData, LockInEscrow.InvalidHighFive.selector);
     }
 
     function testStravaFinisherReceivesQuitterStake() public {
@@ -1070,13 +1213,18 @@ contract LockInEscrowReleaseTest {
         returns (LockInProofTypes.DirectProofBundle memory directProof)
     {
         directProof.sessionId = "duo-session";
-        directProof.proofs = new Reclaim.Proof[](1);
-        directProof.proofs[0].claimInfo.provider = "duo";
+        directProof.proofs = new Reclaim.Proof[](2);
+        directProof.proofs[0].claimInfo.provider = "duo-ownership";
         directProof.proofs[0].claimInfo.context = directProof.sessionId;
         directProof.proofs[0].signedClaim.claim.owner = account;
-        directProof.proofs[0].signedClaim.claim.identifier = identity;
-        directProof.proofs[0].signedClaim.claim.epoch = uint32(xp);
+        directProof.proofs[0].signedClaim.claim.identifier = keccak256("MOCK_DUO_OWNERSHIP");
         directProof.proofs[0].signedClaim.claim.timestampS = uint32(observedAt);
+        directProof.proofs[1].claimInfo.provider = "duo-xp";
+        directProof.proofs[1].claimInfo.context = directProof.sessionId;
+        directProof.proofs[1].signedClaim.claim.owner = account;
+        directProof.proofs[1].signedClaim.claim.identifier = identity;
+        directProof.proofs[1].signedClaim.claim.epoch = uint32(xp);
+        directProof.proofs[1].signedClaim.claim.timestampS = uint32(observedAt);
     }
 
     function _duoProofSetHash(

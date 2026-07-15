@@ -8,9 +8,10 @@ import {
   STRAVA_PROVIDER_VERSION,
 } from "../src/strava-proof-policy.js";
 import {
-  DUOLINGO_PROVIDER_HASH,
   DUOLINGO_PROVIDER_ID,
   DUOLINGO_PROVIDER_VERSION,
+  DUOLINGO_OWNERSHIP_REQUEST_HASH,
+  DUOLINGO_XP_REQUEST_HASH,
 } from "../src/duolingo-proof-policy.js";
 
 const response = await fetchProviderConfigs(
@@ -45,12 +46,15 @@ const duolingoResponse = await fetchProviderConfigs(
   DUOLINGO_PROVIDER_VERSION,
   [],
 );
-if (duolingoResponse.providers?.length !== 1 || duolingoResponse.providers[0].requestData.length !== 1) {
-  throw new Error("Expected one Duolingo provider config with one required request");
+if (duolingoResponse.providers?.length !== 1 || duolingoResponse.providers[0].requestData.length !== 2) {
+  throw new Error("Expected one Duolingo provider config with two required requests");
 }
-const duolingoHash = hashRequestSpec(duolingoResponse.providers[0].requestData[0]).value;
-if (!Array.isArray(duolingoHash) || duolingoHash.length !== 1 || duolingoHash[0].toLowerCase() !== DUOLINGO_PROVIDER_HASH) {
-  throw new Error("Duolingo provider hash drifted");
+const expectedDuolingoHashes = [DUOLINGO_OWNERSHIP_REQUEST_HASH, DUOLINGO_XP_REQUEST_HASH];
+for (const [index, request] of duolingoResponse.providers[0].requestData.entries()) {
+  const hash = hashRequestSpec(request).value;
+  if (!Array.isArray(hash) || hash.length !== 1 || hash[0].toLowerCase() !== expectedDuolingoHashes[index]) {
+    throw new Error(`Duolingo provider hash ${index} drifted`);
+  }
 }
 
 console.log(JSON.stringify({
@@ -59,6 +63,6 @@ console.log(JSON.stringify({
   requiredRequests: requests.length,
   duolingoProviderId: DUOLINGO_PROVIDER_ID,
   duolingoProviderVersion: DUOLINGO_PROVIDER_VERSION,
-  duolingoRequiredRequests: 1,
+  duolingoRequiredRequests: 2,
   hashesMatchPinnedPolicy: true,
 }, null, 2));

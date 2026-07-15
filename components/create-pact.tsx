@@ -18,7 +18,6 @@ import {
 import { escrowAddress, monad } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { MISSIONS, PACT_TEMPLATES, pactTemplate, type MissionId } from "@/src/missions";
-import { duolingoOwnershipCode } from "@/src/duolingo-proof-policy";
 import { runReclaimProof } from "@/src/reclaim-client";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 import { requestAccessEvidence } from "@/src/access-client";
@@ -100,7 +99,6 @@ export function CreatePact() {
   const amount = useMemo(() => { try { return parseUnits(stakeInput, decimals); } catch { return 0n; } }, [stakeInput, decimals]);
   const template = useMemo(() => pactTemplate(durationDays), [durationDays]);
   const mission = useMemo(() => MISSIONS.find((item) => item.id === missionId)!, [missionId]);
-  const ownershipCode = useMemo(() => address ? duolingoOwnershipCode(address) : "LI-<YOUR WALLET CODE>", [address]);
 
   useEffect(() => {
     let alive = true;
@@ -246,16 +244,6 @@ export function CreatePact() {
     setDailyTarget(next.defaultTarget);
   }
 
-  async function copyOwnershipCode() {
-    if (!address) return setStatus("Connect your wallet to generate your Duolingo ownership code.");
-    try {
-      await navigator.clipboard.writeText(ownershipCode);
-      setStatus("Ownership code copied. Replace your Duolingo Name with it, save, then return here.");
-    } catch {
-      setStatus(`Set your Duolingo Name to this exact code: ${ownershipCode}`);
-    }
-  }
-
   function review() {
     if (!address) return setStatus("Connect your wallet to create a lock.");
     if (chainId !== monad.id) return setStatus("Switch your wallet to Monad mainnet.");
@@ -274,7 +262,7 @@ export function CreatePact() {
       <div className="step-track" aria-label={`Step ${step + 1} of 3`}>{[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`} aria-current={index === step ? "step" : undefined}/>)}</div>
       <div className="form-stage">
         {step === 0 && <fieldset className="form-field"><legend><b>Choose your mission</b><span>Fitness or learning. Each has its own proof.</span></legend><div className="mission-options">{MISSIONS.map((item) => <button type="button" className={missionId === item.id ? "active" : ""} aria-pressed={missionId === item.id} onClick={() => chooseMission(item.id)} key={item.id}><strong>{item.name}</strong><span>{item.description}</span></button>)}</div></fieldset>}
-        {step === 1 && <fieldset className="form-field"><legend><b>Set the pace</b><span>{mission.name} · choose a daily target, duration, and crew.</span></legend><div className="segmented target-options">{mission.targets.map((item) => <button type="button" className={dailyTarget === item.value ? "active" : ""} aria-pressed={dailyTarget === item.value} onClick={() => setDailyTarget(item.value)} key={item.value}>{item.label}</button>)}</div><div className="segmented schedule-options">{PACT_TEMPLATES.map((item) => <button type="button" className={durationDays === item.durationDays ? "active" : ""} aria-pressed={durationDays === item.durationDays} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} WINS</small></button>)}</div><div className="segmented crew-options" aria-label="Maximum crew size">{[2, 4, 8].map((size) => <button type="button" className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size} onClick={() => setMaxParticipants(size)} key={size}>{size}<small>PLAYERS MAX</small></button>)}</div>{mission.type === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="duolingo-username">Duolingo username</label><input id="duolingo-username" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username" autoComplete="off"/><p><strong>Link your profile:</strong> copy <code>{ownershipCode}</code>, open Duolingo settings, replace the <strong>Name</strong> field with it and save. Then return here.</p><div className="duolingo-actions"><button className="secondary-button" type="button" disabled={!address} onClick={() => void copyOwnershipCode()}>COPY OWNERSHIP CODE</button><a href="https://www.duolingo.com/settings/profile" target="_blank" rel="noreferrer">OPEN DUOLINGO SETTINGS ↗</a></div></div>}</fieldset>}
+        {step === 1 && <fieldset className="form-field"><legend><b>Set the pace</b><span>{mission.name} · choose a daily target, duration, and crew.</span></legend><div className="segmented target-options">{mission.targets.map((item) => <button type="button" className={dailyTarget === item.value ? "active" : ""} aria-pressed={dailyTarget === item.value} onClick={() => setDailyTarget(item.value)} key={item.value}>{item.label}</button>)}</div><div className="segmented schedule-options">{PACT_TEMPLATES.map((item) => <button type="button" className={durationDays === item.durationDays ? "active" : ""} aria-pressed={durationDays === item.durationDays} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} WINS</small></button>)}</div><div className="segmented crew-options" aria-label="Maximum crew size">{[2, 4, 8].map((size) => <button type="button" className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size} onClick={() => setMaxParticipants(size)} key={size}>{size}<small>PLAYERS MAX</small></button>)}</div>{mission.type === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="duolingo-username">Duolingo username</label><input id="duolingo-username" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username" autoComplete="off"/><p>Reclaim verifies that the signed-in Duolingo account owns this profile, then records a fresh XP baseline. Your name and game settings stay untouched.</p></div>}</fieldset>}
         {step === 2 && <fieldset className="form-field"><legend><b>Your stake</b><span>Every player stakes the same amount.</span></legend><div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); return <button type="button" className={stakeInput === value ? "active" : ""} aria-pressed={stakeInput === value} disabled={maxStake !== undefined && option > maxStake} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div></fieldset>}
       </div>
       <div className="pact-summary"><strong>{mission.name} · {template.requiredCompletions}/{durationDays} days</strong><span>{mission.targets.find((item) => item.value === dailyTarget)?.label} · up to {maxParticipants} players · {stakeInput} {symbol} each</span></div>
@@ -284,8 +272,8 @@ export function CreatePact() {
       {status && <p className="form-status" aria-live="polite">{status}</p>}
       <ActionDialog open={reviewOpen} title="Create this lock?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
         <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {mission.targets.find((item) => item.value === dailyTarget)?.label}</dd></div><div><dt>Schedule</dt><dd>{template.requiredCompletions} of {durationDays} days</dd></div><div><dt>Crew</dt><dd>2 required · {maxParticipants} maximum</dd></div><div><dt>Stake</dt><dd>{stakeInput} {symbol} per player</dd></div></dl>
-        <p>{mission.type === DUOLINGO_XP_MISSION ? "Reclaim checks your wallet code and current XP before any stake enters the lock. Only XP earned after that baseline can count." : "Each completion requires a challenge-named GPS run from the same Strava account. Suspicious, manual, trainer, flagged, or implausible runs are rejected."}</p>
-        {mission.type === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> the verified Duolingo profile fields, including username, profile ID, temporary Name code, XP and proof time, plus standard Reclaim request metadata. Your password is not included.</p>}
+        <p>{mission.type === DUOLINGO_XP_MISSION ? "Reclaim checks account ownership and current XP before any stake enters the lock. Only XP earned after that baseline can count." : "Each completion requires a challenge-named GPS run from the same Strava account. Suspicious, manual, trainer, flagged, or implausible runs are rejected."}</p>
+        {mission.type === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> verified Duolingo username, profile ID, XP, a non-sensitive ownership marker, proof time and standard Reclaim request metadata. Passwords, cookies, email and privacy-setting values are excluded.</p>}
         <p>Wallet gas is separate. If fewer than two players join, each participant can reclaim their full stake.</p>
       </ActionDialog>
     </section>

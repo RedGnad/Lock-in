@@ -14,7 +14,7 @@ export type ProofSession = {
   dayIndex?: number;
   providerId: string;
   providerVersion: string;
-  ownershipCode?: string;
+  duolingoProfileId?: string;
   proofCode?: string;
   dailyTarget: number;
   startsAtMs: number;
@@ -61,6 +61,9 @@ export function verifyProofSession(token: string): ProofSession {
       || !Number.isSafeInteger(value.exp) || Number(value.exp) <= Date.now()
   ) throw new Error("Invalid proof session token payload");
   if (value.phase === "baseline" && value.missionType !== 2) throw new Error("Only Duolingo uses a baseline");
+  if (value.missionType === 2 && (typeof value.duolingoProfileId !== "string" || !/^[1-9]\d{0,19}$/.test(value.duolingoProfileId))) {
+    throw new Error("Invalid Duolingo profile id");
+  }
   if (value.phase === "baseline" && value.intent !== "create" && value.intent !== "join") {
     throw new Error("Invalid baseline intent");
   }

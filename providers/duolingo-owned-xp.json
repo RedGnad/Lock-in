@@ -1,53 +1,75 @@
 {
   "providerId": "cdf8cb3b-2976-4413-ab2d-693ae5028380",
-  "version": "1.0.3",
-  "name": "Lock In Duolingo owned XP",
+  "version": "1.0.4",
+  "name": "Lock In Duolingo authenticated XP",
   "status": "published-private",
-  "requestHash": "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80",
-  "loginUrl": "https://www.duolingo.com/",
-  "description": "Proves a stable Duolingo profile id, username, wallet ownership code in the editable public Name, and cumulative XP in one HTTPS response.",
+  "loginUrl": "https://www.duolingo.com/settings/account",
+  "description": "Proves control of a Duolingo profile through a self-only authenticated endpoint, then proves the same stable profile id, username and cumulative XP without changing the player's profile.",
   "securityModel": {
-    "accountOwnership": "Before proving, the wallet owner sets their Duolingo Name to the exact grouped 50-bit LOCK-<5 CROCKFORD>-<5 CROCKFORD> code derived from their wallet.",
+    "accountOwnership": "A self-only privacy-settings request returns 200 for the authenticated profile, 403 for another profile in the same session, and 401 without the session. Only the constant setting id disable_social is revealed; setting values are not revealed.",
+    "profileBinding": "Both required requests use the same duolingo_user_id template. The profile response id must equal that requested id and the server-resolved public username id.",
     "baseline": "A fresh snapshot is accepted atomically with create/join and becomes the minimum consumed XP.",
-    "completion": "Only new totalXp above both the pact baseline and the globally consumed value can count.",
-    "antiReplay": "The identity and totalXp snapshot form a global nullifier; one XP range cannot settle multiple days or pacts.",
-    "verificationFriction": "The Reclaim verification uses Duolingo's public profile endpoint in an incognito webview. Users edit their Name in their normal Duolingo session and do not sign in to Duolingo again inside Reclaim.",
-    "knownLimit": "This proves control of a profile and XP credited by Duolingo, not human learning or the absence of account sharing/automation."
+    "completion": "Only new totalXp above both the lock baseline and the globally consumed value can count.",
+    "antiReplay": "The identity and totalXp snapshot form a global nullifier; one XP range cannot settle multiple days or locks.",
+    "verificationFriction": "The player signs in to Duolingo inside the isolated Reclaim flow if needed. No Duolingo profile field is edited.",
+    "knownLimit": "This proves control of a profile and XP credited by Duolingo, not human learning or the absence of account sharing or automation. Duolingo is not an official partner."
   },
   "requestData": [
     {
-      "purpose": "Bind a wallet-controlled Duolingo profile and its cumulative XP in one response",
-      "url": "https://www.duolingo.com/2017-06-30/users?username={{duolingo_username}}",
+      "purpose": "Prove the active session controls the requested stable profile id",
+      "requestHash": "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e",
+      "responseMatchesHash": "0x989b96df035ef014c6d1c47de287b47064a396965075e770910b6fbc3d8e4ca2",
+      "responseRedactionsHash": "0x9738060805623c6fd93f975b64d3c24a1e015102c8c591d44e0d10b4759b3db7",
+      "url": "https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}/privacy-settings",
       "urlType": "TEMPLATE",
       "method": "GET",
+      "credentials": "include",
       "responseMatches": [
-        { "value": "\"id\":{{id}}", "type": "contains", "isOptional": false, "order": 0, "invert": false },
-        { "value": "\"name\":\"{{name}}\"", "type": "contains", "isOptional": false, "order": 1, "invert": false },
-        { "value": "\"username\":\"{{username}}\"", "type": "contains", "isOptional": false, "order": 2, "invert": false },
-        { "value": "\"totalXp\":{{totalXp}}", "type": "contains", "isOptional": false, "order": 3, "invert": false }
+        { "value": "\"id\":\"{{marker}}\"", "type": "contains", "isOptional": false, "order": 0, "invert": false }
       ],
       "responseRedactions": [
-        { "order": 0, "jsonPath": "$.users[0].id", "regex": "\"id\":(?<id>\\d+)" },
-        { "order": 1, "jsonPath": "$.users[0].name", "regex": "\"name\":\"(?<name>LOCK-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5})\"" },
-        { "order": 2, "jsonPath": "$.users[0].username", "regex": "\"username\":\"(?<username>[A-Za-z0-9._-]+)\"" },
-        { "order": 3, "jsonPath": "$.users[0].totalXp", "regex": "\"totalXp\":(?<totalXp>\\d+)" }
+        { "order": 0, "jsonPath": "$.privacySettings[10].id", "regex": "\"id\":\"(?<marker>[A-Za-z0-9_-]+)\"" }
+      ]
+    },
+    {
+      "purpose": "Prove the same profile's stable id, username and cumulative XP",
+      "requestHash": "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac",
+      "responseMatchesHash": "0x6453f3944f2bae492c7a76627f0e3e9d8bbc919a9d8244a3d2c1363df7b71430",
+      "responseRedactionsHash": "0x43df424c446d73cb7fb98b8c23ebe70bf3e8530ceecf71cd2f55c92633e2f725",
+      "url": "https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}?fields=id,totalXp,username",
+      "urlType": "TEMPLATE",
+      "method": "GET",
+      "credentials": "include",
+      "responseMatches": [
+        { "value": "\"id\":{{id}}", "type": "contains", "isOptional": false, "order": 0, "invert": false },
+        { "value": "\"totalXp\":{{xp}}", "type": "contains", "isOptional": false, "order": 1, "invert": false },
+        { "value": "\"username\":\"{{username}}\"", "type": "contains", "isOptional": false, "order": 2, "invert": false }
+      ],
+      "responseRedactions": [
+        { "order": 0, "jsonPath": "$.id", "regex": "\"id\":(?<id>\\d+)" },
+        { "order": 1, "jsonPath": "$.totalXp", "regex": "\"totalXp\":(?<xp>\\d+)" },
+        { "order": 2, "jsonPath": "$.username", "regex": "\"username\":\"(?<username>[A-Za-z0-9_-]+)\"" }
       ]
     }
   ],
   "runtimePolicy": {
-    "nameMustEqual": "grouped 50-bit LOCK-ABCDE-FGHIJ code derived from the proof-bound wallet using an ambiguity-free Crockford alphabet",
+    "ownershipMarkerMustEqual": "disable_social",
+    "requestedProfileIdMustEqualResponseId": true,
     "stableIdentityField": "id",
-    "metricField": "totalXp",
+    "metricField": "xp",
     "metricMode": "monotonic delta after fresh atomic baseline",
-    "providerVersionMustEqual": "1.0.3",
+    "providerVersionMustEqual": "1.0.4",
+    "proofCount": 2,
     "proofMaxAgeSeconds": 600
   },
   "publicationChecklist": {
-    "captureReplay": true,
-    "wrongProfileRejected": true,
-    "wrongNameRejected": true,
+    "authenticatedReplay": true,
+    "anonymousReplayRejected": true,
+    "crossProfileOwnershipRejected": true,
+    "nameChangeRequired": false,
     "baselineReplayRejectedOnchain": true,
     "xpReuseRejectedOnchain": true,
-    "liveProofCanary": false
+    "localZkTlsProofs": true,
+    "liveAppProofCanary": false
   }
 }

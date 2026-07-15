@@ -19,6 +19,21 @@ Every Lock is an independent pool with immutable terms:
 
 A 3-day Strava Lock never competes with a 7-day Lock or a Duolingo Lock. Fixed capacity prevents an unexpected late crew from changing exposure. Registration closes at the published start.
 
+## Social loop
+
+The social system is global across Locks but never mixes their pools or payout rules:
+
+- each wallet may claim an optional Lock In handle that is independent from its Strava or Duolingo identity;
+- every Lock has one deterministic, checksummed `LOCK-…` invite code derived from its public onchain ID;
+- the crew view shows verified progress and permits one high-five from a joined participant to a crewmate for each verified day;
+- the Lock Board has Overall, Running, and Learning weekly rankings, plus an all-time Lock Score.
+
+Handles are unique while active, canonical lowercase, 3–16 characters, start with a letter, and otherwise use letters, numbers, or underscores. A participant can change or clear the active handle without changing either external-service profile. Clear releases the handle for reuse and removes it from normal Lock In surfaces, but every historical handle event and wallet link stays public. The owner may hide an abusive handle from product surfaces; the wallet and verified score remain visible, and moderation has no effect on funds or participation.
+
+The scoring rule rewards consistency rather than money or volume. A wallet earns at most 10 overall points per UTC day. Each mission-scoped Strava or Duolingo identity can score only for its first bound wallet; a later accepted completion from another wallet still follows normal payout rules but emits no social score. This limits multi-wallet farming, not human identity across services or accounts. Stake, target, distance, XP, extra Locks, and high-fives cannot multiply the daily award.
+
+Lock Score is non-transferable, non-redeemable reputation metadata. Handles, rank, score, verified days, invite use, and high-fives never affect admission, required completions, finisher status, settlement, claim amount, or payout ordering. An invite code is not a private invitation or authorization credential; every normal join rule still applies.
+
 ## Launch missions
 
 - **Strava GPS Run:** daily targets of 1, 3, 5, or 10 km.
@@ -41,7 +56,7 @@ Reclaim zkTLS proves what Strava or Duolingo returned over HTTPS. The release de
 
 For Strava, the policy requires a challenge-titled GPS Run with coherent motion data, the target distance, non-trainer status, and no Strava flag. It binds a stable athlete identity and globally consumes the activity nullifier.
 
-For Duolingo, a username alone is insufficient. The participant must control the claimed profile well enough to temporarily set its public Name to the exact wallet-specific code at proof time. The proof captures stable profile ID, username, public Name, and cumulative XP together. Only XP earned after the accepted baseline can count, and consumed XP cannot be reused.
+For Duolingo, a username or public XP lookup alone is insufficient. The server resolves the username to a stable numeric profile ID, then Reclaim returns two linked claims for that ID: an authenticated self-only privacy-settings request that discloses only the constant marker name `disable_social`, and a profile request that discloses stable ID, username, and cumulative XP. Duolingo returned `200` for the signed-in profile, `403` for another requested profile ID, and `401` without a session. Participants keep their normal username and display Name. Only XP earned after the accepted baseline can count, and consumed XP cannot be reused.
 
 Neither policy proves who performed the activity. GPS spoofing, imports, account sharing, bots, modified clients, outside help, upstream errors, and collusion remain residual risks. The product promise is replay-resistant, policy-checked service evidence—not impossible cheating.
 
@@ -62,6 +77,8 @@ The website also authenticates the connected wallet with an origin-bound signed 
 
 The contract has no operator withdrawal or abandoned-funds sweep.
 
+Social actions are outside the settlement calculation. The contract owner cannot change a participant's score to change winner status, and hiding a profile does not change that wallet's claim rights.
+
 ## Money and eligibility
 
 Every participant stakes from 0.1 to 1 USDC. The 1 USDC cap is **per participant, per Lock**, not a global wallet limit. Monad gas is separate. The interface should default controlled tests to 0.1 USDC and show the maximum before the wallet transaction, not after an invalid entry.
@@ -70,22 +87,23 @@ The initial cohort is adults-only. Participants must determine whether stake-bas
 
 ## Privacy
 
-Lock In does not intentionally retain the full Reclaim SDK proof object in a product-profile database. Monad permanently exposes wallets, Lock terms, membership, stake, mission, day, accepted metric, hashed identity, nullifier, settlement, and claims.
+Lock In does not intentionally retain the full Reclaim SDK proof object in a product-profile database. Monad permanently exposes wallets, Lock terms, membership, stake, mission, day, accepted metric, hashed identity, nullifier, settlement, claims, optional current and historical Lock In handles, handle-visibility moderation, Lock Score, overall and mission verified-day counters, and high-five sender/recipient/Lock/day events. Invite codes are deterministically derived from public Lock IDs and are not secrets.
 
-The proof transaction also carries the SDK's `transformForOnchain` output. Signed `claimInfo.parameters`, signed `claimInfo.context`, claim metadata, and witness signatures are public and permanent calldata even when their contents are not copied into contract state or events. Duolingo calldata can expose username, stable profile ID, temporary public Name code, cumulative XP, Reclaim session, wallet, internal Lock identifier, and phase. Strava calldata can expose athlete marker, activity ID and title, start time, distance, motion and elevation values, GPS-presence status, trainer and flag status, Reclaim session, wallet, internal Lock identifier, and day. The top-level TEE attestation JWT is excluded from the transform. The GPS route is not requested or published.
+The proof transaction also carries the SDK's `transformForOnchain` output. Signed `claimInfo.parameters`, signed `claimInfo.context`, claim metadata, and witness signatures are public and permanent calldata even when their contents are not copied into contract state or events. Duolingo calldata can expose username, stable profile ID, cumulative XP, the non-sensitive marker name `disable_social`, Reclaim session, wallet, internal Lock identifier, and phase. It must not disclose cookies, credentials, or privacy-setting values. Strava calldata can expose athlete marker, activity ID and title, start time, distance, motion and elevation values, GPS-presence status, trainer and flag status, Reclaim session, wallet, internal Lock identifier, and day. The top-level TEE attestation JWT is excluded from the transform. The GPS route is not requested or published.
 
-Before opening, Lock In must reject any signed proof containing a cookie, Authorization header, access token, API key, secret, or similar sensitive header before transaction preparation.
+Before opening, Lock In must reject any signed proof containing a cookie, Authorization header, access token, API key, secret, privacy-setting value, unexpected personal field, or similar sensitive header before transaction preparation.
 
 ## Public-release gate
 
 Lock In remains closed until all of these conditions pass:
 
 1. the final escrow and direct verifiers are deployed paused and their source, constructor, verifier addresses and code hashes, USDC, cap, owner, authorities, mission policies, and pause states are publicly verified;
-2. Strava and Duolingo providers pass live exact-schema, TEE, witness, secret-header, positive, negative, stale, wrong-wallet, and replay canaries;
+2. Strava and two-claim Duolingo providers pass live exact-schema, request-hash, claim-ordering, TEE, witness, secret-header, privacy-value, positive, negative, stale, wrong-wallet, wrong-profile, and replay canaries;
 3. admission and evidence keys run in an auditable KMS or equivalent isolated signer with least privilege, monitoring, rotation, and emergency revocation;
 4. contract ownership is transferred to a tested multisig;
 5. the direct parsers and verifiers, escrow, oracle boundary, signer services, wallet authentication, deployment, rules, and privacy model receive independent review;
 6. two controlled wallets complete both hybrid mission paths at 0.1 USDC, including transformed-calldata size and gas, mobile-wallet handoff, capacity, partial completion, payout, zero-finisher, underfilled, cancellation, and emergency-refund branches;
-7. production monitoring, liability reconciliation, incident response, and staffed support are operational.
+7. the same wallets pass handle uniqueness/change/clear, invite routing, weekly and mission score deduplication, high-five uniqueness, hide/unhide moderation, and proof that none of those paths changes settlement;
+8. production monitoring, handle-abuse response, liability reconciliation, incident response, and staffed support are operational.
 
 Passing the gate permits a small monitored cohort, not an uncapped public rollout.

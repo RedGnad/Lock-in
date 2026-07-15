@@ -16,9 +16,10 @@ import {
   walletAuthPublicMessage,
 } from "@/src/wallet-auth-server";
 import {
-  DUOLINGO_PROVIDER_HASH,
   DUOLINGO_PROVIDER_ID,
   DUOLINGO_PROVIDER_VERSION,
+  DUOLINGO_OWNERSHIP_REQUEST_HASH,
+  DUOLINGO_XP_REQUEST_HASH,
   validateDuolingoEvidence,
 } from "@/src/duolingo-proof-policy";
 import {
@@ -151,7 +152,8 @@ async function readHybridConfiguration(token: ProofSession): Promise<HybridConfi
       duoLive,
       duoProviderId,
       duoProviderVersion,
-      duoProviderHash,
+      duoOwnershipRequestHash,
+      duoXpRequestHash,
       duoWitness,
     ] = await Promise.all([
       client.getCode({ address: stravaVerifier }),
@@ -164,7 +166,8 @@ async function readHybridConfiguration(token: ProofSession): Promise<HybridConfi
       client.readContract({ address: duolingoVerifier, abi: duolingoVerifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED" }),
       client.readContract({ address: duolingoVerifier, abi: duolingoVerifierAbi, functionName: "DUOLINGO_PROVIDER_ID" }),
       client.readContract({ address: duolingoVerifier, abi: duolingoVerifierAbi, functionName: "DUOLINGO_PROVIDER_VERSION" }),
-      client.readContract({ address: duolingoVerifier, abi: duolingoVerifierAbi, functionName: "DUOLINGO_PROVIDER_HASH" }),
+      client.readContract({ address: duolingoVerifier, abi: duolingoVerifierAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH" }),
+      client.readContract({ address: duolingoVerifier, abi: duolingoVerifierAbi, functionName: "DUOLINGO_XP_REQUEST_HASH" }),
       client.readContract({ address: duolingoVerifier, abi: duolingoVerifierAbi, functionName: "WITNESS" }),
     ]);
     if (!stravaCode || stravaCode === "0x" || !duoCode || duoCode === "0x") unavailable("Verifier code is absent");
@@ -181,7 +184,8 @@ async function readHybridConfiguration(token: ProofSession): Promise<HybridConfi
     if (
       duoProviderId !== DUOLINGO_PROVIDER_ID
         || duoProviderVersion !== DUOLINGO_PROVIDER_VERSION
-        || duoProviderHash !== DUOLINGO_PROVIDER_HASH
+        || duoOwnershipRequestHash !== DUOLINGO_OWNERSHIP_REQUEST_HASH
+        || duoXpRequestHash !== DUOLINGO_XP_REQUEST_HASH
     ) unavailable("Duolingo schema mismatch");
     if (getAddress(stravaWitness) === zeroAddress || getAddress(duoWitness) === zeroAddress) unavailable("Witness is absent");
     assertPinnedHybridDeployment({
@@ -243,7 +247,7 @@ async function refetchProofs(token: ProofSession): Promise<Proof[]> {
   }
   const isDuolingo = token.missionType === DUOLINGO_XP_MISSION;
   const proofs = assertSdkProofSet(status.session.proofs, {
-    expectedCount: isDuolingo ? 1 : 4,
+    expectedCount: isDuolingo ? 2 : 4,
     maxSignedJsonBytes: isDuolingo ? DUOLINGO_MAX_SIGNED_JSON_BYTES : STRAVA_MAX_SIGNED_JSON_BYTES,
   });
   return isDuolingo ? proofs : canonicalizeStravaProofs(proofs);
@@ -254,14 +258,14 @@ async function directDuolingo(input: {
   directProof: DirectProofBundle;
   token: ProofSession;
 }) {
-  if (!escrowAddress || input.directProof.proofs.length !== 1) throw new ReclaimProofRejectedError();
+  if (!escrowAddress || input.directProof.proofs.length !== 2) throw new ReclaimProofRejectedError();
   try {
     const output = await lockInPublicClient().readContract({
       address: input.verifier,
       abi: duolingoVerifierAbi,
-      functionName: "validateDuolingoProof",
+      functionName: "validateDuolingoProofs",
       args: [
-        input.directProof.proofs[0],
+        input.directProof.proofs,
         getAddress(input.token.walletAddress),
         BigInt(input.token.pactId),
         input.token.phase === "baseline",
@@ -346,7 +350,7 @@ export async function POST(request: Request) {
     });
     if (
       policy.missionType !== token.missionType || policy.dailyTarget !== token.dailyTarget
-        || policy.ownershipCode !== token.ownershipCode || policy.proofCode !== token.proofCode
+        || policy.proofCode !== token.proofCode
     ) throw new ReclaimProofRejectedError("Lock policy changed");
 
     const proofs = await refetchProofs(token);
@@ -394,7 +398,7 @@ export async function POST(request: Request) {
           phase: policy.phase,
           dayIndex: policy.dayIndex,
           expectedSessionId: token.sessionId,
-          expectedOwnershipCode: policy.ownershipCode || "",
+          expectedProfileId: token.duolingoProfileId || "",
         },
       });
       if (policyEvidence.observedAt * 1_000 < policy.startsAtMs || policyEvidence.observedAt * 1_000 >= policy.endsAtMs) {

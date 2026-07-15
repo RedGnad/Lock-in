@@ -1,5 +1,6 @@
 import { PactHub } from "@/components/pact-hub";
 import { ReleaseActions } from "@/components/release-actions";
+import { SocialLeaderboard } from "@/components/social-leaderboard";
 
 export default function Home() {
   return (
@@ -15,6 +16,7 @@ export default function Home() {
         <div className="proof-strip"><span>STRAVA + DUOLINGO</span><b>PVP PAYOUTS</b><i>SETTLED ON MONAD</i></div>
       </section>
       <PactHub />
+      <SocialLeaderboard />
       <section className="mechanic">
         <div><b>01</b><h2>Call it</h2><p>Pick a mission, set the target, bring your crew.</p></div>
         <div><b>02</b><h2>Prove it</h2><p>Reclaim checks the activity data returned by Strava or Duolingo.</p></div>

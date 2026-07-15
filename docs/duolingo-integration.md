@@ -2,43 +2,55 @@
 
 ## Current decision
 
-Duolingo is an unreleased mission next to Strava. Lock In never trusts a username alone. Before staking, the participant must control the claimed profile well enough to temporarily set its public Name to a wallet-derived `LOCK-ABCDE-FGHIJ` code. It uses 10 grouped Crockford Base32 characters and excludes ambiguous letters. One Reclaim proof must expose the stable profile ID, username, exact Name code, and cumulative `totalXp` from the same HTTPS response. The fresh XP baseline and the USDC stake are accepted atomically.
+Duolingo is an unreleased mission next to Strava. Lock In never trusts a username or a public XP lookup alone, and it never asks a participant to rename their Duolingo profile. The participant keeps their normal username and display Name.
 
-The integration remains independent and unofficial. The private provider is published and pinned. Its captured request and anonymous replay succeeded, as expected for this public endpoint. This only validates provider transport and extraction; it is not a complete user journey. The public release stays closed until live account-control, negative, baseline, delta, and replay rehearsals pass end to end, together with the contract and operations release gate.
+The private provider `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.4` requires two Reclaim claims for the same stable Duolingo profile ID:
 
-## Reclaim registry audit
+1. **Authenticated ownership claim.** Reclaim requests `/2023-05-23/users/{{duolingo_user_id}}/privacy-settings` in the participant's active Duolingo session. Duolingo returned `200` for the signed-in profile, `403` when the same session targeted another stable profile ID, and `401` without a session. The provider discloses only the constant settings-key marker `disable_social`; it does not disclose whether that setting, or any other setting, is enabled.
+2. **XP profile claim.** Reclaim requests `/2023-05-23/users/{{duolingo_user_id}}?fields=id,totalXp,username` and discloses the returned stable ID, username, and cumulative XP.
 
-The active Reclaim registry was checked on July 15, 2026 through the authenticated Reclaim MCP. Fourteen entries match Duolingo; all are approved community entries but none is marked verified. The most relevant expose cumulative `totalXp`, `streakData`, or a profile id. They do not prove an authenticated self identity, a lesson/event id and a server completion time together.
+Both claims carry the same requested `duolingo_user_id`, wallet-bound context, Reclaim session, internal Lock identifier, and phase. The direct verifier requires both claims in their pinned order, requires the self-only marker, and requires the returned profile ID to equal the requested ID. Creation or joining, baseline acceptance, and the USDC stake remain atomic.
 
-The public XP providers accept a user ID in the request URL without proving account control. The inspected provider `7c57a498-6b0e-4b3a-8235-de7ba938e823` extracts only `totalXp`; a user can target somebody else's profile. Lock In does not use it. The Lock In provider closes that impersonation path by requiring the wallet code in the same profile response and binding the stable ID to one wallet per pact.
+The published request hashes are:
+
+- ownership: `0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e`
+- XP: `0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac`
+
+Authenticated replay and local zkTLS proof generation succeeded for both requests; anonymous replay was rejected. The public release still stays closed until the exact live app/TEE proof shapes, transformed calldata, direct verifier, baseline, delta, negative, and replay paths pass end to end.
+
+## Why public XP providers are insufficient
+
+The Reclaim registry was checked on July 15, 2026. The relevant community providers expose cumulative `totalXp`, streak data, or a profile ID, but the inspected public XP flow accepts a user-selected ID and can therefore target somebody else's profile. Lock In does not use a public lookup as ownership evidence.
+
+The server first resolves the entered username to Duolingo's stable numeric ID. Reclaim then proves that an authenticated session was authorized for the self-only endpoint for that exact ID and separately proves the XP snapshot for that ID. The user-facing username remains unchanged; the wallet-to-profile binding is the stable ID, not an editable display field.
 
 ## What the proof establishes
 
-Reclaim can prove that Duolingo returned the wallet code and credited progress to that profile. The code demonstrates profile control at proof time. It cannot establish who earned the XP or prove learning without automation, account sharing, or outside help. Product wording therefore says “new Duolingo XP,” never “you learned.”
+The pair of Reclaim claims establishes that Duolingo authorized the active session to access the self-only endpoint for the requested stable profile ID and that Duolingo returned a specific username and cumulative XP for that same ID. This is stronger than a public username lookup. It does not establish the person's legal identity, exclusive account control, who earned the XP, or learning without automation, account sharing, or outside help. Product wording therefore says “new Duolingo XP,” never “you learned.”
 
 A streak alone is never accepted. Lock In requires:
 
-1. A fresh account-control-coded baseline bound to wallet and pact before stake transfer.
-2. A fresh current-day snapshot from the same stable profile identity.
-3. `current totalXp - max(pact baseline, globally consumed totalXp) >= daily target`.
-4. Global snapshot nullifiers and one profile per wallet within a pact.
+1. A fresh two-claim authenticated baseline bound to wallet and Lock before stake transfer.
+2. A fresh current-day two-claim snapshot from the same stable profile identity.
+3. `current totalXp - max(Lock baseline, globally consumed totalXp) >= daily target`.
+4. Global proof-set nullifiers and one stable profile per wallet within a Lock.
 
 Raw XP must never be used as a competitive ranking because earning rates differ by exercise, bonuses, and product mechanics.
 
 ## Data and privacy
 
-The proof uses the public profile response and does not need a Duolingo password or cookie inside Reclaim. The server processes stable profile ID, username, temporary public Name code, total XP, proof time, Reclaim session, wallet, internal Lock identifier, and phase without a product database.
+The participant may need to sign in to Duolingo inside Reclaim's isolated browser. Lock In does not ask for or receive the Duolingo password. The provider uses the authenticated session as a private request input; cookies, Authorization headers, access tokens, and privacy-setting values must not be disclosed in either signed claim.
 
-The release transaction carries the Reclaim SDK's `transformForOnchain` output. Signed `claimInfo.parameters`, signed `claimInfo.context`, claim metadata, and witness signatures are public and permanent Monad calldata. The username, stable profile ID, temporary public Name code, total XP, Reclaim session, wallet, internal Lock identifier, and phase can therefore be public even though detailed profile fields are not copied into Lock In contract storage or events. The top-level TEE attestation JWT is excluded from the onchain transform.
+The server transiently processes the requested stable profile ID, username, cumulative XP, the non-sensitive marker name `disable_social`, proof time, Reclaim session, wallet, internal Lock identifier, and phase without a product database. The release transaction carries the Reclaim SDK's `transformForOnchain` output. Signed `claimInfo.parameters`, signed `claimInfo.context`, claim metadata, and witness signatures are public and permanent Monad calldata, so those disclosed fields can be public even when they are not copied into contract storage or events. The top-level TEE attestation JWT is excluded from the onchain transform.
 
-Any proof whose signed data contains a cookie, Authorization header, access token, API key, secret, or similar sensitive header must be rejected before transaction preparation. Lock In does not intentionally retain the full SDK proof object in a product database after verification; that does not erase public transaction calldata.
+Any proof whose signed data contains a cookie, Authorization header, access token, API key, secret, privacy-setting value, or unexpected personal field must be rejected before transaction preparation. Lock In does not intentionally retain the full SDK proof object in a product database after verification; that does not erase public transaction calldata.
 
 ## Activation checklist
 
-1. Confirm the published `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.3` provider and pinned request hash match production.
-2. Capture a current live proof and confirm the exact signed schema, provider version, top-level TEE binding, witness configuration, direct-verifier output, proof-set hash, and absence of sensitive headers.
-3. Pass live account-control, wrong-profile, wrong-Name, stale proof, baseline/final mixing, XP delta, direct/backend mismatch, and replay tests.
-4. Test transformed-calldata size, gas, mobile-wallet handoff, and the transaction-time public-data notice end to end.
-5. Move the evidence and admission signing authorities into an auditable KMS or equivalent isolated signer, and move contract ownership to a tested multisig.
-6. Complete an independent review of the provider, direct verifier, oracle boundary, signer service, contract, deployment, and privacy model.
+1. Confirm `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.4` and both pinned request hashes match the published provider and deployed verifier.
+2. Capture a current two-claim app proof and confirm ordering, signed schema, provider version, request hashes, top-level TEE binding, witness configuration, direct-verifier output, proof-set hash, and absence of sensitive headers or privacy-setting values.
+3. Pass live own-profile, other-profile (`403`), anonymous (`401`), mismatched-ID, stale proof, baseline/final mixing, XP delta, direct/backend mismatch, and replay tests.
+4. Test transformed-calldata size, gas, mobile-wallet handoff, Duolingo sign-in recovery, and the transaction-time public-data notice end to end.
+5. Move evidence and admission signing authorities into an auditable KMS or equivalent isolated signer, and keep contract ownership in the tested multisig.
+6. Complete an independent review of the provider, direct verifier, oracle boundary, signer service, contract, deployment, privacy model, and the operational implications of Duolingo's terms and provider drift.
 7. Confirm controlled-cohort eligibility and 18+ messaging before enabling real funds.

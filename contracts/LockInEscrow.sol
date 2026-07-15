@@ -46,6 +46,9 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     uint256 public constant MAX_START_DELAY = 3 hours;
     uint256 public constant SUBMISSION_GRACE_PERIOD = 1 days;
     uint256 public constant CONTRACT_SCHEMA_ID = 1;
+    uint64 public constant LOCK_SCORE_PER_DAY = 10;
+    uint8 public constant MIN_HANDLE_LENGTH = 3;
+    uint8 public constant MAX_HANDLE_LENGTH = 16;
 
     struct Pact {
         address creator;
@@ -131,6 +134,16 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     mapping(bytes32 => uint64) public consumedDuolingoMetric;
     mapping(bytes32 => bool) public usedEventNullifiers;
     mapping(bytes32 => bool) public usedAccessNonces;
+    mapping(address => string) public playerHandle;
+    mapping(bytes32 => address) public handleOwner;
+    mapping(address => bool) public playerProfileHidden;
+    mapping(address => uint64) public lockScore;
+    mapping(address => uint32) public verifiedDays;
+    mapping(address => mapping(uint8 => uint32)) public missionVerifiedDays;
+    mapping(address => mapping(uint64 => bool)) public scoredUtcDay;
+    mapping(address => mapping(uint8 => mapping(uint64 => bool))) public missionDayScored;
+    mapping(uint8 => mapping(bytes32 => address)) public missionIdentityOwner;
+    mapping(bytes32 => bool) public usedHighFives;
     mapping(uint64 => uint64) public completionPauseStartedAt;
     mapping(uint64 => uint64) public completionPauseEndedAt;
     /// @dev `duolingoIdentityLockedUntil` is authoritative; this id remains as the last lock after expiry.
@@ -177,6 +190,16 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     event CompletionPauseUpdated(bool paused);
     event PactRefundedForCompletionPause(uint256 indexed pactId, uint64 indexed pauseGeneration, uint64 pauseStartedAt);
     event DuolingoIdentityReleased(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
+    event PlayerHandleSet(address indexed account, string handle);
+    event PlayerProfileVisibilityUpdated(address indexed account, bool hidden);
+    event MissionDayVerified(
+        address indexed account, uint8 indexed missionType, uint64 indexed utcDay, uint32 missionVerifiedDays
+    );
+    event LockScoreAwarded(
+        address indexed account, uint64 indexed utcDay, uint64 scoreAwarded, uint64 totalScore, uint32 verifiedDays
+    );
+    event MissionIdentityBound(uint8 indexed missionType, bytes32 indexed identityHash, address indexed account);
+    event HighFiveSent(uint256 indexed pactId, address indexed from, address indexed to, uint8 dayIndex);
 
     error InvalidAddress();
     error LiveSchemaUnconfirmed();
@@ -227,6 +250,10 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     error NotFinalized();
     error NotEligible();
     error AlreadyClaimed();
+    error InvalidHandle();
+    error HandleAlreadyUsed();
+    error InvalidHighFive();
+    error HighFiveAlreadySent();
 
     constructor(
         IERC20 stakeToken_,
@@ -413,6 +440,8 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         completionCount[pactId][msg.sender] = updatedCount;
         if (updatedCount == pact.requiredCompletions) ++pact.finisherCount;
 
+        _recordVerifiedDay(msg.sender, pact.missionType, evidence.identityHash, evidence.occurredAt);
+
         emit CompletionAccepted(
             pactId,
             msg.sender,
@@ -574,6 +603,48 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         return true;
     }
 
+    /// @notice Sets an optional Lock In handle. External service names are never changed or reused here.
+    /// @dev Handles are canonical lowercase ASCII so uniqueness is deterministic across every client.
+    function setPlayerHandle(string calldata handle) external {
+        bytes memory value = bytes(handle);
+        if (!_validHandle(value)) revert InvalidHandle();
+        bytes32 key = keccak256(value);
+        address existingOwner = handleOwner[key];
+        if (existingOwner != address(0) && existingOwner != msg.sender) revert HandleAlreadyUsed();
+
+        bytes memory previous = bytes(playerHandle[msg.sender]);
+        if (previous.length != 0) {
+            bytes32 previousKey = keccak256(previous);
+            if (previousKey == key) return;
+            delete handleOwner[previousKey];
+        }
+        playerHandle[msg.sender] = handle;
+        handleOwner[key] = msg.sender;
+        emit PlayerHandleSet(msg.sender, handle);
+    }
+
+    /// @notice Clears the current handle from active app surfaces; historical events remain public onchain.
+    function clearPlayerHandle() external {
+        bytes memory previous = bytes(playerHandle[msg.sender]);
+        if (previous.length == 0) return;
+        delete handleOwner[keccak256(previous)];
+        delete playerHandle[msg.sender];
+        emit PlayerHandleSet(msg.sender, "");
+    }
+
+    /// @notice Sends one reaction to a crewmate's verified day. Reactions never affect score or payout.
+    function highFive(uint256 pactId, address to, uint8 dayIndex) external {
+        Pact storage pact = _pact(pactId);
+        if (
+            to == address(0) || to == msg.sender || dayIndex >= pact.durationDays || !joined[pactId][msg.sender]
+                || !joined[pactId][to] || completionBitmap[pactId][to] & (uint256(1) << dayIndex) == 0
+        ) revert InvalidHighFive();
+        bytes32 key = keccak256(abi.encode(pactId, msg.sender, to, dayIndex));
+        if (usedHighFives[key]) revert HighFiveAlreadySent();
+        usedHighFives[key] = true;
+        emit HighFiveSent(pactId, msg.sender, to, dayIndex);
+    }
+
     function setEvidenceSigner(address newSigner) external onlyOwner {
         if (newSigner == address(0)) revert InvalidAddress();
         address previous = evidenceSigner;
@@ -586,6 +657,13 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         address previous = accessSigner;
         accessSigner = newSigner;
         emit AccessSignerUpdated(previous, newSigner);
+    }
+
+    /// @notice Lets the operator hide an abusive handle without suppressing the player's verified score.
+    function setPlayerProfileHidden(address account, bool hidden) external onlyOwner {
+        if (account == address(0)) revert InvalidAddress();
+        playerProfileHidden[account] = hidden;
+        emit PlayerProfileVisibilityUpdated(account, hidden);
     }
 
     function setCreationPaused(bool paused) external onlyOwner {
@@ -623,7 +701,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     ) private {
         if (baselinePaused) revert BaselineIsPaused();
         Pact storage pact = pacts[pactId];
-        if (directProof.proofs.length != 1 || bytes(directProof.sessionId).length == 0) revert InvalidProofBundle();
+        if (directProof.proofs.length != 2 || bytes(directProof.sessionId).length == 0) revert InvalidProofBundle();
         if (evidence.identityHash == bytes32(0) || evidence.proofSetHash == bytes32(0)) revert InvalidProofHash();
         if (
             evidence.missionType != MISSION_DUOLINGO_XP || evidence.policyHash != pact.missionPolicyHash
@@ -631,8 +709,8 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
                 || evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))
         ) revert InvalidMissionPolicy();
 
-        LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProof(
-            directProof.proofs[0], account, signedPactId, true, 0, directProof.sessionId
+        LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProofs(
+            directProof.proofs, account, signedPactId, true, 0, directProof.sessionId
         );
         if (
             direct.identityHash != evidence.identityHash || direct.totalXp != evidence.metric
@@ -716,12 +794,12 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
                     || direct.elevationGainMeters != evidence.elevationGainMeters
             ) revert DirectProofMismatch();
         } else if (pact.missionType == MISSION_DUOLINGO_XP) {
-            if (directProof.proofs.length != 1 || bytes(directProof.sessionId).length == 0) {
+            if (directProof.proofs.length != 2 || bytes(directProof.sessionId).length == 0) {
                 revert InvalidProofBundle();
             }
             if (evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))) revert InvalidMissionPolicy();
-            LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProof(
-                directProof.proofs[0], account, pactId, false, dayIndex, directProof.sessionId
+            LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProofs(
+                directProof.proofs, account, pactId, false, dayIndex, directProof.sessionId
             );
             bytes32 nullifier = keccak256(
                 abi.encode(
@@ -774,6 +852,46 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (ECDSA.recover(_hashTypedDataV4(structHash), evidence.signature) != evidenceSigner) {
             revert InvalidEvidenceSigner();
         }
+    }
+
+    function _recordVerifiedDay(address account, uint8 missionType, bytes32 identityHash, uint64 occurredAt) private {
+        address socialOwner = missionIdentityOwner[missionType][identityHash];
+        if (socialOwner == address(0)) {
+            missionIdentityOwner[missionType][identityHash] = account;
+            emit MissionIdentityBound(missionType, identityHash, account);
+        } else if (socialOwner != account) {
+            // Social identity is global even though a verified completion can still settle its Lock.
+            // This keeps scoring from changing payout rules while preventing one service account
+            // from creating several leaderboard profiles through multiple wallets.
+            return;
+        }
+        uint64 utcDay = occurredAt / uint64(1 days);
+        if (!missionDayScored[account][missionType][utcDay]) {
+            missionDayScored[account][missionType][utcDay] = true;
+            uint32 missionDays = missionVerifiedDays[account][missionType] + 1;
+            missionVerifiedDays[account][missionType] = missionDays;
+            emit MissionDayVerified(account, missionType, utcDay, missionDays);
+        }
+        if (!scoredUtcDay[account][utcDay]) {
+            scoredUtcDay[account][utcDay] = true;
+            uint32 daysVerified = verifiedDays[account] + 1;
+            uint64 score = lockScore[account] + LOCK_SCORE_PER_DAY;
+            verifiedDays[account] = daysVerified;
+            lockScore[account] = score;
+            emit LockScoreAwarded(account, utcDay, LOCK_SCORE_PER_DAY, score, daysVerified);
+        }
+    }
+
+    function _validHandle(bytes memory value) private pure returns (bool) {
+        if (value.length < MIN_HANDLE_LENGTH || value.length > MAX_HANDLE_LENGTH) return false;
+        if (value[0] < "a" || value[0] > "z") return false;
+        for (uint256 i = 1; i < value.length; ++i) {
+            bytes1 character = value[i];
+            if ((character < "a" || character > "z") && (character < "0" || character > "9") && character != "_") {
+                return false;
+            }
+        }
+        return true;
     }
 
     function _requireEmptyDirectProof(LockInProofTypes.DirectProofBundle calldata directProof) private pure {

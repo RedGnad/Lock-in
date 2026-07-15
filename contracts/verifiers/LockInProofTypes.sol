@@ -45,8 +45,8 @@ library LockInProofTypes {
 interface ILockInDuolingoVerifier {
     function LIVE_SCHEMA_CONFIRMED() external view returns (bool);
 
-    function validateDuolingoProof(
-        Reclaim.Proof calldata proof,
+    function validateDuolingoProofs(
+        Reclaim.Proof[] calldata proofs,
         address account,
         uint256 pactId,
         bool baseline,

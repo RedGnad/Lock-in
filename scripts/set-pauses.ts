@@ -29,8 +29,9 @@ const EXPECTED_STRAVA_SCHEMA_ID = keccak256(
   stringToHex("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:1.0.3:synthetic"),
 );
 const EXPECTED_DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.3";
-const EXPECTED_DUOLINGO_PROVIDER_HASH = "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80";
+const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.4";
+const EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
+const EXPECTED_DUOLINGO_XP_REQUEST_HASH = "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac";
 
 function requiredAddress(name: string): Address {
   const raw = process.env[name]?.trim() || "";
@@ -109,7 +110,8 @@ const verifierAbi = [
   { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
 ] as const;
 const parserAbi = [
   { type: "function", name: "LIVE_SCHEMA_CONFIRMED", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
@@ -154,7 +156,8 @@ async function assertReleaseGate(blockNumber: bigint) {
     stravaProviderVersion,
     duolingoProviderId,
     duolingoProviderVersion,
-    duolingoProviderHash,
+    duolingoOwnershipRequestHash,
+    duolingoXpRequestHash,
     rawParser,
   ] = await Promise.all([
     publicClient.getCode({ address: stravaVerifier, blockNumber }),
@@ -167,7 +170,8 @@ async function assertReleaseGate(blockNumber: bigint) {
     publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", blockNumber }),
     publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_ID", blockNumber }),
     publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_VERSION", blockNumber }),
-    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_HASH", blockNumber }),
+    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH", blockNumber }),
+    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_XP_REQUEST_HASH", blockNumber }),
     publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "PARSER", blockNumber }),
   ]);
   const parser = getAddress(rawParser);
@@ -203,7 +207,8 @@ async function assertReleaseGate(blockNumber: bigint) {
     duolingoProvider:
       duolingoProviderId === EXPECTED_DUOLINGO_PROVIDER_ID
       && duolingoProviderVersion === EXPECTED_DUOLINGO_PROVIDER_VERSION
-      && duolingoProviderHash === EXPECTED_DUOLINGO_PROVIDER_HASH,
+      && duolingoOwnershipRequestHash === EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH
+      && duolingoXpRequestHash === EXPECTED_DUOLINGO_XP_REQUEST_HASH,
   };
   if (!Object.values(checks).every(Boolean)) {
     throw new Error(`Opening refused: direct-proof release gate failed ${JSON.stringify(checks)}`);
@@ -222,7 +227,8 @@ async function assertReleaseGate(blockNumber: bigint) {
     duolingo: {
       address: duolingoVerifier,
       runtimeCodeHash: keccak256(duolingoCode as Hex),
-      providerHash: duolingoProviderHash,
+      ownershipRequestHash: duolingoOwnershipRequestHash,
+      xpRequestHash: duolingoXpRequestHash,
     },
     checks,
   };

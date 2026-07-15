@@ -1,7 +1,6 @@
 import { getAddress, isAddress, zeroAddress, type Address } from "viem";
 import { escrowAddress, lockInPublicClient } from "./chain";
 import { DUOLINGO_XP_MISSION, lockInAbi, STRAVA_RUN_MISSION, type PactTuple } from "./lock-in-abi";
-import { duolingoOwnershipCode } from "./duolingo-proof-policy";
 
 const SUBMISSION_GRACE_MS = 24 * 60 * 60 * 1_000;
 
@@ -16,7 +15,6 @@ export type ProofPolicy = {
   phase: "baseline" | "completion";
   intent?: "create" | "join";
   dayIndex?: number;
-  ownershipCode?: string;
   proofCode?: string;
   dailyTarget: number;
   startsAtMs: number;
@@ -52,7 +50,6 @@ export async function loadProofPolicy(input: {
       missionType: DUOLINGO_XP_MISSION,
       phase: "baseline",
       intent: "create",
-      ownershipCode: duolingoOwnershipCode(walletAddress),
       dailyTarget: 1,
       startsAtMs: nowMs - 10 * 60_000,
       endsAtMs: nowMs + 20 * 60_000,
@@ -89,7 +86,6 @@ export async function loadProofPolicy(input: {
       missionType: DUOLINGO_XP_MISSION,
       phase: "baseline",
       intent: "join",
-      ownershipCode: duolingoOwnershipCode(walletAddress),
       dailyTarget: typedPact[3],
       startsAtMs: chainNowMs - 10 * 60_000,
       endsAtMs: Number(typedPact[1]) * 1_000,
@@ -128,7 +124,6 @@ export async function loadProofPolicy(input: {
     missionType: typedPact[11] as 1 | 2,
     phase: "completion",
     dayIndex,
-    ownershipCode: typedPact[11] === DUOLINGO_XP_MISSION ? duolingoOwnershipCode(walletAddress) : undefined,
     proofCode,
     dailyTarget: typedPact[3],
     startsAtMs,

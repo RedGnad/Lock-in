@@ -7,7 +7,8 @@ This runbook governs controlled testing on Monad mainnet before Lock In is relea
 - Two controlled wallets, called wallet A and wallet B. Never place their private keys in this repository or in Vercel.
 - Each wallet needs MON for gas and at least `0.2 USDC` of official Monad USDC to run the Strava and Duolingo pacts in parallel.
 - Two distinct Strava accounts with real GPS runs. One Strava identity cannot represent both wallets in one pact. Use dedicated canary accounts whose athlete marker, activity ID/title, and signed activity fields may safely become permanent transaction calldata.
-- Two distinct Duolingo profiles whose public Names can be temporarily changed to their wallet-specific Lock In codes. Use dedicated canary profiles whose username, stable profile ID, public Name code, and cumulative XP may safely become permanent transaction calldata.
+- Two distinct Duolingo profiles with working sign-in sessions. Use dedicated canary profiles whose username, stable profile ID, cumulative XP, and disclosed non-sensitive marker name `disable_social` may safely become permanent transaction calldata. No username or display-Name change is required.
+- Two disposable Lock In handles. Their complete wallet-linked history, changes, moderation events, scores, and reactions will remain public even after the active handle is cleared.
 - One operator watching contract events, production health and the transaction ledger throughout every open window.
 
 The stake is exactly `0.1 USDC` per wallet per pact. Run the underfilled and emergency-refund rehearsals after the two main pacts claim if the same USDC must be recycled.
@@ -27,13 +28,14 @@ pnpm canary:preflight
 Before touching a pause control:
 
 1. `pnpm test`, `pnpm exec tsc --noEmit`, `pnpm build`, `forge build`, and `git diff --check` pass.
-2. `pnpm provider:check` confirms the pinned Strava and Duolingo providers, and reviewed live proofs match the exact direct-verifier schemas, TEE binding, witness configuration, and expected proof counts.
+2. `pnpm provider:check` confirms the pinned Strava provider plus Duolingo `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.4`, its ownership request hash `0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e`, and its XP request hash `0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac`. Reviewed live proofs must match the direct-verifier schemas, TEE binding, witness configuration, order, and expected proof counts.
 3. `pnpm production:check` and the production `/api/health` endpoint are green with creation, joining and check-ins disabled.
 4. `pnpm canary:preflight` is green for both wallets.
 5. The final paused escrow and both direct verifiers have verified source and constructor data; contract schema ID, verifier addresses and runtime code hashes, mission policies, USDC, cap, evidence signer, admission signer, multisig owner and all four pauses match the release manifest.
 6. Evidence and admission signing use the reviewed KMS-backed production path; no funded key is present in Vercel.
 7. A real-proof inspection confirms that signed parameters and context contain no cookie, Authorization header, access token, API key, secret, or similar sensitive header, and that the top-level TEE JWT is absent from `transformForOnchain` output.
-8. Record the current `nextPactId`, escrow USDC balance, UTC time and operator.
+8. Handle, invite, score, high-five, and moderation tests pass, including one scoring wallet per mission identity without changing another wallet's valid payout.
+9. Record the current `nextPactId`, escrow USDC balance, UTC time and operator.
 
 ## Paused deployment and ownership handoff
 
@@ -76,7 +78,7 @@ Start with contract pauses `true / true / true / true` and Vercel flags all `fal
 
 1. Set Vercel production to `NEW_PACTS_ENABLED=true`, `JOIN_ENABLED=false`, `CHECK_INS_ENABLED=false`; deploy production.
 2. Generate contract pauses `false / true / false / true`, inspect and execute the ordered calls through the multisig, then run `pnpm pauses:verify -- false true false true`.
-3. Wallet A creates one Strava pact and one Duolingo pact through the production UI, each at exactly `0.1 USDC` and the three-day template. Complete the Duolingo account-control proof before its short-lived attestation expires, review the wallet calldata warning, and confirm that the transaction carries both the transformed direct proof and matching backend attestation.
+3. Wallet A creates one Strava pact and one Duolingo pact through the production UI, each at exactly `0.1 USDC` and the three-day template. For Duolingo, enter the existing username, sign in inside Reclaim if asked, and complete both the self-only ownership claim and the matching ID/username/XP claim before the short-lived attestation expires. Review the wallet calldata warning and confirm that the transaction carries both transformed Reclaim claims plus the matching backend attestation, without a cookie, credential, privacy-setting value, or profile rename. Record each displayed `LOCK-…` invite code and confirm it deterministically resolves to the created onchain Lock ID.
 4. Record both pact IDs and every approval/create transaction hash.
 5. Immediately close the contract to `true / true / true / true`.
 6. Set all three Vercel flags back to `false`, redeploy, then run a snapshot for each pact and reconcile the escrow.
@@ -97,7 +99,7 @@ Complete this before the published start time.
 
 1. Set Vercel production to `NEW_PACTS_ENABLED=false`, `JOIN_ENABLED=true`, `CHECK_INS_ENABLED=false`; deploy production.
 2. Generate contract pauses `true / false / false / true`, execute the ordered calls through the multisig, then run `pnpm pauses:verify -- true false false true`.
-3. Wallet B joins both Locks through the production UI at exactly `0.1 USDC`. Its Duolingo Name must equal wallet B's code and its profile must differ from wallet A's profile. Confirm the same direct-proof, attestation, and transaction-time privacy checks used for wallet A.
+3. Wallet B opens both Locks from wallet A's shared `LOCK-…` invite links, then joins through the production UI at exactly `0.1 USDC`. Confirm an altered checksum is rejected and that the valid code does not bypass admission, capacity, timing, stake, or baseline requirements. Its Duolingo proof pair must resolve to a stable profile ID different from wallet A's, and the authenticated self-only claim must be authorized for that exact ID. Confirm the same two-claim ordering, direct-proof, attestation, no-secret, no-settings-value, and transaction-time privacy checks used for wallet A.
 4. Record approval, baseline and join transaction hashes.
 5. Close the contract to `true / true / true / true` first.
 6. Disable all Vercel flags, redeploy, snapshot both pacts and reconcile.
@@ -118,6 +120,19 @@ For each open pact day:
 
 Never leave evidence open overnight. The transformed proof necessarily becomes public transaction calldata, including the signed parameters, context, claim metadata, and witness signatures; do not separately publish or archive the complete SDK proof object. Abort before the wallet transaction if a proof contains a cookie, Authorization header, access token, API key, secret, or unexpected personal field. Never request or publish a GPS route.
 
+## Social-layer rehearsal
+
+Social profile functions are public onchain actions and are not protected by the admission or evidence pause flags. Use only disposable handles whose permanent wallet link is acceptable, and record every transaction hash and gas cost.
+
+1. Wallet A claims a valid lowercase handle. Wallet B attempts that same active handle and must be rejected, then claims a different handle. Confirm neither operation changes the wallets' Strava or Duolingo names.
+2. Complete both a Strava and Duolingo day for wallet A inside the same UTC day. Overall Lock Score must increase by exactly 10, not 20. In a separate eligible Strava Lock, submit that same Strava identity from wallet B: completion and payout state remain valid, but score must not increase and `missionIdentityOwner` must not change. This is service-account deduplication, not proof that wallet A is one human across both services.
+3. After wallet B has an accepted day, wallet A sends one high-five for that exact Lock and day. The public event must identify sender, recipient, Lock, and day. A duplicate must be rejected, and the reaction must not change either score, completion bitmap, finisher status, escrow liability, or expected payout.
+4. Wallet A changes, then clears, its handle. Confirm the active mapping becomes empty, the previous string becomes available for reuse, normal Lock In surfaces fall back to the wallet address, and all earlier `PlayerHandleSet` events remain visible.
+5. Through the configured multisig, hide wallet B's profile and confirm normal Lock In surfaces suppress its handle while retaining its wallet, verified days, rank, score, completion state, and claim rights. Restore visibility and confirm the current handle returns. Record both `PlayerProfileVisibilityUpdated` events.
+6. Check Overall, Running, and Learning weekly boards against the raw events. The displayed week must be Monday 00:00 UTC through the next Monday, while all-time Lock Score remains cumulative.
+
+Before and after every social write, snapshot both main Locks and reconcile the escrow. The balance, remaining liability, finishers, and claim amounts must be identical except for mission completion changes already expected by the test plan.
+
 ## Two-wallet outcome matrix
 
 Use the two main pacts to exercise different settlement branches:
@@ -129,7 +144,7 @@ Use the two main pacts to exercise different settlement branches:
 
 The partial Strava participation by wallet B proves its separate identity and submission path without making it a finisher. Do not spend gas on an intentionally reverting claim; the ineligible-claim branch remains covered by the contract tests.
 
-Safe live negative checks include wrong Strava title, wrong Duolingo Name, another username, unchanged XP and another wallet/profile binding. Manual/no-GPS, trainer, flagged, stale and replay cases remain deterministic automated policy/contract tests; do not manufacture unsafe external account states solely for a canary.
+Safe live negative checks include wrong Strava title; a Duolingo session targeting another username/profile ID (the self-only request must fail with `403`); an anonymous Duolingo replay (it must fail with `401`); mismatched IDs across the two claims; unchanged XP; and another wallet/profile binding. Manual/no-GPS, trainer, flagged, stale and replay cases remain deterministic automated policy/contract tests; do not manufacture unsafe external account states solely for a canary and do not submit expected failures onchain.
 
 ## Settlement and claims
 
@@ -162,6 +177,7 @@ After each rehearsal, snapshot the pact and reconcile the whole escrow.
 - **Join/funding defect:** pause joining onchain before disabling `JOIN_ENABLED`; identify every forming pact.
 - **Baseline/provider/signer defect:** pause baseline evidence before disabling create and join paths; identify every forming Duolingo pact.
 - **Completion/provider/signer defect:** pause completion evidence before disabling `CHECK_INS_ENABLED`; move affected unsettled pacts into refunds if continuing would be unfair.
+- **Abusive or impersonating Lock In handle:** hide the profile from normal product surfaces through the multisig, preserve the moderation transaction and reason, and notify the wallet if a contact channel exists. Do not alter score, mission state, settlement, or claims; onchain history cannot be erased.
 - **RPC/UI defect only:** keep permissionless settlement and claims available and publish direct contract/explorer instructions.
 - **Suspected key compromise:** close risky actions, rotate the affected authority, inventory every pact and publish a UTC incident notice.
 

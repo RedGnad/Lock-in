@@ -148,7 +148,7 @@ function inspectSignedJson(value: string, label: string, maxBytes: number): void
  */
 export function assertSdkProofSet(
   value: unknown,
-  options: { expectedCount: 1 | 4; maxSignedJsonBytes: number },
+  options: { expectedCount: 1 | 2 | 4; maxSignedJsonBytes: number },
 ): Proof[] {
   const proofs = Array.isArray(value) ? value : value ? [value] : [];
   if (proofs.length !== options.expectedCount) reject("Unexpected Reclaim proof count");
@@ -388,12 +388,13 @@ export const duolingoVerifierAbi = [
   { type: "function", name: "LIVE_SCHEMA_CONFIRMED", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_HASH", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "string" }] },
+  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "string" }] },
+  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "string" }] },
   { type: "function", name: "WITNESS", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   {
-    type: "function", name: "validateDuolingoProof", stateMutability: "view",
+    type: "function", name: "validateDuolingoProofs", stateMutability: "view",
     inputs: [
-      { name: "proof", type: "tuple", components: reclaimProofComponents },
+      { name: "proofs", type: "tuple[]", components: reclaimProofComponents },
       { name: "account", type: "address" },
       { name: "pactId", type: "uint256" },
       { name: "baseline", type: "bool" },

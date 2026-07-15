@@ -32,10 +32,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <header className="site-header">
             <Link href="/" className="wordmark"><span>LOCK</span><i>IN</i></Link>
             <div className="header-rule" />
+            <nav className="site-nav" aria-label="Primary navigation"><Link href="/leaderboard">Leaderboard</Link></nav>
             <WalletButton />
           </header>
           {children}
-          <footer><span>LOCK IN / MONAD 2026 · 18+</span><div><Link href="/rules">Rules</Link><Link href="/privacy">Privacy</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
+          <footer><span>LOCK IN / MONAD 2026 · 18+</span><div><Link href="/leaderboard">Leaderboard</Link><Link href="/rules">Rules</Link><Link href="/privacy">Privacy</Link>{repositoryUrl && <a href={repositoryUrl} target="_blank" rel="noreferrer">Code</a>}</div></footer>
         </Providers>
       </body>
     </html>

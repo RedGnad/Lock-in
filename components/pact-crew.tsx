@@ -21,11 +21,16 @@ type PactCrewProps = {
   requiredCompletions: number;
   currentDay: number;
   currentAddress?: Address;
+  highFiveBusy?: boolean;
+  onHighFive?: (account: Address, dayIndex: number) => Promise<void>;
 };
 
-export function PactCrew({ pactId, participantCount, durationDays, requiredCompletions, currentDay, currentAddress }: PactCrewProps) {
+type HighFive = { from: Address; to: Address; dayIndex: number };
+
+export function PactCrew({ pactId, participantCount, durationDays, requiredCompletions, currentDay, currentAddress, highFiveBusy = false, onHighFive }: PactCrewProps) {
   const publicClient = usePublicClient();
   const [members, setMembers] = useState<Address[]>([]);
+  const [highFives, setHighFives] = useState<HighFive[]>([]);
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
@@ -33,17 +38,34 @@ export function PactCrew({ pactId, participantCount, durationDays, requiredCompl
     async function loadCrew() {
       if (!publicClient || !escrowAddress) return;
       try {
-        const logs = await publicClient.getContractEvents({
-          address: escrowAddress,
-          abi: lockInAbi,
-          eventName: "PactJoined",
-          args: { pactId },
-          fromBlock: escrowDeploymentBlock,
-          toBlock: "latest",
+        const [joinLogs, highFiveLogs] = await Promise.all([
+          publicClient.getContractEvents({
+            address: escrowAddress,
+            abi: lockInAbi,
+            eventName: "PactJoined",
+            args: { pactId },
+            fromBlock: escrowDeploymentBlock,
+            toBlock: "latest",
+          }),
+          publicClient.getContractEvents({
+            address: escrowAddress,
+            abi: lockInAbi,
+            eventName: "HighFiveSent",
+            args: { pactId },
+            fromBlock: escrowDeploymentBlock,
+            toBlock: "latest",
+          }),
+        ]);
+        const unique = Array.from(new Set(joinLogs.map((log) => log.args.account).filter(Boolean))) as Address[];
+        const reactions = highFiveLogs.flatMap((log) => {
+          const from = log.args.from;
+          const to = log.args.to;
+          const dayIndex = log.args.dayIndex;
+          return from && to && dayIndex !== undefined ? [{ from, to, dayIndex: Number(dayIndex) }] : [];
         });
-        const unique = Array.from(new Set(logs.map((log) => log.args.account).filter(Boolean))) as Address[];
         if (alive) {
           setMembers(unique);
+          setHighFives(reactions);
           setLoadError(false);
         }
       } catch {
@@ -61,6 +83,8 @@ export function PactCrew({ pactId, participantCount, durationDays, requiredCompl
   const progressContracts = useMemo(() => members.flatMap((member) => [
     { address: escrowAddress || zeroAddress, abi: lockInAbi, functionName: "completionBitmap" as const, args: [pactId, member] as const },
     { address: escrowAddress || zeroAddress, abi: lockInAbi, functionName: "completionCount" as const, args: [pactId, member] as const },
+    { address: escrowAddress || zeroAddress, abi: lockInAbi, functionName: "playerHandle" as const, args: [member] as const },
+    { address: escrowAddress || zeroAddress, abi: lockInAbi, functionName: "playerProfileHidden" as const, args: [member] as const },
   ]), [members, pactId]);
 
   const progressReads = useReadContracts({
@@ -73,12 +97,30 @@ export function PactCrew({ pactId, participantCount, durationDays, requiredCompl
       <div className="section-title"><span id="crew-title">CREW</span><b>{participantCount} PLAYER{participantCount === 1 ? "" : "S"}</b></div>
       {members.length > 0 ? <div className="crew-list">
         {members.map((member, index) => {
-          const bitmap = BigInt(progressReads.data?.[index * 2]?.result || 0);
-          const count = Number(progressReads.data?.[index * 2 + 1]?.result || 0);
+          const bitmap = BigInt(progressReads.data?.[index * 4]?.result || 0);
+          const count = Number(progressReads.data?.[index * 4 + 1]?.result || 0);
+          const handleResult = progressReads.data?.[index * 4 + 2]?.result;
+          const profileHidden = Boolean(progressReads.data?.[index * 4 + 3]?.result);
+          const handle = !profileHidden && typeof handleResult === "string" && handleResult ? `@${handleResult}` : "";
           const isYou = currentAddress?.toLowerCase() === member.toLowerCase();
+          const received = highFives.filter((reaction) => reaction.to.toLowerCase() === member.toLowerCase()).length;
+          const availableDay = Array.from({ length: durationDays }, (_, day) => durationDays - day - 1).find((day) => {
+            if ((bitmap & (1n << BigInt(day))) === 0n || !currentAddress) return false;
+            return !highFives.some((reaction) => reaction.from.toLowerCase() === currentAddress.toLowerCase()
+              && reaction.to.toLowerCase() === member.toLowerCase() && reaction.dayIndex === day);
+          });
+          async function react() {
+            if (!onHighFive || !currentAddress || availableDay === undefined) return;
+            try {
+              await onHighFive(member, availableDay);
+              setHighFives((current) => [...current, { from: currentAddress, to: member, dayIndex: availableDay }]);
+            } catch {
+              // The lock page surfaces the wallet or contract error.
+            }
+          }
           return <article className="crew-member" key={member}>
             <span className="wallet-avatar" style={avatarStyle(member)} aria-hidden="true">{member.slice(2, 4).toUpperCase()}</span>
-            <div className="crew-person"><strong>{isYou ? "You" : compactAddress(member)}</strong><small>{count}/{requiredCompletions} check-ins</small></div>
+            <div className="crew-person"><strong>{isYou ? handle ? `You · ${handle}` : "You" : handle || compactAddress(member)}</strong><small>{count}/{requiredCompletions} check-ins{received > 0 ? ` · ${received} high five${received === 1 ? "" : "s"}` : ""}</small>{!isYou && currentAddress && count > 0 && <button className="high-five-button" type="button" disabled={highFiveBusy || availableDay === undefined} onClick={() => void react()}>{availableDay === undefined ? "HIGH FIVED" : `HIGH FIVE · D${availableDay + 1}`}</button>}</div>
             <div className="crew-days" aria-label={`${count} of ${requiredCompletions} check-ins completed`}>
               {Array.from({ length: durationDays }, (_, day) => {
                 const complete = (bitmap & (1n << BigInt(day))) !== 0n;

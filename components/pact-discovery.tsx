@@ -7,6 +7,7 @@ import { formatUnits, zeroAddress, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useReadContracts } from "wagmi";
 import { escrowAddress, escrowDeploymentBlock } from "@/src/chain";
 import { lockInAbi, type PactTuple } from "@/src/lock-in-abi";
+import { decodeLockInviteCode, encodeLockInviteCode } from "@/src/lock-invite";
 import { formatMissionTarget, missionByType } from "@/src/missions";
 
 const DISCOVERY_LIMIT = 12;
@@ -112,11 +113,9 @@ export function PactDiscovery() {
     query: { enabled: Boolean(escrowAddress && myPactIds.length), refetchInterval: 10_000 },
   });
 
-  const openPacts = useMemo<OpenPact[]>(() => {
-    if (nowSeconds === null) return [];
-
-    return recentPactIds.flatMap((id, index) => {
-      const pact = pactReads.data?.[index]?.result as PactTuple | undefined;
+  const pactReadData = pactReads.data as unknown as readonly { result?: unknown }[] | undefined;
+  const openPacts: OpenPact[] = nowSeconds === null ? [] : recentPactIds.flatMap((id, index) => {
+      const pact = pactReadData?.[index]?.result as PactTuple | undefined;
       if (
         !pact
         || pact[0] === zeroAddress
@@ -128,17 +127,18 @@ export function PactDiscovery() {
 
       return [{ id, pact }];
     });
-  }, [nowSeconds, pactReads.data, recentPactIds]);
 
   function openPact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalized = pactIdInput.trim();
-    if (!/^\d+$/.test(normalized) || BigInt(normalized) < 1n) {
-      setInputError("Enter a valid Lock ID.");
+    const id = /^\d{1,78}$/.test(normalized)
+      ? BigInt(normalized)
+      : decodeLockInviteCode(normalized.toUpperCase());
+    if (id === null || id < 1n || id >= (1n << 256n)) {
+      setInputError("Enter a valid invite code or Lock ID.");
       return;
     }
 
-    const id = BigInt(normalized);
     if (nextPactId && id >= nextPactId) {
       setInputError("That lock does not exist yet.");
       return;
@@ -157,20 +157,22 @@ export function PactDiscovery() {
         <div>
           <span className="card-kicker">OPEN LOCKS</span>
           <h2 id="pact-discovery-title">Join a crew</h2>
-          <p>Browse challenges still forming, or open an invite by Lock ID.</p>
+          <p>Browse challenges still forming, or open a friend&apos;s invite.</p>
         </div>
         <form className="join-pact-form" onSubmit={openPact} noValidate>
-          <label htmlFor="pact-id">Join by Lock ID</label>
+          <label htmlFor="pact-id">Invite code or Lock ID</label>
           <div>
             <input
               id="pact-id"
               name="pactId"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="e.g. 12"
+              inputMode="text"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="LOCK-000C-4F"
               value={pactIdInput}
               onChange={(event) => {
-                setPactIdInput(event.target.value);
+                setPactIdInput(event.target.value.toUpperCase());
                 if (inputError) setInputError("");
               }}
               aria-describedby={inputError ? "pact-id-error" : undefined}
@@ -189,7 +191,7 @@ export function PactDiscovery() {
           if (!pact || pact[0] === zeroAddress) return null;
           const ended = nowSeconds !== null && nowSeconds >= Number(pact[1]) + pact[7] * 86_400;
           const state = pact[15] && pact[16] ? "REFUND READY" : pact[15] ? "SETTLED" : pact[16] ? "CANCELLED" : nowSeconds !== null && nowSeconds < Number(pact[1]) ? "FORMING" : ended ? "ENDING" : "ACTIVE";
-          return <Link href={`/lock/${id}`} className="my-pact-row" key={id.toString()}><span>#{id.toString().padStart(4, "0")}</span><strong>{missionByType(pact[11]).name} · {pact[8]}/{pact[7]}</strong><b>{state} →</b></Link>;
+          return <Link href={`/lock/${id}`} className="my-pact-row" key={id.toString()}><span>{encodeLockInviteCode(id)}</span><strong>{missionByType(pact[11]).name} · {pact[8]}/{pact[7]}</strong><b>{state} →</b></Link>;
         })}</div>
       </section>}
 
@@ -209,7 +211,7 @@ export function PactDiscovery() {
             return (
               <Link className="discovery-card" href={`/lock/${id}`} key={id.toString()}>
                 <div className="discovery-card-topline">
-                  <span>LOCK #{id.toString().padStart(4, "0")}</span>
+                  <span>{encodeLockInviteCode(id)}</span>
                   <b>REGISTRATION OPEN</b>
                 </div>
                 <h3>{mission.name}</h3>

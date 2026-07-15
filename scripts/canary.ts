@@ -22,8 +22,9 @@ const EXPECTED_RECLAIM_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e54
 const EXPECTED_STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
 const EXPECTED_STRAVA_PROVIDER_VERSION = "1.0.3";
 const EXPECTED_DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.3";
-const EXPECTED_DUOLINGO_PROVIDER_HASH = "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80";
+const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.4";
+const EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
+const EXPECTED_DUOLINGO_XP_REQUEST_HASH = "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac";
 const CANARY_STAKE = 100_000n;
 const REQUIRED_USDC_PER_WALLET = 200_000n;
 const DEFAULT_APP_URL = "https://lock-in-liart-theta.vercel.app";
@@ -159,7 +160,8 @@ const verifierAbi = [
   { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
   { type: "function", name: "PARSER", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
 ] as const;
@@ -216,7 +218,8 @@ async function contractIdentity(blockNumber?: bigint) {
     stravaProviderVersion,
     duolingoProviderId,
     duolingoProviderVersion,
-    duolingoProviderHash,
+    duolingoOwnershipRequestHash,
+    duolingoXpRequestHash,
     stravaParserRaw,
   ] = await Promise.all([
     client.getCode({ address: canonicalStravaVerifier, ...block }),
@@ -229,7 +232,8 @@ async function contractIdentity(blockNumber?: bigint) {
     client.readContract({ address: canonicalStravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", ...block }),
     client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_ID", ...block }),
     client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_VERSION", ...block }),
-    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_HASH", ...block }),
+    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH", ...block }),
+    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_XP_REQUEST_HASH", ...block }),
     client.readContract({ address: canonicalStravaVerifier, abi: verifierAbi, functionName: "PARSER", ...block }),
   ]);
   const canonicalStravaParser = getAddress(stravaParserRaw);
@@ -270,7 +274,8 @@ async function contractIdentity(blockNumber?: bigint) {
         && stravaProviderVersion === EXPECTED_STRAVA_PROVIDER_VERSION
         && duolingoProviderId === EXPECTED_DUOLINGO_PROVIDER_ID
         && duolingoProviderVersion === EXPECTED_DUOLINGO_PROVIDER_VERSION
-        && duolingoProviderHash === EXPECTED_DUOLINGO_PROVIDER_HASH,
+        && duolingoOwnershipRequestHash === EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH
+        && duolingoXpRequestHash === EXPECTED_DUOLINGO_XP_REQUEST_HASH,
       parserPinned:
         Boolean(parserCode && parserCode !== "0x")
         && parserLive

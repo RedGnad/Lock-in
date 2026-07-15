@@ -9,9 +9,10 @@ import {
 } from "viem";
 import type { ReclaimTrustedData } from "./strava-proof-policy";
 
-export const DUOLINGO_PROVIDER_VERSION = "1.0.3";
+export const DUOLINGO_PROVIDER_VERSION = "1.0.4";
 export const DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-export const DUOLINGO_PROVIDER_HASH = "0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80";
+export const DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
+export const DUOLINGO_XP_REQUEST_HASH = "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac";
 
 export type DuolingoPolicy = {
   walletAddress: string;
@@ -19,7 +20,7 @@ export type DuolingoPolicy = {
   phase: "baseline" | "completion";
   dayIndex?: number;
   expectedSessionId: string;
-  expectedOwnershipCode: string;
+  expectedProfileId: string;
 };
 
 export type DuolingoEvidence = {
@@ -49,22 +50,6 @@ export function duolingoProviderId(): string {
   return DUOLINGO_PROVIDER_ID;
 }
 
-export function duolingoOwnershipCode(walletAddress: string): string {
-  if (!isAddress(walletAddress)) throw new Error("Invalid wallet address");
-  const digest = keccak256(encodeAbiParameters(
-    parseAbiParameters("string namespace, uint256 chainId, address account"),
-    ["LOCK_IN_DUOLINGO", 143n, getAddress(walletAddress)],
-  ));
-  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-  let value = BigInt(digest) >> 206n;
-  let encoded = "";
-  for (let index = 0; index < 10; index += 1) {
-    encoded = alphabet[Number(value & 31n)] + encoded;
-    value >>= 5n;
-  }
-  return `LOCK-${encoded.slice(0, 5)}-${encoded.slice(5)}`;
-}
-
 function contextString(context: Record<string, unknown>, key: string): string {
   const value = context[key];
   if (typeof value !== "string" || value.length === 0) {
@@ -73,14 +58,24 @@ function contextString(context: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function oneField(data: readonly ReclaimTrustedData[], key: string): string {
-  const values = data.flatMap((item) => {
+function fieldValues(data: readonly ReclaimTrustedData[], key: string): string[] {
+  return data.flatMap((item) => {
     const value = item.extractedParameters[key];
     return typeof value === "string" ? [value] : [];
   });
+}
+
+function oneField(data: readonly ReclaimTrustedData[], key: string): string {
+  const values = fieldValues(data, key);
   if (values.length === 0) reject("MISSING_FIELD", `Missing signed Duolingo field ${key}`);
   if (new Set(values).size !== 1) reject("CONFLICTING_FIELD", `Conflicting signed values for ${key}`);
   return values[0];
+}
+
+function proofIndexWithField(data: readonly ReclaimTrustedData[], key: string): number {
+  const indexes = data.flatMap((item, index) => typeof item.extractedParameters[key] === "string" ? [index] : []);
+  if (indexes.length !== 1) reject("INVALID_PROOF_ROLE", `Expected exactly one Duolingo ${key} proof`);
+  return indexes[0];
 }
 
 export function validateDuolingoEvidence(input: {
@@ -93,21 +88,22 @@ export function validateDuolingoEvidence(input: {
   if (providerId !== DUOLINGO_PROVIDER_ID) {
     reject("WRONG_PROVIDER", "The proof does not use the pinned Duolingo provider");
   }
-  if (data.length !== 1) reject("WRONG_PROOF_COUNT", "The Duolingo provider must return one proof");
-  if (timestamps.length !== 1 || !Number.isSafeInteger(timestamps[0])) {
-    reject("INVALID_PROOF_TIME", "The Duolingo proof timestamp is invalid");
+  if (data.length !== 2) reject("WRONG_PROOF_COUNT", "The Duolingo provider must return ownership and XP proofs");
+  if (timestamps.length !== 2 || timestamps.some((value) => !Number.isSafeInteger(value))) {
+    reject("INVALID_PROOF_TIME", "The Duolingo proof timestamps are invalid");
   }
   if (!isAddress(policy.walletAddress) || !/^\d+$/.test(policy.pactId)) {
     reject("INVALID_POLICY", "The expected wallet or pact is invalid");
   }
-  if (!/^LOCK-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}$/.test(policy.expectedOwnershipCode)) {
-    reject("INVALID_POLICY", "The ownership code is invalid");
+  if (!/^[1-9]\d{0,19}$/.test(policy.expectedProfileId)) {
+    reject("INVALID_POLICY", "The expected Duolingo profile id is invalid");
   }
 
   const expectedAddress = getAddress(policy.walletAddress).toLowerCase();
   const expectedMessage = policy.phase === "baseline"
     ? `${policy.pactId}:baseline`
     : `${policy.pactId}:${policy.dayIndex}`;
+  const providerHashes = new Set<string>();
   for (const item of data) {
     if (contextString(item.context, "contextAddress").toLowerCase() !== expectedAddress) {
       reject("WRONG_WALLET", "The proof is bound to another wallet");
@@ -118,19 +114,31 @@ export function validateDuolingoEvidence(input: {
     if (contextString(item.context, "reclaimSessionId") !== policy.expectedSessionId) {
       reject("WRONG_SESSION", "The proof does not belong to this Reclaim session");
     }
+    providerHashes.add(contextString(item.context, "providerHash").toLowerCase());
+  }
+  if (
+    providerHashes.size !== 2
+      || !providerHashes.has(DUOLINGO_OWNERSHIP_REQUEST_HASH)
+      || !providerHashes.has(DUOLINGO_XP_REQUEST_HASH)
+  ) reject("WRONG_REQUEST_SCHEMA", "The proof does not contain both pinned Duolingo requests");
+
+  const ownershipIndex = proofIndexWithField(data, "marker");
+  const profileIndex = proofIndexWithField(data, "xp");
+  if (ownershipIndex === profileIndex) reject("INVALID_PROOF_ROLE", "Duolingo ownership and XP must be separate proofs");
+  if (oneField(data, "marker") !== "disable_social") {
+    reject("ACCOUNT_NOT_OWNED", "The Duolingo session does not control this profile");
   }
 
   const profileId = oneField(data, "id");
   const username = oneField(data, "username");
-  const displayName = oneField(data, "name");
-  const totalXpRaw = oneField(data, "totalXp");
+  const totalXpRaw = oneField(data, "xp");
+  if (profileId !== policy.expectedProfileId) {
+    reject("ACCOUNT_NOT_OWNED", "The authenticated Duolingo account does not match the requested profile");
+  }
   if (!/^[1-9]\d{0,19}$/.test(profileId) || BigInt(profileId) > (1n << 64n) - 1n) {
     reject("INVALID_PROFILE", "The Duolingo profile id is invalid");
   }
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(username)) reject("INVALID_USERNAME", "The Duolingo username is invalid");
-  if (displayName !== policy.expectedOwnershipCode) {
-    reject("ACCOUNT_NOT_OWNED", `Set the Duolingo Name to exactly ${policy.expectedOwnershipCode}`);
-  }
   if (!/^(?:0|[1-9]\d{0,9})$/.test(totalXpRaw)) reject("INVALID_XP", "The signed Duolingo XP is invalid");
   const totalXp = Number(totalXpRaw);
   if (!Number.isSafeInteger(totalXp) || totalXp > 2_000_000_000) {
@@ -153,7 +161,7 @@ export function validateDuolingoEvidence(input: {
     totalXp,
     identityHash,
     eventNullifier,
-    observedAt: timestamps[0],
+    observedAt: timestamps[profileIndex],
     sessionId: policy.expectedSessionId,
   };
 }

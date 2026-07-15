@@ -11,20 +11,19 @@ interface VmReclaimVerifier {
     function warp(uint256 timestamp) external;
 }
 
-/// @dev Test-only adapter. This contract is defined under `test/`, is never a deployment target, and exposes only
-///      the internal synthetic-schema grammar needed by fixture tests.
+/// @dev Test-only adapter for the synthetic schema. The production entry remains fail-closed.
 contract LockInReclaimVerifierHarness is LockInReclaimVerifier {
     constructor(address pinnedWitness) LockInReclaimVerifier(pinnedWitness) {}
 
-    function validateSyntheticDuolingoProofForTesting(
-        Reclaim.Proof calldata proof,
+    function validateSyntheticDuolingoProofsForTesting(
+        Reclaim.Proof[] calldata proofs,
         address account,
         uint256 pactId,
         bool baseline,
         uint8 dayIndex,
         string calldata expectedSessionId
     ) external view returns (bytes32 identityHash, uint64 totalXp, bytes32 proofHash, uint32 timestampS) {
-        return _validateDuolingoProof(proof, account, pactId, baseline, dayIndex, expectedSessionId);
+        return _validateDuolingoProofs(proofs, account, pactId, baseline, dayIndex, expectedSessionId);
     }
 }
 
@@ -32,212 +31,294 @@ contract LockInReclaimVerifierTest {
     VmReclaimVerifier private constant VM = VmReclaimVerifier(address(uint160(uint256(keccak256("hevm cheat code")))));
     uint256 private constant WITNESS_KEY = 0xA11CE55;
     uint256 private constant WRONG_WITNESS_KEY = 0xBADBEEF;
-    uint32 private constant PROOF_TIME = 1_784_000_000;
+    uint32 private constant OWNERSHIP_PROOF_TIME = 1_784_000_000;
+    uint32 private constant XP_PROOF_TIME = OWNERSHIP_PROOF_TIME + 1;
     address private constant ACCOUNT = address(uint160(0xA11C));
     string private constant SESSION = "session-123";
-    string private constant USERNAME = "alice.test";
+    string private constant USERNAME = "alice_test";
     string private constant PROFILE_ID = "123456";
     string private constant XP = "1000";
+    string private constant OWNERSHIP_REQUEST_HASH =
+        "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
+    string private constant XP_REQUEST_HASH = "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac";
 
     LockInReclaimVerifierHarness private verifier;
 
     function setUp() public {
-        VM.warp(uint256(PROOF_TIME) + 100);
+        VM.warp(uint256(XP_PROOF_TIME) + 100);
         verifier = new LockInReclaimVerifierHarness(VM.addr(WITNESS_KEY));
     }
 
     function testProductionEntryFailsClosedWhileSchemaIsUnconfirmed() public {
         LockInReclaimVerifier productionVerifier = new LockInReclaimVerifier(VM.addr(WITNESS_KEY));
-        Reclaim.Proof memory proof = _validProof(WITNESS_KEY);
+        Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
         (bool ok, bytes memory reason) = address(productionVerifier)
             .staticcall(
-                abi.encodeCall(productionVerifier.validateDuolingoProof, (proof, ACCOUNT, 42, true, 0, SESSION))
+                abi.encodeCall(productionVerifier.validateDuolingoProofs, (proofs, ACCOUNT, 42, true, 0, SESSION))
             );
 
-        require(!ok, "unconfirmed production verifier accepted a proof");
+        require(!ok, "unconfirmed production verifier accepted proofs");
         require(
             _revertSelector(reason) == LockInReclaimVerifier.LiveSchemaUnconfirmed.selector,
             "unexpected production revert"
         );
     }
 
-    function testValidCanonicalBaselineProof() public {
-        Reclaim.Proof memory proof = _validProof(WITNESS_KEY);
+    function testValidCanonicalBaselineProofPairAndOrderedHash() public {
+        Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
         (bytes32 identityHash, uint64 totalXp, bytes32 proofHash, uint32 timestampS) =
-            verifier.validateSyntheticDuolingoProofForTesting(proof, ACCOUNT, 42, true, 0, SESSION);
+            verifier.validateSyntheticDuolingoProofsForTesting(proofs, ACCOUNT, 42, true, 0, SESSION);
 
-        bytes32 providerKey = keccak256("cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.3");
+        bytes32 providerKey = keccak256("cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.4");
+        bytes32 expectedProofHash =
+            keccak256(abi.encodePacked(proofs[0].signedClaim.claim.identifier, proofs[1].signedClaim.claim.identifier));
         require(identityHash == keccak256(abi.encode(providerKey, uint256(123456))), "wrong identity");
         require(totalXp == 1000, "wrong XP");
-        require(proofHash == keccak256(abi.encodePacked(proof.signedClaim.claim.identifier)), "wrong proof-set hash");
-        require(timestampS == PROOF_TIME, "wrong proof time");
-        require(!verifier.LIVE_SCHEMA_CONFIRMED(), "spike claimed live confirmation");
+        require(proofHash == expectedProofHash, "wrong ordered proof-set hash");
+        require(timestampS == XP_PROOF_TIME, "XP proof timestamp not selected");
+        require(!verifier.LIVE_SCHEMA_CONFIRMED(), "synthetic fixture claimed live confirmation");
     }
 
-    function testValidCanonicalCompletionWithOptionalTransportFields() public {
-        string memory parameters = _parameters();
-        parameters = _replaceOnce(
-            parameters,
+    function testValidCanonicalCompletionAndOptionalTransportFields() public {
+        string memory ownershipParameters = _replaceOnce(
+            _ownershipParameters(),
             "\"body\":\"\",\"method\"",
-            "\"headers\":{\"accept\":\"application/json\",\"nested\":{\"ok\":true}},\"method\""
+            "\"body\":\"\",\"headers\":{\"accept\":\"application/json\"},\"method\""
         );
-        parameters = _replaceOnce(parameters, "\"paramValues\":", string.concat("\"paramValues\":"));
-        parameters = _replaceOnce(
-            parameters,
+        ownershipParameters = _replaceOnce(
+            ownershipParameters,
             "\"responseMatches\":",
             string.concat("\"proxySessionId\":\"", SESSION, "\",\"responseMatches\":")
         );
-        parameters = _replaceOnce(parameters, "],\"url\":", string.concat("],\"sessionId\":\"", SESSION, "\",\"url\":"));
-        Reclaim.Proof memory proof = _proof("http", parameters, _context("42:7"), WITNESS_KEY);
+        string memory xpParameters =
+            _replaceOnce(_xpParameters(), "],\"url\":", string.concat("],\"sessionId\":\"", SESSION, "\",\"url\":"));
+        Reclaim.Proof[] memory proofs =
+            _proofPair(ownershipParameters, _ownershipContext("42:7"), xpParameters, _xpContext("42:7"), WITNESS_KEY);
 
-        (, uint64 totalXp,,) = verifier.validateSyntheticDuolingoProofForTesting(proof, ACCOUNT, 42, false, 7, SESSION);
+        (, uint64 totalXp,,) =
+            verifier.validateSyntheticDuolingoProofsForTesting(proofs, ACCOUNT, 42, false, 7, SESSION);
         require(totalXp == 1000, "optional transport fields changed result");
     }
 
-    function testRejectsClaimInfoTamperingAndWrongWitness() public {
-        Reclaim.Proof memory tampered = _validProof(WITNESS_KEY);
-        tampered.signedClaim.claim.identifier = bytes32(0);
+    function testRejectsWrongProofCountAndRoleOrder() public {
+        Reclaim.Proof[] memory valid = _validProofs(WITNESS_KEY);
+        Reclaim.Proof[] memory one = new Reclaim.Proof[](1);
+        one[0] = valid[0];
+        _assertRejected(one, ACCOUNT, 42, true, 0, SESSION);
+
+        Reclaim.Proof[] memory three = new Reclaim.Proof[](3);
+        three[0] = valid[0];
+        three[1] = valid[1];
+        three[2] = valid[1];
+        _assertRejected(three, ACCOUNT, 42, true, 0, SESSION);
+
+        Reclaim.Proof memory first = valid[0];
+        valid[0] = valid[1];
+        valid[1] = first;
+        _assertRejected(valid, ACCOUNT, 42, true, 0, SESSION);
+    }
+
+    function testRejectsClaimTamperingWrongWitnessProviderAndOwner() public {
+        Reclaim.Proof[] memory tampered = _validProofs(WITNESS_KEY);
+        tampered[1].signedClaim.claim.identifier = bytes32(0);
         _assertRejected(tampered, ACCOUNT, 42, true, 0, SESSION);
 
-        Reclaim.Proof memory wrongWitness = _validProof(WRONG_WITNESS_KEY);
-        _assertRejected(wrongWitness, ACCOUNT, 42, true, 0, SESSION);
+        _assertRejected(_validProofs(WRONG_WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION);
 
-        Reclaim.Proof memory wrongProvider = _proof("https", _parameters(), _context("42:baseline"), WITNESS_KEY);
+        Reclaim.Proof[] memory wrongProvider = _validProofs(WITNESS_KEY);
+        wrongProvider[0] = _proof(
+            "https", _ownershipParameters(), _ownershipContext("42:baseline"), WITNESS_KEY, OWNERSHIP_PROOF_TIME
+        );
         _assertRejected(wrongProvider, ACCOUNT, 42, true, 0, SESSION);
 
-        Reclaim.Proof memory wrongOwner = _validProof(WITNESS_KEY);
-        wrongOwner.signedClaim.claim.owner = address(0xB0B);
-        wrongOwner = _resign(wrongOwner, WITNESS_KEY);
+        Reclaim.Proof[] memory wrongOwner = _validProofs(WITNESS_KEY);
+        wrongOwner[0].signedClaim.claim.owner = address(0xB0B);
+        wrongOwner[0] = _resign(wrongOwner[0], WITNESS_KEY);
         _assertRejected(wrongOwner, ACCOUNT, 42, true, 0, SESSION);
     }
 
-    function testRejectsStaleAndFutureProofTimestamps() public {
-        Reclaim.Proof memory stale = _validProof(WITNESS_KEY);
-        stale.signedClaim.claim.timestampS = uint32(block.timestamp - 601);
-        stale = _resign(stale, WITNESS_KEY);
+    function testRejectsStaleAndFutureTimestampInEitherRole() public {
+        Reclaim.Proof[] memory stale = _validProofs(WITNESS_KEY);
+        stale[0].signedClaim.claim.timestampS = uint32(block.timestamp - 601);
+        stale[0] = _resign(stale[0], WITNESS_KEY);
         _assertRejected(stale, ACCOUNT, 42, true, 0, SESSION);
 
-        Reclaim.Proof memory future = _validProof(WITNESS_KEY);
-        future.signedClaim.claim.timestampS = uint32(block.timestamp + 61);
-        future = _resign(future, WITNESS_KEY);
+        Reclaim.Proof[] memory future = _validProofs(WITNESS_KEY);
+        future[1].signedClaim.claim.timestampS = uint32(block.timestamp + 61);
+        future[1] = _resign(future[1], WITNESS_KEY);
         _assertRejected(future, ACCOUNT, 42, true, 0, SESSION);
     }
 
-    function testPinnedProviderHashAloneCannotBlessAnotherRequest() public {
-        string memory parameters = _replaceOnce(
-            _parameters(),
-            "https://www.duolingo.com/2017-06-30/users?username={{duolingo_username}}",
-            "https://attacker.invalid/users?username={{duolingo_username}}"
+    function testRejectsPinnedHashWithWrongOwnershipOrXpRequest() public {
+        string memory wrongOwnership = _replaceOnce(
+            _ownershipParameters(),
+            "https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}/privacy-settings",
+            "https://attacker.invalid/ownership"
         );
-        // The signed context deliberately keeps the pinned providerHash. Exact request parsing must still reject it.
-        Reclaim.Proof memory proof = _proof("http", parameters, _context("42:baseline"), WITNESS_KEY);
-        _assertRejected(proof, ACCOUNT, 42, true, 0, SESSION);
+        _assertRoleParametersRejected(0, wrongOwnership);
+
+        string memory wrongXp = _replaceOnce(
+            _xpParameters(),
+            "https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}?fields=id,totalXp,username",
+            "https://attacker.invalid/xp"
+        );
+        _assertRoleParametersRejected(1, wrongXp);
     }
 
-    function testRejectsUnknownDuplicateAndNonCanonicalTopLevelKeys() public {
-        string memory unknown = _replaceOnce(_parameters(), "{\"body\"", "{\"alien\":{},\"body\"");
-        _assertParametersRejected(unknown);
-
-        string memory duplicate = _replaceOnce(_parameters(), "\"method\":\"GET\"", "\"method\":\"GET\",\"body\":\"\"");
-        _assertParametersRejected(duplicate);
+    function testRejectsMethodMatchesRedactionsAndCanonicalOrderMutations() public {
+        _assertRoleParametersRejected(
+            0, _replaceOnce(_ownershipParameters(), "\"method\":\"GET\"", "\"method\":\"POST\"")
+        );
+        _assertRoleParametersRejected(0, _replaceOnce(_ownershipParameters(), "{{marker}}", "{{xp}}"));
+        _assertRoleParametersRejected(
+            0, _replaceOnce(_ownershipParameters(), "$.privacySettings[10].id", "$.privacySettings[9].id")
+        );
+        _assertRoleParametersRejected(1, _replaceOnce(_xpParameters(), "{{xp}}", "{{id}}"));
+        _assertRoleParametersRejected(1, _replaceOnce(_xpParameters(), "$.totalXp", "$.wrongXp"));
 
         string memory reordered =
-            _replaceOnce(_parameters(), "\"body\":\"\",\"method\":\"GET\"", "\"method\":\"GET\",\"body\":\"\"");
-        _assertParametersRejected(reordered);
+            _replaceOnce(_xpParameters(), "\"body\":\"\",\"method\":\"GET\"", "\"method\":\"GET\",\"body\":\"\"");
+        _assertRoleParametersRejected(1, reordered);
     }
 
-    function testRejectsUnknownDuplicateAndEscapedSecurityFields() public {
-        string memory unknown = _replaceOnce(
-            _parameters(), "\"totalXp\":\"1000\",\"username\"", "\"totalXp\":\"1000\",\"unknown\":\"x\",\"username\""
-        );
-        _assertParametersRejected(unknown);
+    function testRejectsWalletPactSessionAndProviderContextMutations() public {
+        Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
+        _assertRejected(proofs, address(0xB0B), 42, true, 0, SESSION);
+        _assertRejected(proofs, ACCOUNT, 43, true, 0, SESSION);
+        _assertRejected(proofs, ACCOUNT, 42, true, 0, "session-attacker");
 
-        string memory duplicate = _replaceOnce(
-            _parameters(),
-            "\"username\":\"alice.test\"},\"responseMatches\"",
-            "\"username\":\"alice.test\",\"username\":\"alice.test\"},\"responseMatches\""
-        );
-        _assertParametersRejected(duplicate);
-
-        string memory escaped = _replaceOnce(
-            _parameters(), "\"duolingo_username\":\"alice.test\"", "\"duolingo_username\":\"alice\\u002etest\""
-        );
-        _assertParametersRejected(escaped);
-    }
-
-    function testRejectsMethodBodyMatchesAndRedactionsMutations() public {
-        _assertParametersRejected(_replaceOnce(_parameters(), "\"method\":\"GET\"", "\"method\":\"POST\""));
-        _assertParametersRejected(_replaceOnce(_parameters(), "\"body\":\"\"", "\"body\":\"x\""));
-        _assertParametersRejected(_replaceOnce(_parameters(), "{{totalXp}}", "{{id}}"));
-        _assertParametersRejected(_replaceOnce(_parameters(), "$.users[0].totalXp", "$.users[1].totalXp"));
-
-        string memory malformedHeaders = _replaceOnce(
-            _parameters(), "\"body\":\"\",\"method\"", "\"body\":\"\",\"headers\":{\"accept\":[\"json\"},\"method\""
-        );
-        _assertParametersRejected(malformedHeaders);
-
-        string memory wrongProxySession = _replaceOnce(
-            _parameters(), "\"responseMatches\":", "\"proxySessionId\":\"session-attacker\",\"responseMatches\":"
-        );
-        _assertParametersRejected(wrongProxySession);
-    }
-
-    function testRejectsWalletPactSessionAndExtractedFieldMutations() public {
-        Reclaim.Proof memory proof = _validProof(WITNESS_KEY);
-        _assertRejected(proof, address(0xB0B), 42, true, 0, SESSION);
-        _assertRejected(proof, ACCOUNT, 43, true, 0, SESSION);
-        _assertRejected(proof, ACCOUNT, 42, true, 0, "session-attacker");
-
-        string memory changedXp = _replaceOnce(_context("42:baseline"), "\"totalXp\":\"1000\"", "\"totalXp\":\"1001\"");
-        _assertRejected(_proof("http", _parameters(), changedXp, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION);
-    }
-
-    function testRejectsWrongOwnershipCodeAndNonCanonicalNumbers() public {
-        string memory wrongNameParameters = _replaceOnce(_parameters(), _ownershipCode(ACCOUNT), "LOCK-00000-00000");
-        string memory wrongNameContext =
-            _replaceOnce(_context("42:baseline"), _ownershipCode(ACCOUNT), "LOCK-00000-00000");
+        string memory wrongOwnershipHash =
+            _replaceOnce(_ownershipContext("42:baseline"), OWNERSHIP_REQUEST_HASH, XP_REQUEST_HASH);
         _assertRejected(
-            _proof("http", wrongNameParameters, wrongNameContext, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION
+            _proofPair(
+                _ownershipParameters(), wrongOwnershipHash, _xpParameters(), _xpContext("42:baseline"), WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
         );
 
-        string memory zeroPaddedParameters =
-            _replaceOnce(_parameters(), "\"totalXp\":\"1000\"", "\"totalXp\":\"01000\"");
-        string memory zeroPaddedContext =
-            _replaceOnce(_context("42:baseline"), "\"totalXp\":\"1000\"", "\"totalXp\":\"01000\"");
+        string memory wrongXpSession = _replaceOnce(_xpContext("42:baseline"), SESSION, "session-attacker");
         _assertRejected(
-            _proof("http", zeroPaddedParameters, zeroPaddedContext, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION
+            _proofPair(
+                _ownershipParameters(), _ownershipContext("42:baseline"), _xpParameters(), wrongXpSession, WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
         );
     }
 
-    function testRejectsUnknownOrReorderedContextKeys() public {
-        string memory unknown =
-            _replaceOnce(_context("42:baseline"), "{\"contextAddress\"", "{\"alien\":\"x\",\"contextAddress\"");
-        _assertRejected(_proof("http", _parameters(), unknown, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION);
-
-        string memory reordered = _replaceOnce(
-            _context("42:baseline"),
-            "\"contextAddress\":\"0x000000000000000000000000000000000000a11c\",\"contextMessage\":\"42:baseline\"",
-            "\"contextMessage\":\"42:baseline\",\"contextAddress\":\"0x000000000000000000000000000000000000a11c\""
+    function testRejectsMarkerAndCrossProofProfileMismatches() public {
+        string memory wrongMarkerParameters = _replaceOnce(_ownershipParameters(), "disable_social", "disable_messages");
+        string memory wrongMarkerContext =
+            _replaceOnce(_ownershipContext("42:baseline"), "disable_social", "disable_messages");
+        _assertRejected(
+            _proofPair(
+                wrongMarkerParameters, wrongMarkerContext, _xpParameters(), _xpContext("42:baseline"), WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
         );
-        _assertRejected(_proof("http", _parameters(), reordered, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION);
+
+        string memory otherOwnershipProfile = _replaceOnce(_ownershipParameters(), PROFILE_ID, "654321");
+        _assertRejected(
+            _proofPair(
+                otherOwnershipProfile,
+                _ownershipContext("42:baseline"),
+                _xpParameters(),
+                _xpContext("42:baseline"),
+                WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
+        );
+
+        string memory mismatchedXpResponse = _replaceOnce(_xpParameters(), "\"id\":\"123456\"", "\"id\":\"654321\"");
+        string memory mismatchedXpContext = _replaceOnce(_xpContext("42:baseline"), PROFILE_ID, "654321");
+        _assertRejected(
+            _proofPair(
+                _ownershipParameters(),
+                _ownershipContext("42:baseline"),
+                mismatchedXpResponse,
+                mismatchedXpContext,
+                WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
+        );
     }
 
-    function testSyntheticSpikeRejectsUnvalidatedSdkTeeContext() public {
+    function testRejectsParameterContextMismatchAndNonCanonicalNumbers() public {
+        string memory changedXpContext = _replaceOnce(_xpContext("42:baseline"), "\"xp\":\"1000\"", "\"xp\":\"1001\"");
+        _assertRejected(
+            _proofPair(
+                _ownershipParameters(), _ownershipContext("42:baseline"), _xpParameters(), changedXpContext, WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
+        );
+
+        string memory paddedParameters = _replaceOnce(_xpParameters(), "\"xp\":\"1000\"", "\"xp\":\"01000\"");
+        string memory paddedContext = _replaceOnce(_xpContext("42:baseline"), "\"xp\":\"1000\"", "\"xp\":\"01000\"");
+        _assertRejected(
+            _proofPair(
+                _ownershipParameters(), _ownershipContext("42:baseline"), paddedParameters, paddedContext, WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
+        );
+    }
+
+    function testRejectsUnvalidatedTeeContextAndUnknownKeys() public {
         string memory teeContext = _replaceOnce(
-            _context("42:baseline"),
-            "{\"contextAddress\"",
-            "{\"attestationNonce\":\"0x1234\",\"attestationNonceData\":{\"applicationId\":\"0xapp\",\"sessionId\":\"session-123\",\"timestamp\":\"1784000000000\"},\"contextAddress\""
+            _xpContext("42:baseline"), "{\"contextAddress\"", "{\"attestationNonce\":\"0x1234\",\"contextAddress\""
         );
-        _assertRejected(_proof("http", _parameters(), teeContext, WITNESS_KEY), ACCOUNT, 42, true, 0, SESSION);
+        _assertRejected(
+            _proofPair(
+                _ownershipParameters(), _ownershipContext("42:baseline"), _xpParameters(), teeContext, WITNESS_KEY
+            ),
+            ACCOUNT,
+            42,
+            true,
+            0,
+            SESSION
+        );
+
+        _assertRoleParametersRejected(0, _replaceOnce(_ownershipParameters(), "{\"body\"", "{\"alien\":{},\"body\""));
     }
 
-    function _assertParametersRejected(string memory parameters) private {
-        Reclaim.Proof memory proof = _proof("http", parameters, _context("42:baseline"), WITNESS_KEY);
-        _assertRejected(proof, ACCOUNT, 42, true, 0, SESSION);
+    function _assertRoleParametersRejected(uint256 role, string memory parameters) private {
+        Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
+        if (role == 0) {
+            proofs[0] = _proof("http", parameters, _ownershipContext("42:baseline"), WITNESS_KEY, OWNERSHIP_PROOF_TIME);
+        } else {
+            proofs[1] = _proof("http", parameters, _xpContext("42:baseline"), WITNESS_KEY, XP_PROOF_TIME);
+        }
+        _assertRejected(proofs, ACCOUNT, 42, true, 0, SESSION);
     }
 
     function _assertRejected(
-        Reclaim.Proof memory proof,
+        Reclaim.Proof[] memory proofs,
         address account,
         uint256 pactId,
         bool baseline,
@@ -247,33 +328,46 @@ contract LockInReclaimVerifierTest {
         (bool ok,) = address(verifier)
             .staticcall(
                 abi.encodeCall(
-                    verifier.validateSyntheticDuolingoProofForTesting,
-                    (proof, account, pactId, baseline, dayIndex, session)
+                    verifier.validateSyntheticDuolingoProofsForTesting,
+                    (proofs, account, pactId, baseline, dayIndex, session)
                 )
             );
         require(!ok, "mutation unexpectedly accepted");
     }
 
-    function _revertSelector(bytes memory reason) private pure returns (bytes4 selector) {
-        if (reason.length < 4) return bytes4(0);
-        assembly {
-            selector := mload(add(reason, 32))
-        }
+    function _validProofs(uint256 signerKey) private returns (Reclaim.Proof[] memory) {
+        return _proofPair(
+            _ownershipParameters(),
+            _ownershipContext("42:baseline"),
+            _xpParameters(),
+            _xpContext("42:baseline"),
+            signerKey
+        );
     }
 
-    function _validProof(uint256 signerKey) private returns (Reclaim.Proof memory) {
-        return _proof("http", _parameters(), _context("42:baseline"), signerKey);
+    function _proofPair(
+        string memory ownershipParameters,
+        string memory ownershipContext,
+        string memory xpParameters,
+        string memory xpContext,
+        uint256 signerKey
+    ) private returns (Reclaim.Proof[] memory proofs) {
+        proofs = new Reclaim.Proof[](2);
+        proofs[0] = _proof("http", ownershipParameters, ownershipContext, signerKey, OWNERSHIP_PROOF_TIME);
+        proofs[1] = _proof("http", xpParameters, xpContext, signerKey, XP_PROOF_TIME);
     }
 
-    function _proof(string memory provider, string memory parameters, string memory context, uint256 signerKey)
-        private
-        returns (Reclaim.Proof memory proof)
-    {
+    function _proof(
+        string memory provider,
+        string memory parameters,
+        string memory context,
+        uint256 signerKey,
+        uint32 timestampS
+    ) private returns (Reclaim.Proof memory proof) {
         proof.claimInfo = Claims.ClaimInfo({provider: provider, parameters: parameters, context: context});
         proof.signedClaim.claim = Claims.CompleteClaimData({
-            identifier: Claims.hashClaimInfo(proof.claimInfo), owner: ACCOUNT, timestampS: PROOF_TIME, epoch: 1
+            identifier: Claims.hashClaimInfo(proof.claimInfo), owner: ACCOUNT, timestampS: timestampS, epoch: 1
         });
-
         return _resign(proof, signerKey);
     }
 
@@ -287,46 +381,69 @@ contract LockInReclaimVerifierTest {
         return proof;
     }
 
-    function _parameters() private pure returns (string memory) {
-        string memory prefix = string.concat(
-            "{\"body\":\"\",\"method\":\"GET\",\"paramValues\":{\"duolingo_username\":\"",
-            USERNAME,
-            "\",\"id\":\"",
-            PROFILE_ID,
-            "\",\"name\":\"",
-            _ownershipCode(ACCOUNT),
-            "\",\"totalXp\":\"",
-            XP,
-            "\",\"username\":\"",
-            USERNAME,
-            "\"},\"responseMatches\":"
-        );
+    function _ownershipParameters() private pure returns (string memory) {
         string memory matches =
-            "[{\"value\":\"\\\"id\\\":{{id}}\",\"type\":\"contains\",\"isOptional\":false,\"order\":0,\"invert\":false},{\"value\":\"\\\"name\\\":\\\"{{name}}\\\"\",\"type\":\"contains\",\"isOptional\":false,\"order\":1,\"invert\":false},{\"value\":\"\\\"username\\\":\\\"{{username}}\\\"\",\"type\":\"contains\",\"isOptional\":false,\"order\":2,\"invert\":false},{\"value\":\"\\\"totalXp\\\":{{totalXp}}\",\"type\":\"contains\",\"isOptional\":false,\"order\":3,\"invert\":false}]";
+            "[{\"value\":\"\\\"id\\\":\\\"{{marker}}\\\"\",\"type\":\"contains\",\"isOptional\":false,\"order\":0,\"invert\":false}]";
         string memory redactions =
-            "[{\"order\":0,\"jsonPath\":\"$.users[0].id\",\"regex\":\"\\\"id\\\":(?<id>\\\\d+)\"},{\"order\":1,\"jsonPath\":\"$.users[0].name\",\"regex\":\"\\\"name\\\":\\\"(?<name>LOCK-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5}-[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{5})\\\"\"},{\"order\":2,\"jsonPath\":\"$.users[0].username\",\"regex\":\"\\\"username\\\":\\\"(?<username>[A-Za-z0-9._-]+)\\\"\"},{\"order\":3,\"jsonPath\":\"$.users[0].totalXp\",\"regex\":\"\\\"totalXp\\\":(?<totalXp>\\\\d+)\"}]";
+            "[{\"order\":0,\"jsonPath\":\"$.privacySettings[10].id\",\"regex\":\"\\\"id\\\":\\\"(?<marker>[A-Za-z0-9_-]+)\\\"\"}]";
         return string.concat(
-            prefix,
+            "{\"body\":\"\",\"method\":\"GET\",\"paramValues\":{\"duolingo_user_id\":\"",
+            PROFILE_ID,
+            "\",\"marker\":\"disable_social\"},\"responseMatches\":",
             matches,
             ",\"responseRedactions\":",
             redactions,
-            ",\"url\":\"https://www.duolingo.com/2017-06-30/users?username={{duolingo_username}}\"}"
+            ",\"url\":\"https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}/privacy-settings\"}"
         );
     }
 
-    function _context(string memory message) private pure returns (string memory) {
+    function _xpParameters() private pure returns (string memory) {
+        string memory matches =
+            "[{\"value\":\"\\\"id\\\":{{id}}\",\"type\":\"contains\",\"isOptional\":false,\"order\":0,\"invert\":false},{\"value\":\"\\\"totalXp\\\":{{xp}}\",\"type\":\"contains\",\"isOptional\":false,\"order\":1,\"invert\":false},{\"value\":\"\\\"username\\\":\\\"{{username}}\\\"\",\"type\":\"contains\",\"isOptional\":false,\"order\":2,\"invert\":false}]";
+        string memory redactions =
+            "[{\"order\":0,\"jsonPath\":\"$.id\",\"regex\":\"\\\"id\\\":(?<id>\\\\d+)\"},{\"order\":1,\"jsonPath\":\"$.totalXp\",\"regex\":\"\\\"totalXp\\\":(?<xp>\\\\d+)\"},{\"order\":2,\"jsonPath\":\"$.username\",\"regex\":\"\\\"username\\\":\\\"(?<username>[A-Za-z0-9_-]+)\\\"\"}]";
+        return string.concat(
+            "{\"body\":\"\",\"method\":\"GET\",\"paramValues\":{\"duolingo_user_id\":\"",
+            PROFILE_ID,
+            "\",\"id\":\"",
+            PROFILE_ID,
+            "\",\"username\":\"",
+            USERNAME,
+            "\",\"xp\":\"",
+            XP,
+            "\"},\"responseMatches\":",
+            matches,
+            ",\"responseRedactions\":",
+            redactions,
+            ",\"url\":\"https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}?fields=id,totalXp,username\"}"
+        );
+    }
+
+    function _ownershipContext(string memory message) private pure returns (string memory) {
+        return string.concat(
+            "{\"contextAddress\":\"0x000000000000000000000000000000000000a11c\",\"contextMessage\":\"",
+            message,
+            "\",\"extractedParameters\":{\"marker\":\"disable_social\"},\"providerHash\":\"",
+            OWNERSHIP_REQUEST_HASH,
+            "\",\"reclaimSessionId\":\"",
+            SESSION,
+            "\"}"
+        );
+    }
+
+    function _xpContext(string memory message) private pure returns (string memory) {
         return string.concat(
             "{\"contextAddress\":\"0x000000000000000000000000000000000000a11c\",\"contextMessage\":\"",
             message,
             "\",\"extractedParameters\":{\"id\":\"",
             PROFILE_ID,
-            "\",\"name\":\"",
-            _ownershipCode(ACCOUNT),
-            "\",\"totalXp\":\"",
-            XP,
             "\",\"username\":\"",
             USERNAME,
-            "\"},\"providerHash\":\"0x3b307716fa21be0484af45041f9288da0cbf09aa41ca2aa21ec5b83d98a34b80\",\"reclaimSessionId\":\"",
+            "\",\"xp\":\"",
+            XP,
+            "\"},\"providerHash\":\"",
+            XP_REQUEST_HASH,
+            "\",\"reclaimSessionId\":\"",
             SESSION,
             "\"}"
         );
@@ -372,22 +489,11 @@ contract LockInReclaimVerifierTest {
         return string(output);
     }
 
-    function _ownershipCode(address account) private pure returns (string memory) {
-        bytes32 digest = keccak256(abi.encode("LOCK_IN_DUOLINGO", uint256(143), account));
-        bytes32 alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-        bytes memory output = new bytes(16);
-        output[0] = "L";
-        output[1] = "O";
-        output[2] = "C";
-        output[3] = "K";
-        output[4] = "-";
-        output[10] = "-";
-        uint256 value = uint256(digest) >> 206;
-        for (uint256 i; i < 10; ++i) {
-            uint256 shift = (9 - i) * 5;
-            output[i < 5 ? 5 + i : 6 + i] = alphabet[(value >> shift) & 31];
+    function _revertSelector(bytes memory reason) private pure returns (bytes4 selector) {
+        if (reason.length < 4) return bytes4(0);
+        assembly {
+            selector := mload(add(reason, 32))
         }
-        return string(output);
     }
 
     function _uintToString(uint256 value) private pure returns (string memory) {

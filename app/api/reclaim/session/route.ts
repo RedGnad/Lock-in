@@ -7,6 +7,7 @@ import { issueProofSession } from "@/src/proof-session";
 import { DUOLINGO_PROVIDER_VERSION, duolingoProviderId } from "@/src/duolingo-proof-policy";
 import { STRAVA_PROVIDER_ID, STRAVA_PROVIDER_VERSION } from "@/src/strava-proof-policy";
 import { DUOLINGO_XP_MISSION } from "@/src/lock-in-abi";
+import { resolvePublicDuolingoProfile } from "@/src/duolingo-profile";
 import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
 import {
   requireWalletAuthSession,
@@ -64,10 +65,13 @@ export async function POST(request: Request) {
     });
     const contextMessage = phase === "baseline" ? `${policy.pactId}:baseline` : `${policy.pactId}:${policy.dayIndex}`;
     proofRequest.setContext(policy.walletAddress.toLowerCase(), contextMessage);
+    let duolingoProfileId: string | undefined;
     if (isDuolingo) {
       const username = String(body.username || "").trim();
       if (!/^[A-Za-z0-9._-]{1,64}$/.test(username)) throw new Error("Enter a valid Duolingo username");
-      proofRequest.setParams({ duolingo_username: username });
+      const profile = await resolvePublicDuolingoProfile(username);
+      duolingoProfileId = profile.id;
+      proofRequest.setParams({ duolingo_user_id: profile.id });
     } else {
       if (!policy.proofCode) throw new Error("Strava proof code is missing");
       proofRequest.setParams({ context_challenge: policy.proofCode });
@@ -83,7 +87,7 @@ export async function POST(request: Request) {
       dayIndex: policy.dayIndex,
       providerId,
       providerVersion,
-      ownershipCode: policy.ownershipCode,
+      duolingoProfileId,
       proofCode: policy.proofCode,
       dailyTarget: policy.dailyTarget,
       startsAtMs: policy.startsAtMs,
@@ -95,10 +99,9 @@ export async function POST(request: Request) {
       sessionId,
       token,
       providerVersion,
-      ownershipCode: policy.ownershipCode,
       proofCode: policy.proofCode,
       instruction: isDuolingo
-        ? `Set your Duolingo Name to exactly ${policy.ownershipCode} before continuing.`
+        ? "Sign in to Duolingo if asked, then continue. Your profile name will not be changed."
         : `Set the title of your Strava GPS run to exactly ${policy.proofCode}.`,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
