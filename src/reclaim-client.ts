@@ -39,6 +39,18 @@ type SavedProofSession = {
   createdAt: number;
 };
 
+class ProofApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ProofApiError";
+  }
+}
+
+const PROOF_SESSION_MAX_AGE_MS = 20 * 60_000;
+const POLL_INTERVAL_MS = 5_000;
+const POPUP_CLOSE_GRACE_MS = 15_000;
+const MAX_CONSECUTIVE_POLL_ERRORS = 3;
+
 export type ReclaimResult = {
   phase: "baseline" | "completion";
   summary: Record<string, string | number>;
@@ -49,7 +61,9 @@ export type ReclaimResult = {
 
 async function json<T>(response: Response): Promise<T> {
   const value = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(value.error || "The verification service returned an error");
+  if (!response.ok) {
+    throw new ProofApiError(value.error || "The verification service returned an error", response.status);
+  }
   return value;
 }
 
@@ -81,7 +95,7 @@ function readSavedSession(input: ProofRequestInput): SavedProofSession | null {
       !saved
         || !/^[A-Za-z0-9_-]{8,128}$/.test(saved.sessionId || "")
         || saved.fingerprint !== proofFingerprint(input)
-        || Date.now() - saved.createdAt >= 20 * 60_000
+        || Date.now() - saved.createdAt >= PROOF_SESSION_MAX_AGE_MS
     ) {
       window.sessionStorage.removeItem(proofSessionKey(input));
       return null;
@@ -99,11 +113,29 @@ function saveSession(input: ProofRequestInput, session: SavedProofSession | null
   } catch {}
 }
 
+export function openReclaimPopup(): Window | null {
+  const popup = window.open("about:blank", "lock-in-reclaim", "popup,width=480,height=760");
+  if (popup) {
+    popup.document.title = "Preparing verification…";
+    try {
+      const message = popup.document.createElement("p");
+      message.textContent = "Preparing secure verification… Continue in your wallet if asked.";
+      message.style.cssText = "margin:48px 24px;font:600 16px/1.5 Arial,sans-serif;color:#161616";
+      popup.document.body.replaceChildren(message);
+    } catch {
+      // The title still communicates progress in browsers that restrict the
+      // about:blank document before navigation.
+    }
+  }
+  return popup;
+}
+
 export async function runReclaimProof(
   input: ProofRequestInput,
   onStatus: (message: string) => void,
+  preopenedPopup?: Window | null,
 ): Promise<ReclaimResult> {
-  const popup = window.open("about:blank", "lock-in-reclaim", "popup,width=480,height=760");
+  const popup = preopenedPopup === undefined ? openReclaimPopup() : preopenedPopup;
   if (!popup) throw new Error("Allow pop-ups to open the private Reclaim verification window");
   popup.document.title = "Opening verification…";
   try {
@@ -120,24 +152,52 @@ export async function runReclaimProof(
       session = { ...created, fingerprint: proofFingerprint(input), createdAt: Date.now() };
       saveSession(input, session);
     }
+    if (popup.closed) {
+      throw new Error("The verification window closed before it opened. Tap verify again to resume.");
+    }
     popup.location.replace(session.requestUrl);
     onStatus(session.instruction);
 
-    const deadline = Date.now() + 20 * 60_000;
+    const deadline = session.createdAt + PROOF_SESSION_MAX_AGE_MS;
     let ready = false;
+    let popupClosedAt: number | null = null;
+    let consecutivePollErrors = 0;
     while (Date.now() < deadline) {
-      await wait(5_000);
-      const statusResponse = await fetch("/api/reclaim/status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: session.token }),
-      });
+      await wait(POLL_INTERVAL_MS);
+      let statusResponse: Response;
+      try {
+        statusResponse = await fetch("/api/reclaim/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: session.token }),
+        });
+      } catch {
+        consecutivePollErrors += 1;
+        if (consecutivePollErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+          throw new Error("The verification connection was interrupted. Tap verify again to resume the same session.");
+        }
+        onStatus("Connection interrupted. Reconnecting to verification…");
+        continue;
+      }
       if (statusResponse.status === 429) {
-        const retryAfter = Math.min(30, Math.max(1, Number(statusResponse.headers.get("Retry-After") || "5")));
+        consecutivePollErrors = 0;
+        const requestedDelay = Number(statusResponse.headers.get("Retry-After") || "5");
+        const retryAfter = Number.isFinite(requestedDelay)
+          ? Math.min(30, Math.max(1, requestedDelay))
+          : 5;
         onStatus("Verification is still running. Waiting before the next status check…");
         await wait(retryAfter * 1_000);
         continue;
       }
+      if (statusResponse.status >= 500) {
+        consecutivePollErrors += 1;
+        if (consecutivePollErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+          throw new Error("The verification service is temporarily unavailable. Tap verify again to resume the same session.");
+        }
+        onStatus("Verification service interrupted. Reconnecting…");
+        continue;
+      }
+      consecutivePollErrors = 0;
       const status = await json<{ status?: string; ready?: boolean }>(statusResponse);
       if (status.ready) {
         ready = true;
@@ -145,11 +205,17 @@ export async function runReclaimProof(
       }
       if (/fail|error|cancel|reject|expired/i.test(status.status || "")) {
         saveSession(input, null);
-        throw new Error("Reclaim verification was cancelled or failed");
+        throw new Error("Reclaim ended this verification before creating a proof. Tap verify again to start a new session.");
       }
       if (popup.closed) {
-        throw new Error("Verification paused. Return here and tap verify again to resume the same Reclaim session.");
+        popupClosedAt ??= Date.now();
+        if (Date.now() - popupClosedAt < POPUP_CLOSE_GRACE_MS) {
+          onStatus("Reclaim closed its window. Finishing your signed proof…");
+          continue;
+        }
+        throw new Error("Verification paused. Tap verify again to resume the same Reclaim session.");
       }
+      popupClosedAt = null;
       onStatus("Complete the verification in the Reclaim window…");
     }
     if (!ready) {
@@ -172,7 +238,12 @@ export async function runReclaimProof(
         body: JSON.stringify({ token: session.token }),
       }));
     } catch (error) {
-      saveSession(input, null);
+      // A completed Reclaim session can be verified again while its signed
+      // session token is valid. Keep it for transient backend/rate-limit
+      // failures; discard only a definitively rejected client request.
+      if (error instanceof ProofApiError && error.status >= 400 && error.status < 500 && error.status !== 429) {
+        saveSession(input, null);
+      }
       throw error;
     }
     if (!verified.verified) throw new Error("Evidence verification failed");

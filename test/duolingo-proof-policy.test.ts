@@ -18,7 +18,6 @@ const baseContext = {
 function trusted(input: {
   marker?: string;
   id?: string;
-  username?: string;
   xp?: string;
   ownershipContext?: Record<string, unknown>;
   xpContext?: Record<string, unknown>;
@@ -32,7 +31,6 @@ function trusted(input: {
       context: { ...baseContext, providerHash: DUOLINGO_XP_REQUEST_HASH, ...input.xpContext },
       extractedParameters: {
         id: input.id ?? "123456",
-        username: input.username ?? "alice.test",
         xp: input.xp ?? "1000",
       },
     },
@@ -47,7 +45,7 @@ const policy = {
   expectedProfileId: "123456",
 };
 
-test("accepts separate self-ownership and XP proofs without changing a display name", () => {
+test("accepts separate self-ownership and XP proofs without publishing a display name", () => {
   const result = validateDuolingoEvidence({
     data: trusted(),
     timestamps: [1_784_000_000, 1_784_000_003],

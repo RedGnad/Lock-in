@@ -424,7 +424,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           verified: true,
           phase: "baseline",
-          summary: { username: policyEvidence.username, totalXp: policyEvidence.totalXp },
+          summary: { totalXp: policyEvidence.totalXp },
           evidence: jsonEvidence({
             missionType: baseline.missionType,
             policyHash: baseline.policyHash,
@@ -468,7 +468,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         verified: true,
         phase: "completion",
-        summary: { username: policyEvidence.username, totalXp: policyEvidence.totalXp },
+        summary: { totalXp: policyEvidence.totalXp },
         evidence: jsonEvidence({
           missionType: completion.missionType,
           policyHash: completion.policyHash,

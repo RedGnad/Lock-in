@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:contracts": "forge build",
+    "check:contract-sizes": "tsx scripts/check-contract-sizes.ts",
     "start": "next start",
     "test": "pnpm test:policy && pnpm test:solidity",
     "test:policy": "tsx --test test/*.test.ts",

@@ -20,7 +20,7 @@ import { escrowAddress, monad } from "@/src/chain";
 import { encodeLockInviteCode } from "@/src/lock-invite";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { formatMissionTarget, missionByType } from "@/src/missions";
-import { runReclaimProof } from "@/src/reclaim-client";
+import { openReclaimPopup, runReclaimProof } from "@/src/reclaim-client";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 import { requestAccessEvidence } from "@/src/access-client";
 import { ActionDialog } from "@/components/action-dialog";
@@ -287,6 +287,7 @@ export function PactDashboard({ id }: { id: string }) {
     setBusyAction("proof");
     let baseline: BaselineEvidence = emptyBaselineEvidence;
     let directProof: DirectProofBundle = emptyDirectProofBundle;
+    let proofPopup: Window | null = null;
     try {
       if (allowance < pact[2]) {
         setMessage(`Approve ${formatUnits(pact[2], decimals)} ${symbol} in your wallet…`);
@@ -296,6 +297,7 @@ export function PactDashboard({ id }: { id: string }) {
           return;
         }
       }
+      if (pact[11] === DUOLINGO_XP_MISSION) proofPopup = openReclaimPopup();
       setBusyAction("proof");
       setMessage("Checking secure wallet access…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
@@ -306,7 +308,7 @@ export function PactDashboard({ id }: { id: string }) {
           phase: "baseline",
           intent: "join",
           username: duolingoUsername.trim(),
-        }, setMessage);
+        }, setMessage, proofPopup);
         if (!result.baseline) throw new Error("Duolingo baseline was not returned");
         baseline = result.baseline;
         directProof = result.directProof;
@@ -325,6 +327,7 @@ export function PactDashboard({ id }: { id: string }) {
     } finally {
       baseline = emptyBaselineEvidence;
       directProof = emptyDirectProofBundle;
+      if (proofPopup && !proofPopup.closed) proofPopup.close();
       proofBusyRef.current = false;
       if (!busyRef.current) setBusyAction(null);
     }
@@ -337,10 +340,12 @@ export function PactDashboard({ id }: { id: string }) {
     proofBusyRef.current = true;
     setBusyAction("proof");
     let directProof: DirectProofBundle = emptyDirectProofBundle;
+    let proofPopup: Window | null = null;
     try {
       if (pact?.[11] === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) {
         return setMessage("Enter your Duolingo username in Lock details before verifying.");
       }
+      proofPopup = openReclaimPopup();
       setMessage("Checking secure wallet access…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
       const result = await runReclaimProof({
@@ -349,7 +354,7 @@ export function PactDashboard({ id }: { id: string }) {
         phase: "completion",
         dayIndex,
         username: pact?.[11] === DUOLINGO_XP_MISSION ? duolingoUsername.trim() : undefined,
-      }, setMessage);
+      }, setMessage, proofPopup);
       if (!result.completion) throw new Error("Verified completion was not returned");
       directProof = result.directProof;
       setMessage(`Publishing verified day ${dayIndex + 1}…`);
@@ -359,6 +364,7 @@ export function PactDashboard({ id }: { id: string }) {
       setMessage(friendlyError(error));
     } finally {
       directProof = emptyDirectProofBundle;
+      if (proofPopup && !proofPopup.closed) proofPopup.close();
       proofBusyRef.current = false;
       if (!busyRef.current) setBusyAction(null);
     }
@@ -487,7 +493,7 @@ export function PactDashboard({ id }: { id: string }) {
 
       <div className="pact-actions" id="join-pact">
         {isJoined && (active || proofGraceOpen) && activityCode && latestOpenDay !== null && <div className="proof-prep"><div><span>STRAVA RUN TITLE · DAY {latestOpenDay + 1}</span><code>{activityCode}</code><small>Use this exact title for the GPS run completed on that lock day.</small></div><button className="secondary-button" type="button" onClick={() => void copyProofValue(activityCode, "Run title")}>COPY TITLE</button></div>}
-        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && !targetReached && actions.checkIns && <p className="proof-disclosure proof-disclosure-inline">{pact[11] === DUOLINGO_XP_MISSION ? "Submitting proof makes the verified Duolingo username, profile ID, XP, non-sensitive ownership marker, proof time and standard Reclaim request metadata public in Monad calldata. Passwords, cookies, email and privacy-setting values are excluded." : "Submitting proof makes the verified Strava activity ID, title, time, distance, motion fields and standard Reclaim request metadata public in Monad calldata. Login data and the GPS route are excluded."}</p>}
+        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && !targetReached && actions.checkIns && <p className="proof-disclosure proof-disclosure-inline">{pact[11] === DUOLINGO_XP_MISSION ? "Submitting proof makes the verified Duolingo profile ID, XP, non-sensitive ownership marker, proof time and standard Reclaim request metadata public in Monad calldata. Your username, password, cookies, email and privacy-setting values are excluded." : "Submitting proof makes the verified Strava activity ID, title, time, distance, motion fields and standard Reclaim request metadata public in Monad calldata. Login data and the GPS route are excluded."}</p>}
         {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
         {!isJoined && registration && !full && <button className="lock-button" disabled={!entryAccepted || !actions.join || Boolean(busyAction)} onClick={() => address ? setJoinReviewOpen(true) : setMessage("Connect your wallet to join.")}>JOIN FOR {formatUnits(pact[2], decimals)} {symbol}</button>}
         {!isJoined && registration && !actions.join && <p>Joining is temporarily paused for safety.</p>}
@@ -503,7 +509,7 @@ export function PactDashboard({ id }: { id: string }) {
       <ActionDialog open={joinReviewOpen} title="Join this lock?" eyebrow="Transaction review" confirmLabel={`Join for ${formatUnits(pact[2], decimals)} ${symbol}`} busy={Boolean(busyAction)} onClose={() => setJoinReviewOpen(false)} onConfirm={join}>
         <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {targetLabel}</dd></div><div><dt>Schedule</dt><dd>{requiredCompletions} of {durationDays} days</dd></div><div><dt>Starts</dt><dd>{formatDate(startsAt)}</dd></div><div><dt>Stake</dt><dd>{formatUnits(pact[2], decimals)} {symbol}</dd></div></dl>
         {pact[11] === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="join-duolingo">Duolingo username</label><input id="join-duolingo" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username"/><p>Reclaim verifies that the signed-in Duolingo account owns this profile and records its current XP. Your Duolingo name and game settings stay untouched.</p></div>}
-        {pact[11] === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> verified Duolingo username, profile ID, XP, a non-sensitive ownership marker, proof time and standard Reclaim request metadata. Passwords, cookies, email and privacy-setting values are excluded.</p>}
+        {pact[11] === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> verified Duolingo profile ID, XP, a non-sensitive ownership marker, proof time and standard Reclaim request metadata. Your username, password, cookies, email and privacy-setting values are excluded.</p>}
         <p>Real USDC and gas are used on Monad mainnet. If the lock stays below two players, your stake is refundable.</p>
         <Link className="dialog-link" href="/rules">Read the rules ↗</Link>
       </ActionDialog>

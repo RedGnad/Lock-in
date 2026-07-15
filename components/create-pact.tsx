@@ -18,7 +18,7 @@ import {
 import { escrowAddress, monad } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { MISSIONS, PACT_TEMPLATES, pactTemplate, type MissionId } from "@/src/missions";
-import { runReclaimProof } from "@/src/reclaim-client";
+import { openReclaimPopup, runReclaimProof } from "@/src/reclaim-client";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 import { requestAccessEvidence } from "@/src/access-client";
 import { ActionDialog } from "@/components/action-dialog";
@@ -172,6 +172,7 @@ export function CreatePact() {
     busyRef.current = true;
     let baseline: BaselineEvidence = emptyBaselineEvidence;
     let directProof: DirectProofBundle = emptyDirectProofBundle;
+    let proofPopup: Window | null = null;
     try {
       if (allowance < amount) {
         setStatus(`Approve ${stakeInput} ${symbol} in your wallet…`);
@@ -183,6 +184,7 @@ export function CreatePact() {
         }
       }
 
+      if (mission.type === DUOLINGO_XP_MISSION) proofPopup = openReclaimPopup();
       setStatus("Checking secure wallet access…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
       if (mission.type === DUOLINGO_XP_MISSION) {
@@ -193,7 +195,7 @@ export function CreatePact() {
           intent: "create",
           missionType: mission.type,
           username: duolingoUsername.trim(),
-        }, setStatus);
+        }, setStatus, proofPopup);
         if (!result.baseline) throw new Error("Duolingo baseline was not returned");
         baseline = result.baseline;
         directProof = result.directProof;
@@ -233,6 +235,7 @@ export function CreatePact() {
     } finally {
       baseline = emptyBaselineEvidence;
       directProof = emptyDirectProofBundle;
+      if (proofPopup && !proofPopup.closed) proofPopup.close();
       setBusy(false);
       busyRef.current = false;
     }
@@ -273,7 +276,7 @@ export function CreatePact() {
       <ActionDialog open={reviewOpen} title="Create this lock?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
         <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {mission.targets.find((item) => item.value === dailyTarget)?.label}</dd></div><div><dt>Schedule</dt><dd>{template.requiredCompletions} of {durationDays} days</dd></div><div><dt>Crew</dt><dd>2 required · {maxParticipants} maximum</dd></div><div><dt>Stake</dt><dd>{stakeInput} {symbol} per player</dd></div></dl>
         <p>{mission.type === DUOLINGO_XP_MISSION ? "Reclaim checks account ownership and current XP before any stake enters the lock. Only XP earned after that baseline can count." : "Each completion requires a challenge-named GPS run from the same Strava account. Suspicious, manual, trainer, flagged, or implausible runs are rejected."}</p>
-        {mission.type === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> verified Duolingo username, profile ID, XP, a non-sensitive ownership marker, proof time and standard Reclaim request metadata. Passwords, cookies, email and privacy-setting values are excluded.</p>}
+        {mission.type === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> verified Duolingo profile ID, XP, a non-sensitive ownership marker, proof time and standard Reclaim request metadata. Your username, password, cookies, email and privacy-setting values are excluded.</p>}
         <p>Wallet gas is separate. If fewer than two players join, each participant can reclaim their full stake.</p>
       </ActionDialog>
     </section>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { encodeAbiParameters, keccak256, parseAbiParameters, stringToHex } from "viem";
-import type { Proof } from "@reclaimprotocol/js-sdk";
+import { getIdentifierFromClaimInfo, type Proof } from "@reclaimprotocol/js-sdk";
 import {
   assertSdkProofSet,
   assertDuolingoDirectParity,
@@ -15,7 +15,6 @@ import {
 } from "../src/reclaim-onchain.js";
 
 const OWNER = "0x000000000000000000000000000000000000a11c";
-const IDENTIFIER = `0x${"11".repeat(32)}`;
 const SIGNATURE = `0x${"22".repeat(65)}`;
 
 function proof(overrides: Record<string, unknown> = {}): Proof {
@@ -25,16 +24,20 @@ function proof(overrides: Record<string, unknown> = {}): Proof {
   const context = typeof overrides.context === "string"
     ? overrides.context
     : "{\"contextAddress\":\"0x000000000000000000000000000000000000a11c\",\"reclaimSessionId\":\"session_12345678\"}";
+  const claimData = {
+    provider: "http",
+    parameters,
+    context,
+    owner: OWNER,
+    timestampS: 1_784_000_000,
+    epoch: 1,
+  };
+  const identifier = getIdentifierFromClaimInfo(claimData);
   return {
-    identifier: IDENTIFIER,
+    identifier,
     claimData: {
-      provider: "http",
-      parameters,
-      context,
-      owner: OWNER,
-      timestampS: 1_784_000_000,
-      identifier: IDENTIFIER,
-      epoch: 1,
+      ...claimData,
+      identifier,
     },
     signatures: [SIGNATURE],
     witnesses: [{ id: OWNER, url: "https://witness.example" }],
@@ -64,6 +67,24 @@ test("requires the concrete SDK proof shape with a signatures array", () => {
     () => assertSdkProofSet({ ...valid, teeAttestation: undefined }, { expectedCount: 1, maxSignedJsonBytes: DUOLINGO_MAX_SIGNED_JSON_BYTES }),
     /TEE attestation is missing/,
   );
+  assert.doesNotThrow(
+    () => assertSdkProofSet({ ...valid, witnesses: [] }, {
+      expectedCount: 1,
+      maxSignedJsonBytes: DUOLINGO_MAX_SIGNED_JSON_BYTES,
+    }),
+  );
+});
+
+test("rejects claim data that does not match the SDK-canonical identifier", () => {
+  const valid = proof();
+  const changed = {
+    ...valid,
+    claimData: { ...valid.claimData, context: valid.claimData.context.replace("session_12345678", "session_attacker") },
+  };
+  assert.throws(
+    () => assertSdkProofSet(changed, { expectedCount: 1, maxSignedJsonBytes: DUOLINGO_MAX_SIGNED_JSON_BYTES }),
+    /does not match its identifier/,
+  );
 });
 
 for (const header of ["cookie", "Authorization", "x-auth-token", "client_secret", "x-api-key"]) {
@@ -76,14 +97,17 @@ for (const header of ["cookie", "Authorization", "x-auth-token", "client_secret"
   });
 }
 
-test("uses the SDK transform without rewriting signed parameters or context", () => {
+test("keeps parameters byte-exact and canonicalises only the SDK-signed context", () => {
   const parameters = "{\"body\":\"\",\"method\":\"GET\",\"paramValues\":{\"name\":\"LI-ABC\"}}";
-  const context = "{\"contextAddress\":\"0x000000000000000000000000000000000000a11c\",\"contextMessage\":\"0:baseline\",\"reclaimSessionId\":\"session_12345678\"}";
+  const context = "{\"contextAddress\":\"0x000000000000000000000000000000000000a11c\",\"reclaimSessionId\":\"session_12345678\",\"extractedParameters\":{\"xp\":\"10\",\"id\":\"7\"},\"contextMessage\":\"0:baseline\"}";
   const value = proof({ parameters, context });
   const checked = assertSdkProofSet(value, { expectedCount: 1, maxSignedJsonBytes: DUOLINGO_MAX_SIGNED_JSON_BYTES });
   const bundle = toDirectProofBundle("session_12345678", checked);
   assert.equal(bundle.proofs[0].claimInfo.parameters, parameters);
-  assert.equal(bundle.proofs[0].claimInfo.context, context);
+  assert.equal(
+    bundle.proofs[0].claimInfo.context,
+    "{\"contextAddress\":\"0x000000000000000000000000000000000000a11c\",\"contextMessage\":\"0:baseline\",\"extractedParameters\":{\"id\":\"7\",\"xp\":\"10\"},\"reclaimSessionId\":\"session_12345678\"}",
+  );
   assert.deepEqual(bundle.proofs[0].signedClaim.signatures, [SIGNATURE]);
 });
 

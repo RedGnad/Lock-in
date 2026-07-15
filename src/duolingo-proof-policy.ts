@@ -9,10 +9,10 @@ import {
 } from "viem";
 import type { ReclaimTrustedData } from "./strava-proof-policy";
 
-export const DUOLINGO_PROVIDER_VERSION = "1.0.4";
+export const DUOLINGO_PROVIDER_VERSION = "1.0.8";
 export const DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
 export const DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
-export const DUOLINGO_XP_REQUEST_HASH = "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac";
+export const DUOLINGO_XP_REQUEST_HASH = "0x92d80894f1f9e2f3574b840e846e41a49ae7491b587da9bd96cbcccbe001c8ed";
 
 export type DuolingoPolicy = {
   walletAddress: string;
@@ -25,7 +25,6 @@ export type DuolingoPolicy = {
 
 export type DuolingoEvidence = {
   profileId: string;
-  username: string;
   totalXp: number;
   identityHash: Hex;
   eventNullifier: Hex;
@@ -130,7 +129,6 @@ export function validateDuolingoEvidence(input: {
   }
 
   const profileId = oneField(data, "id");
-  const username = oneField(data, "username");
   const totalXpRaw = oneField(data, "xp");
   if (profileId !== policy.expectedProfileId) {
     reject("ACCOUNT_NOT_OWNED", "The authenticated Duolingo account does not match the requested profile");
@@ -138,7 +136,6 @@ export function validateDuolingoEvidence(input: {
   if (!/^[1-9]\d{0,19}$/.test(profileId) || BigInt(profileId) > (1n << 64n) - 1n) {
     reject("INVALID_PROFILE", "The Duolingo profile id is invalid");
   }
-  if (!/^[A-Za-z0-9._-]{1,64}$/.test(username)) reject("INVALID_USERNAME", "The Duolingo username is invalid");
   if (!/^(?:0|[1-9]\d{0,9})$/.test(totalXpRaw)) reject("INVALID_XP", "The signed Duolingo XP is invalid");
   const totalXp = Number(totalXpRaw);
   if (!Number.isSafeInteger(totalXp) || totalXp > 2_000_000_000) {
@@ -157,7 +154,6 @@ export function validateDuolingoEvidence(input: {
 
   return {
     profileId,
-    username,
     totalXp,
     identityHash,
     eventNullifier,

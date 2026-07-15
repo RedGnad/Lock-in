@@ -1,17 +1,17 @@
 {
   "providerId": "cdf8cb3b-2976-4413-ab2d-693ae5028380",
-  "version": "1.0.4",
+  "version": "1.0.8",
   "name": "Lock In Duolingo authenticated XP",
   "status": "published-private",
   "loginUrl": "https://www.duolingo.com/settings/account",
-  "description": "Proves control of a Duolingo profile through a self-only authenticated endpoint, then proves the same stable profile id, username and cumulative XP without changing the player's profile.",
+  "description": "Proves control of a Duolingo profile through a self-only authenticated endpoint, then proves the same stable profile id and cumulative XP without changing or publishing the player's profile name.",
   "securityModel": {
     "accountOwnership": "A self-only privacy-settings request returns 200 for the authenticated profile, 403 for another profile in the same session, and 401 without the session. Only the constant setting id disable_social is revealed; setting values are not revealed.",
-    "profileBinding": "Both required requests use the same duolingo_user_id template. The profile response id must equal that requested id and the server-resolved public username id.",
+    "profileBinding": "Both required requests use the same duolingo_user_id template. The profile response id must equal that requested id and the stable id resolved from the username before proof creation.",
     "baseline": "A fresh snapshot is accepted atomically with create/join and becomes the minimum consumed XP.",
     "completion": "Only new totalXp above both the lock baseline and the globally consumed value can count.",
     "antiReplay": "The identity and totalXp snapshot form a global nullifier; one XP range cannot settle multiple days or locks.",
-    "verificationFriction": "The player signs in to Duolingo inside the isolated Reclaim flow if needed. No Duolingo profile field is edited.",
+    "verificationFriction": "The Reclaim web portal currently requires the player to sign in to Duolingo for each proof. The proof auto-submits after login and the two required requests; no Duolingo profile field is edited.",
     "knownLimit": "This proves control of a profile and XP credited by Duolingo, not human learning or the absence of account sharing or automation. Duolingo is not an official partner."
   },
   "requestData": [
@@ -32,33 +32,36 @@
       ]
     },
     {
-      "purpose": "Prove the same profile's stable id, username and cumulative XP",
-      "requestHash": "0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac",
-      "responseMatchesHash": "0x6453f3944f2bae492c7a76627f0e3e9d8bbc919a9d8244a3d2c1363df7b71430",
-      "responseRedactionsHash": "0x43df424c446d73cb7fb98b8c23ebe70bf3e8530ceecf71cd2f55c92633e2f725",
-      "url": "https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}?fields=id,totalXp,username",
+      "purpose": "Prove the same profile's stable id and cumulative XP without publishing its username",
+      "requestHash": "0x92d80894f1f9e2f3574b840e846e41a49ae7491b587da9bd96cbcccbe001c8ed",
+      "responseMatchesHash": "0x46ad09257f3ebaa97ae84461f40158dc3db893273e7c320159787db6808463d6",
+      "responseRedactionsHash": "0xd3d6cf542273db5390782fd795c9ca30dfae4c4e18b25f7c44b28ed0a3beb4f3",
+      "url": "https://www.duolingo.com/2023-05-23/users/{{duolingo_user_id}}?fields=id,totalXp",
       "urlType": "TEMPLATE",
       "method": "GET",
       "credentials": "include",
       "responseMatches": [
         { "value": "\"id\":{{id}}", "type": "contains", "isOptional": false, "order": 0, "invert": false },
-        { "value": "\"totalXp\":{{xp}}", "type": "contains", "isOptional": false, "order": 1, "invert": false },
-        { "value": "\"username\":\"{{username}}\"", "type": "contains", "isOptional": false, "order": 2, "invert": false }
+        { "value": "\"totalXp\":{{xp}}", "type": "contains", "isOptional": false, "order": 1, "invert": false }
       ],
       "responseRedactions": [
         { "order": 0, "jsonPath": "$.id", "regex": "\"id\":(?<id>\\d+)" },
-        { "order": 1, "jsonPath": "$.totalXp", "regex": "\"totalXp\":(?<xp>\\d+)" },
-        { "order": 2, "jsonPath": "$.username", "regex": "\"username\":\"(?<username>[A-Za-z0-9_-]+)\"" }
+        { "order": 1, "jsonPath": "$.totalXp", "regex": "\"totalXp\":(?<xp>\\d+)" }
       ]
     }
   ],
+  "customInjection": {
+    "source": "./duolingo-owned-xp-injection.js",
+    "sha256": "a25d80256a8e284d33dbf8027ea1acd3c27c9acdf16b6d43e59123d22f931982",
+    "purpose": "After the player signs in, issue the two minimal same-origin GET requests required by the provider. The script reads only the supplied stable profile ID and never reads or exports cookies."
+  },
   "runtimePolicy": {
     "ownershipMarkerMustEqual": "disable_social",
     "requestedProfileIdMustEqualResponseId": true,
     "stableIdentityField": "id",
     "metricField": "xp",
     "metricMode": "monotonic delta after fresh atomic baseline",
-    "providerVersionMustEqual": "1.0.4",
+    "providerVersionMustEqual": "1.0.8",
     "proofCount": 2,
     "proofMaxAgeSeconds": 600
   },
@@ -70,6 +73,8 @@
     "baselineReplayRejectedOnchain": true,
     "xpReuseRejectedOnchain": true,
     "localZkTlsProofs": true,
-    "liveAppProofCanary": false
+    "liveAppProofCanary": true,
+    "reuseBrowserSession": false,
+    "publicUsernameRemoved": true
   }
 }

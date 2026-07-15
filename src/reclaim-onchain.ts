@@ -9,7 +9,11 @@ import {
   type Hash,
   type Hex,
 } from "viem";
-import { transformForOnchain, type Proof } from "@reclaimprotocol/js-sdk";
+import {
+  getIdentifierFromClaimInfo,
+  transformForOnchain,
+  type Proof,
+} from "@reclaimprotocol/js-sdk";
 import { reclaimProofComponents } from "./lock-in-abi";
 
 const HASH = /^0x[0-9a-fA-F]{64}$/;
@@ -141,6 +145,27 @@ function inspectSignedJson(value: string, label: string, maxBytes: number): void
   visit(parsed, 0);
 }
 
+/** Mirrors the RFC 8785-style serializer used by Reclaim JS SDK 5.8.2. */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    const encoded = JSON.stringify(value);
+    if (encoded === undefined) reject("Signed context contains an unsupported JSON value");
+    return encoded;
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(object[key])}`).join(",")}}`;
+}
+
+function canonicalClaimContext(context: string): string {
+  try {
+    return canonicalJson(JSON.parse(context));
+  } catch (error) {
+    if (error instanceof ReclaimProofRejectedError) throw error;
+    return reject("Signed Reclaim context is not valid JSON");
+  }
+}
+
 /**
  * Accept only the concrete JSON shape returned by the Reclaim SDK. In particular,
  * signatures must remain an array: accepting a hand-shaped singular signature here
@@ -177,10 +202,14 @@ export function assertSdkProofSet(
     if (!Array.isArray(proof.signatures) || proof.signatures.length !== 1 || !SIGNATURE.test(String(proof.signatures[0]))) {
       reject("A Reclaim proof must contain one SDK signature in an array");
     }
-    if (!Array.isArray(proof.witnesses) || proof.witnesses.length === 0) reject("Reclaim witnesses are missing");
+    if (!Array.isArray(proof.witnesses)) reject("Reclaim witnesses have an invalid shape");
     if (!proof.teeAttestation || typeof proof.teeAttestation !== "object") reject("TEE attestation is missing");
     inspectSignedJson(claimData.parameters, `proof ${index} parameters`, options.maxSignedJsonBytes);
     inspectSignedJson(claimData.context, `proof ${index} context`, options.maxSignedJsonBytes);
+    const computedIdentifier = getIdentifierFromClaimInfo(claimData as never);
+    if (computedIdentifier.toLowerCase() !== claimData.identifier.toLowerCase()) {
+      reject("Signed Reclaim claim data does not match its identifier");
+    }
   }
   return proofs as Proof[];
 }
@@ -203,7 +232,12 @@ function assertUnchangedTransform(proof: Proof, transformed: OnchainProof): void
   ) reject("The SDK onchain transform changed signed claim bytes");
 }
 
-/** Returns the SDK transformation itself. Signed parameters/context are inspected but never normalised. */
+/**
+ * Returns Solidity-compatible claims. Reclaim signs the RFC 8785 canonical form
+ * of context but its SDK onchain transform currently copies the raw key order.
+ * Canonicalising context here preserves the signed identifier and lets Solidity
+ * recompute it; parameters and every other signed field stay byte-exact.
+ */
 export function toDirectProofBundle(sessionId: string, proofs: readonly Proof[]): DirectProofBundle {
   if (utf8Bytes(sessionId) === 0 || utf8Bytes(sessionId) > MAX_SESSION_ID_BYTES || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
     reject("Invalid Reclaim session id");
@@ -211,7 +245,12 @@ export function toDirectProofBundle(sessionId: string, proofs: readonly Proof[])
   const transformed = proofs.map((proof) => {
     const onchain = transformForOnchain(proof);
     assertUnchangedTransform(proof, onchain);
-    return onchain;
+    const context = canonicalClaimContext(proof.claimData.context);
+    const identifier = getIdentifierFromClaimInfo({ ...proof.claimData, context } as never);
+    if (identifier.toLowerCase() !== proof.claimData.identifier.toLowerCase()) {
+      reject("Canonical Reclaim context does not match the signed identifier");
+    }
+    return { ...onchain, claimInfo: { ...onchain.claimInfo, context } };
   });
   return { sessionId, proofs: transformed };
 }

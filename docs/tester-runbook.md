@@ -28,7 +28,7 @@ pnpm canary:preflight
 Before touching a pause control:
 
 1. `pnpm test`, `pnpm exec tsc --noEmit`, `pnpm build`, `forge build`, and `git diff --check` pass.
-2. `pnpm provider:check` confirms the pinned Strava provider plus Duolingo `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.4`, its ownership request hash `0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e`, and its XP request hash `0x1e2b7c4c1dbfe8694e49eee2c1e92ccac09ef048be735e5c54af7c006509b2ac`. Reviewed live proofs must match the direct-verifier schemas, TEE binding, witness configuration, order, and expected proof counts.
+2. `pnpm provider:check` confirms the pinned Strava provider plus Duolingo `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.8`, its ownership request hash `0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e`, and its XP request hash `0x92d80894f1f9e2f3574b840e846e41a49ae7491b587da9bd96cbcccbe001c8ed`. Reviewed live proofs must match the direct-verifier schemas, TEE binding, witness configuration, order, and expected proof counts.
 3. `pnpm production:check` and the production `/api/health` endpoint are green with creation, joining and check-ins disabled.
 4. `pnpm canary:preflight` is green for both wallets.
 5. The final paused escrow and both direct verifiers have verified source and constructor data; contract schema ID, verifier addresses and runtime code hashes, mission policies, USDC, cap, evidence signer, admission signer, multisig owner and all four pauses match the release manifest.
@@ -78,7 +78,7 @@ Start with contract pauses `true / true / true / true` and Vercel flags all `fal
 
 1. Set Vercel production to `NEW_PACTS_ENABLED=true`, `JOIN_ENABLED=false`, `CHECK_INS_ENABLED=false`; deploy production.
 2. Generate contract pauses `false / true / false / true`, inspect and execute the ordered calls through the multisig, then run `pnpm pauses:verify -- false true false true`.
-3. Wallet A creates one Strava pact and one Duolingo pact through the production UI, each at exactly `0.1 USDC` and the three-day template. For Duolingo, enter the existing username, sign in inside Reclaim if asked, and complete both the self-only ownership claim and the matching ID/username/XP claim before the short-lived attestation expires. Review the wallet calldata warning and confirm that the transaction carries both transformed Reclaim claims plus the matching backend attestation, without a cookie, credential, privacy-setting value, or profile rename. Record each displayed `LOCK-…` invite code and confirm it deterministically resolves to the created onchain Lock ID.
+3. Wallet A creates one Strava pact and one Duolingo pact through the production UI, each at exactly `0.1 USDC` and the three-day template. For Duolingo, enter the existing username, sign in inside Reclaim, and complete both the self-only ownership claim and the matching ID/XP claim before the short-lived attestation expires. Review the wallet calldata warning and confirm that the transaction carries both transformed Reclaim claims plus the matching backend attestation, without a username, cookie, credential, privacy-setting value, or profile rename. Record each displayed `LOCK-…` invite code and confirm it deterministically resolves to the created onchain Lock ID.
 4. Record both pact IDs and every approval/create transaction hash.
 5. Immediately close the contract to `true / true / true / true`.
 6. Set all three Vercel flags back to `false`, redeploy, then run a snapshot for each pact and reconcile the escrow.

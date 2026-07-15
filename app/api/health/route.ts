@@ -22,7 +22,7 @@ const EXPECTED_STAKE_TOKEN = getAddress("0x754704Bc059F8C67012fEd69BC8A327a5aafb
 const EXPECTED_RECLAIM_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e5443a9072");
 const EXPECTED_STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
 const EXPECTED_STRAVA_PROVIDER_VERSION = "1.0.3";
-const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.4";
+const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.8";
 const healthAbi = [
   { type: "function", name: "stakeToken", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "CONTRACT_SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },

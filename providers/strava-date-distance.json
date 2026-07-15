@@ -1,9 +1,10 @@
 {
   "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "name": "Lock In Strava authenticated GPS activity",
-  "status": "published-private",
+  "status": "draft-private",
   "loginUrl": "https://www.strava.com/athlete/training",
+  "useIncognitoWebview": false,
   "description": "Proves a logged-in Strava athlete and a challenge-bound Run using canonical activity id, title, UTC start time, distance, GPS, trainer, Strava flag, and signed motion metrics.",
   "runtimePolicy": {
     "requiredSportType": "Run",
@@ -18,7 +19,7 @@
     "dailyCodeFormat": "<pactChallenge>D01 through <pactChallenge>D30",
     "distanceField": "distance_raw",
     "timeField": "start_time",
-    "providerVersionMustEqual": "1.0.3"
+    "providerVersionMustEqual": "1.0.4"
   },
   "requestData": [
     {
@@ -97,15 +98,21 @@
       ]
     }
   ],
+  "customInjection": {
+    "source": "./strava-date-distance-injection.js",
+    "sha256": "6f2b72d806c98bfc64cc0d98f19cce0f416b44c8335700a3801c4bcbf0283a26",
+    "purpose": "After the athlete signs in, issue the exact same-origin training and challenge-filtered activity GET requests required by the provider. The script reads only the supplied daily proof code and never reads or exports cookies."
+  },
   "authoringEvidence": {
-    "publishedAt": "2026-07-14",
-    "authenticatedReplaySucceeded": true,
-    "anonymousReplayRejected": true,
+    "inheritsRequestSchemaFrom": "1.0.3",
+    "requestSchemaUnchanged": true,
+    "previousVersionAuthenticatedReplaySucceeded": true,
+    "previousVersionAnonymousReplayRejected": true,
     "manualFixtureHasLatLng": false,
     "manualFixtureRejectedByRuntimePolicy": true,
-    "antiCheatCoreProofVerified": true,
-    "antiCheatAuthenticatedReplaySucceeded": true,
-    "antiCheatAnonymousReplayRejected": true,
-    "liveConfigurationReadBackViaMcp": true
+    "draftInjectionSyntaxChecked": true,
+    "liveConfigurationReadBackViaMcp": false,
+    "liveAppProofCanary": false,
+    "reuseBrowserSession": true
   }
 }

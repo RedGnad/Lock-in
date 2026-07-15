@@ -32,7 +32,15 @@ export async function POST(request: Request) {
         headers: rateLimitResponseHeaders(rateLimit),
       });
     }
-    const status = await fetchStatusUrl(session.sessionId);
+    let status;
+    try {
+      status = await fetchStatusUrl(session.sessionId);
+    } catch {
+      return NextResponse.json({ error: "Proof status is temporarily unavailable." }, {
+        status: 503,
+        headers: { "Cache-Control": "no-store", "Retry-After": "5" },
+      });
+    }
     if (status.session?.sessionId && status.session.sessionId !== session.sessionId) {
       throw new Error("Reclaim returned another session");
     }
