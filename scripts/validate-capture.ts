@@ -12,7 +12,7 @@ const kind = (process.argv[3] || "").trim();
 if (!path || (kind !== "duolingo" && kind !== "strava")) {
   throw new Error("Usage: pnpm tsx scripts/validate-capture.ts <proofs.json> <duolingo|strava>");
 }
-const appSecret = process.env.SECRET?.trim();
+const appSecret: string = process.env.SECRET?.trim() || "";
 if (!appSecret) throw new Error("SECRET is not configured");
 
 const proofs = JSON.parse(fs.readFileSync(path, "utf8")) as Proof[];
