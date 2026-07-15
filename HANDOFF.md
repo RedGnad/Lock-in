@@ -132,6 +132,7 @@ Vercel is authorized to contain only:
 - Both mission cards use black shadows. Orange indicates hover/selection through the border, not elevation.
 - Clicking a mission selects it and advances immediately. No Continue button on mission selection.
 - Buttons use the same “physical press” interaction: visible shadow at rest, reduced shadow + down/right translation on hover, no shadow on active press.
+- Exception: `OPEN LOCK` is attached to its ID input, so it remains flat and does not translate or cast a shadow.
 - Favicon is a simple orange `IN`, not a generated/AI-looking icon.
 - Avoid redundant privacy copy in the main flow; Rules/Privacy remain reachable in footer and at consent/transaction points.
 - Public brand noun is Lock. Technical Solidity/TypeScript names may remain Pact to preserve ABI/storage compatibility.
