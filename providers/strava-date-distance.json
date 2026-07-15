@@ -2,7 +2,7 @@
   "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
   "version": "4.0.0",
   "name": "Lock In Strava authenticated GPS activity",
-  "status": "diagnostic-instrumented",
+  "status": "two-claim-redesign",
   "loginUrl": "https://www.strava.com/athlete/training",
   "useIncognitoWebview": false,
   "description": "Proves a logged-in Strava athlete and a challenge-bound Run using canonical activity id, title, UTC start time, distance, GPS, trainer, Strava flag, and signed motion metrics.",
@@ -19,7 +19,7 @@
     "dailyCodeFormat": "<pactChallenge>D01 through <pactChallenge>D30",
     "distanceField": "distance_raw",
     "timeField": "start_time",
-    "providerVersionMustEqual": "1.0.4"
+    "providerVersionMustEqual": "set to the newly published two-claim version"
   },
   "requestData": [
     {
@@ -39,7 +39,7 @@
       ]
     },
     {
-      "purpose": "Extract the challenge-bound run identity, title, sport, start and integer metres",
+      "purpose": "Extract the challenge-bound run identity, title, sport, start, integer metres, GPS presence and trainer flag from a single training_activities response",
       "url": "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
       "urlType": "TEMPLATE",
       "method": "GET",
@@ -53,7 +53,9 @@
         { "type": "contains", "value": "\"flagged\":{{flagged}}" },
         { "type": "contains", "value": "\"moving_time_raw\":{{moving}}" },
         { "type": "contains", "value": "\"elapsed_time_raw\":{{elapsed}}" },
-        { "type": "contains", "value": "\"elevation_gain_raw\":{{elevation}}" }
+        { "type": "contains", "value": "\"elevation_gain_raw\":{{elevation}}" },
+        { "type": "contains", "value": "\"has_latlng\":{{latlng}}" },
+        { "type": "contains", "value": "\"trainer\":{{trainer}}" }
       ],
       "responseRedactions": [
         { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
@@ -64,36 +66,8 @@
         { "jsonPath": "$.models[0].flagged", "regex": "\"flagged\":(?<flagged>true|false)" },
         { "jsonPath": "$.models[0].moving_time_raw", "regex": "\"moving_time_raw\":(?<moving>\\d+)" },
         { "jsonPath": "$.models[0].elapsed_time_raw", "regex": "\"elapsed_time_raw\":(?<elapsed>\\d+)" },
-        { "jsonPath": "$.models[0].elevation_gain_raw", "regex": "\"elevation_gain_raw\":(?<elevation>\\d+)" }
-      ]
-    },
-    {
-      "purpose": "Prove that Strava reports a GPS trace",
-      "url": "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
-      "urlType": "TEMPLATE",
-      "method": "GET",
-      "credentials": "include",
-      "responseMatches": [
-        { "type": "contains", "value": "\"id\":{{id}}" },
-        { "type": "contains", "value": "\"has_latlng\":{{latlng}}" }
-      ],
-      "responseRedactions": [
-        { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
-        { "jsonPath": "$.models[0].has_latlng", "regex": "\"has_latlng\":(?<latlng>true|false)" }
-      ]
-    },
-    {
-      "purpose": "Prove that Strava does not mark the activity as trainer/indoor",
-      "url": "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
-      "urlType": "TEMPLATE",
-      "method": "GET",
-      "credentials": "include",
-      "responseMatches": [
-        { "type": "contains", "value": "\"id\":{{id}}" },
-        { "type": "contains", "value": "\"trainer\":{{trainer}}" }
-      ],
-      "responseRedactions": [
-        { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
+        { "jsonPath": "$.models[0].elevation_gain_raw", "regex": "\"elevation_gain_raw\":(?<elevation>\\d+)" },
+        { "jsonPath": "$.models[0].has_latlng", "regex": "\"has_latlng\":(?<latlng>true|false)" },
         { "jsonPath": "$.models[0].trainer", "regex": "\"trainer\":(?<trainer>true|false)" }
       ]
     }
@@ -105,12 +79,15 @@
   },
   "authoringEvidence": {
     "inheritsRequestSchemaFrom": "1.0.3",
-    "requestSchemaUnchanged": true,
+    "requestSchemaUnchanged": false,
+    "requestSchemaChange": "merged the 4 training_activities claims into 1 combined claim; provider now has 2 claims (marker + activity)",
     "previousVersionAuthenticatedReplaySucceeded": true,
     "previousVersionAnonymousReplayRejected": true,
     "manualFetchReturnedJsonWithLatLng": true,
     "publishedProviderVersionOnReclaim": "4.0.0",
     "instrumentedWithDiagnosticLogs": true,
+    "claimCount": 2,
+    "claimCountReducedFrom": 4,
     "hostedFlowLastStatusObserved": "USER_TYPED then SESSION_CANCELLED",
     "hostedFlowRootCauseConfirmed": false,
     "draftInjectionSyntaxChecked": true,
