@@ -3,79 +3,110 @@
   window.__lockInStravaProofV104 = true;
 
   const RETRY_DELAY_MS = 1_500;
-  const MAX_ATTEMPTS = 200;
+  const MAX_ATTEMPTS = 80; // ~2 min, before Reclaim's own session timeout
+  const POST_LOGIN_LIMIT = 8;
   const DAILY_PROOF_CODE = /^LI-[A-Z0-9]{16,28}D(?:0[1-9]|[12][0-9]|30)$/;
+  const AUTH_PATH = /^\/(?:login|session|register)(?:\/|$)/;
   let attempts = 0;
+  let postLogin = 0;
   let running = false;
+  let stage = "init";
+  let trainingStatus = "-";
+  let activitiesStatus = "-";
+  let activitiesLen = 0;
+  let name0 = "-";
+  let reported = false;
+
   const log = (...a) => { try { console.log("[LockIn]", ...a); } catch {} };
+  const report = (why) => {
+    if (reported) return;
+    reported = true;
+    const msg = "LockIn diag: " + why + " stage=" + stage + " host=" + window.location.hostname
+      + " training=" + trainingStatus + " activities=" + activitiesStatus
+      + " len=" + activitiesLen + " name0=" + name0 + " attempts=" + attempts;
+    log(msg);
+    try { window.Reclaim.reportProviderError({ message: msg }); } catch (e) { log("report failed", e); }
+  };
 
   const retry = (delayMs = RETRY_DELAY_MS) => {
     attempts += 1;
-    if (attempts < MAX_ATTEMPTS) window.setTimeout(run, delayMs);
-    else log("gave up after", attempts, "attempts");
+    if (attempts >= MAX_ATTEMPTS) { report("timeout"); return; }
+    window.setTimeout(run, delayMs);
   };
 
   async function run() {
-    if (running) return;
+    if (running || reported) return;
 
     const reclaim = window.Reclaim;
-    if (!reclaim) { log("no window.Reclaim yet"); retry(200); return; }
-
-    // Hold the flow open immediately, before parameters race in.
+    if (!reclaim) { stage = "no-reclaim"; retry(200); return; }
     reclaim.requiresUserInteraction(true);
-
-    if (!reclaim.parameters) { log("no reclaim.parameters yet"); retry(200); return; }
+    if (!reclaim.parameters) { stage = "no-params"; retry(200); return; }
 
     const challenge = String(reclaim.parameters.context_challenge || "");
-    log("challenge=", challenge, "host=", window.location.hostname);
-    if (!DAILY_PROOF_CODE.test(challenge)) {
-      log("invalid challenge code");
-      reclaim.reportProviderError({ message: "Lock In received an invalid Strava check-in code." });
-      return;
-    }
-
-    if (window.location.hostname !== "www.strava.com") { log("not on strava host yet"); retry(); return; }
+    if (!DAILY_PROOF_CODE.test(challenge)) { stage = "bad-code"; report("invalid challenge"); return; }
+    if (window.location.hostname !== "www.strava.com") { stage = "wrong-host"; retry(); return; }
 
     running = true;
     try {
-      log("fetching /athlete/training");
-      const training = await fetch("/athlete/training", { method: "GET", credentials: "include", cache: "no-store", redirect: "follow" });
-      await training.text();
-      log("training status", training.status, "url", training.url);
-      if (training.status === 401 || training.status === 403) { log("training needs login"); retry(); return; }
-      if (!training.ok) { log("training not ok"); retry(); return; }
+      stage = "fetch-training";
+      const t = await fetch("/athlete/training", { method: "GET", credentials: "include", cache: "no-store", redirect: "follow" });
+      await t.text();
+      trainingStatus = String(t.status);
+      let needsLogin = t.status === 401 || t.status === 403;
+      try {
+        const tu = new URL(t.url, window.location.origin);
+        if (tu.origin !== "https://www.strava.com" || AUTH_PATH.test(tu.pathname)) needsLogin = true;
+      } catch { needsLogin = true; }
+      if (needsLogin) { stage = "training-needs-login"; running = false; retry(); return; }
+      if (!t.ok) { stage = "training-not-ok"; running = false; retry(); return; }
 
-      const query = new URLSearchParams({
+      // Past this point Strava accepted an authenticated same-origin request.
+      stage = "fetch-activities";
+      const q = new URLSearchParams({
         keywords: challenge, sport_type: "Run", tags: "", commute: "",
         private_activities: "", trainer: "false", gear: "", new_activity_only: "false",
       });
-      log("fetching /athlete/training_activities");
-      const activities = await fetch(`/athlete/training_activities?${query.toString()}`, {
+      const a = await fetch("/athlete/training_activities?" + q.toString(), {
         method: "GET", credentials: "include", cache: "no-store", redirect: "follow",
         headers: { "Accept": "application/json, text/javascript, */*; q=0.01", "X-Requested-With": "XMLHttpRequest" },
       });
-      const activityBody = await activities.text();
-      log("activities status", activities.status, "len", activityBody.length);
-      if (activities.status === 401 || activities.status === 403) { log("activities needs login"); retry(); return; }
-      if (!activities.ok) { log("activities not ok"); retry(); return; }
+      const body = await a.text();
+      activitiesStatus = String(a.status);
+      activitiesLen = body.length;
+      postLogin += 1;
+      if (a.status === 401 || a.status === 403) {
+        stage = "activities-forbidden"; running = false;
+        if (postLogin >= POST_LOGIN_LIMIT) { report("activities forbidden after login"); return; }
+        retry(); return;
+      }
+      if (!a.ok) {
+        stage = "activities-not-ok"; running = false;
+        if (postLogin >= POST_LOGIN_LIMIT) { report("activities not ok after login"); return; }
+        retry(); return;
+      }
 
       let matched = false;
       try {
-        const payload = JSON.parse(activityBody);
-        const name0 = payload?.models?.[0]?.name;
-        log("parsed JSON, models", payload?.models?.length, "name0", name0);
-        matched = Array.isArray(payload?.models) && name0 === challenge;
+        const payload = JSON.parse(body);
+        name0 = String((payload && payload.models && payload.models[0] && payload.models[0].name) || "-");
+        matched = Array.isArray(payload && payload.models) && name0 === challenge;
       } catch (e) {
-        log("JSON parse failed, body starts", activityBody.slice(0, 60));
-        retry();
-        return;
+        stage = "json-parse-fail"; running = false;
+        if (postLogin >= POST_LOGIN_LIMIT) { report("activities returned non-JSON after login"); return; }
+        retry(); return;
       }
-      if (!matched) { log("activity not matched yet"); retry(); return; }
+      if (!matched) {
+        stage = "no-match"; running = false;
+        if (postLogin >= POST_LOGIN_LIMIT) { report("activity title not matched after login"); return; }
+        retry(); return;
+      }
 
+      stage = "released";
       log("MATCH ok, releasing interaction");
       reclaim.requiresUserInteraction(false);
     } catch (e) {
-      log("fetch error", String(e && e.message || e));
+      stage = "fetch-exception:" + String((e && e.message) || e);
+      running = false;
       retry();
     } finally {
       running = false;

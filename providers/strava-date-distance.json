@@ -100,8 +100,8 @@
   ],
   "customInjection": {
     "source": "./strava-date-distance-injection.js",
-    "sha256": "8ed8fa3d63c9d113a306b603bd04810d4be99d942fa1ae57a64543716f895c0b",
-    "purpose": "After the athlete signs in, issue the exact same-origin training and challenge-filtered activity GET requests required by the provider. The activity request sends Accept: application/json and X-Requested-With: XMLHttpRequest so Strava returns JSON. This build carries diagnostic console logs. The script reads only the supplied daily proof code and never reads or exports cookies."
+    "sha256": "791e9977d85a5e8ee9ce8634059a856a24df54b183cd09b2912fd4b496a50bd1",
+    "purpose": "Diagnostic self-reporting injection: drives the training and challenge-filtered activity GET requests after sign-in (activities request sends Accept: application/json and X-Requested-With), and if it cannot release within the window it calls reclaim.reportProviderError with the exact stage, host, /athlete/training status, training_activities status and matched title so the hosted-flow failure point is visible. Reads only the daily proof code; never reads or exports cookies."
   },
   "authoringEvidence": {
     "inheritsRequestSchemaFrom": "1.0.3",
