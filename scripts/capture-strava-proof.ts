@@ -37,8 +37,11 @@ async function main() {
   request.setParams({ context_challenge: proofCode });
 
   const sessionId = request.getSessionId();
-  const requestUrl = await request.getRequestUrl();
-  console.log(JSON.stringify({ sessionId, provider: `${providerId}@${providerVersion}`, proofCode, contextAddress: wallet }, null, 2));
+  const appMode = process.argv.includes("--app");
+  const requestUrl = appMode
+    ? await request.getRequestUrl({ verificationMode: "app" } as never)
+    : await request.getRequestUrl();
+  console.log(JSON.stringify({ sessionId, provider: `${providerId}@${providerVersion}`, mode: appMode ? "app" : "portal", proofCode, contextAddress: wallet }, null, 2));
   console.log("REQUEST_URL:", requestUrl);
 
   if (openCdp) {
