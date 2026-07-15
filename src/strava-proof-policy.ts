@@ -179,19 +179,19 @@ function assertSharedContext(
     reject("INVALID_POLICY", "The expected wallet address is invalid");
   }
   if (!/^\d+$/.test(policy.pactId)) {
-    reject("INVALID_POLICY", "The pact ID must be an unsigned integer");
+    reject("INVALID_POLICY", "The lock ID must be an unsigned integer");
   }
   if (!Number.isSafeInteger(policy.dayIndex) || policy.dayIndex < 0 || policy.dayIndex > 29) {
     reject("INVALID_POLICY", "The day index must be between 0 and 29");
   }
   if (!STRAVA_DAILY_PROOF_CODE_PATTERN.test(policy.challenge)) {
-    reject("INVALID_POLICY", "The daily proof code must be the pact challenge followed by D01 through D30");
+    reject("INVALID_POLICY", "The daily proof code must be the lock challenge followed by D01 through D30");
   }
   if (!Number.isSafeInteger(policy.minDistanceMeters) || policy.minDistanceMeters <= 0) {
     reject("INVALID_POLICY", "The minimum distance must be a positive integer number of meters");
   }
   if (!Number.isSafeInteger(policy.startsAtMs) || !Number.isSafeInteger(policy.endsAtMs) || policy.endsAtMs < policy.startsAtMs) {
-    reject("INVALID_POLICY", "The pact time window is invalid");
+    reject("INVALID_POLICY", "The lock time window is invalid");
   }
 
   const expectedAddress = getAddress(policy.walletAddress).toLowerCase();
@@ -204,7 +204,7 @@ function assertSharedContext(
       reject("WRONG_WALLET", "The proof is bound to another wallet");
     }
     if (pactId !== `${policy.pactId}:${policy.dayIndex}`) {
-      reject("WRONG_PACT_DAY", "The proof is bound to another pact or day");
+      reject("WRONG_PACT_DAY", "The proof is bound to another lock or day");
     }
     if (sessionId !== policy.expectedSessionId) {
       reject("WRONG_SESSION", "The proof does not belong to the initiated Reclaim session");
@@ -225,7 +225,7 @@ export function validateStravaEvidence(
   canonicalUint(fields.id, 20, (1n << 64n) - 1n, "INVALID_ACTIVITY");
   if (fields.type !== "Run") reject("WRONG_SPORT", "The activity is not a run");
   if (fields.name !== policy.challenge) {
-    reject("WRONG_CHALLENGE", "The activity title must be exactly this pact's challenge");
+    reject("WRONG_CHALLENGE", "The activity title must be exactly this lock's challenge");
   }
   if (fields.latlng !== "true") {
     reject("NO_GPS", "Strava reports no GPS trace for this activity");
@@ -239,7 +239,7 @@ export function validateStravaEvidence(
 
   const distanceMeters = Number(canonicalUint(fields.raw, 10, 1_000_000_000n, "INVALID_DISTANCE"));
   if (!Number.isSafeInteger(distanceMeters) || distanceMeters < policy.minDistanceMeters) {
-    reject("DISTANCE_TOO_SHORT", "The signed distance does not satisfy the pact");
+    reject("DISTANCE_TOO_SHORT", "The signed distance does not satisfy the lock");
   }
 
   const movingTimeSeconds = Number(canonicalUint(fields.moving, 10, 1_000_000_000n, "INVALID_MOTION"));
@@ -266,7 +266,7 @@ export function validateStravaEvidence(
 
   const startTimeMs = parseUtcTimestamp(fields.time);
   if (startTimeMs < policy.startsAtMs || startTimeMs >= policy.endsAtMs) {
-    reject("OUTSIDE_PACT_WINDOW", "The activity started outside the pact time window");
+    reject("OUTSIDE_PACT_WINDOW", "The activity started outside the lock time window");
   }
 
   const nullifier = keccak256(encodeAbiParameters(

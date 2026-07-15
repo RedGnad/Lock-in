@@ -67,6 +67,7 @@ export function CreatePact() {
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync } = useWriteContract();
   const [missionId, setMissionId] = useState<MissionId>("strava");
+  const [missionChosen, setMissionChosen] = useState(false);
   const [dailyTarget, setDailyTarget] = useState(3_000);
   const [durationDays, setDurationDays] = useState(3);
   const [maxParticipants, setMaxParticipants] = useState(4);
@@ -244,7 +245,9 @@ export function CreatePact() {
   function chooseMission(id: MissionId) {
     const next = MISSIONS.find((item) => item.id === id)!;
     setMissionId(id);
+    setMissionChosen(true);
     setDailyTarget(next.defaultTarget);
+    setStep(1);
   }
 
   function review() {
@@ -262,15 +265,15 @@ export function CreatePact() {
   return (
     <section className="create-card" id="create">
       <div className="create-heading"><div><span className="card-kicker">CREATE A CHALLENGE</span><h2>Build your lock</h2></div><span className="step-count">{step + 1} / 3</span></div>
-      <div className="step-track" aria-label={`Step ${step + 1} of 3`}>{[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`} aria-current={index === step ? "step" : undefined}/>)}</div>
+      <div className="step-track" aria-label={`Step ${step + 1} of 3`}>{[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} disabled={index > step} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`} aria-current={index === step ? "step" : undefined}/>)}</div>
       <div className="form-stage">
-        {step === 0 && <fieldset className="form-field"><legend><b>Choose your mission</b><span>Fitness or learning. Each has its own proof.</span></legend><div className="mission-options">{MISSIONS.map((item) => <button type="button" className={missionId === item.id ? "active" : ""} aria-pressed={missionId === item.id} onClick={() => chooseMission(item.id)} key={item.id}><strong>{item.name}</strong><span>{item.description}</span></button>)}</div></fieldset>}
+        {step === 0 && <fieldset className="form-field"><legend><b>Choose your mission</b><span>Fitness or learning. Each has its own proof.</span></legend><div className="mission-options" role="group" aria-label="Mission">{MISSIONS.map((item) => { const selected = missionChosen && missionId === item.id; return <button type="button" className={selected ? "active" : ""} aria-pressed={selected} onClick={() => chooseMission(item.id)} key={item.id}><strong>{item.name}</strong><span>{item.description}</span></button>; })}</div></fieldset>}
         {step === 1 && <fieldset className="form-field"><legend><b>Set the pace</b><span>{mission.name} · choose a daily target, duration, and crew.</span></legend><div className="segmented target-options">{mission.targets.map((item) => <button type="button" className={dailyTarget === item.value ? "active" : ""} aria-pressed={dailyTarget === item.value} onClick={() => setDailyTarget(item.value)} key={item.value}>{item.label}</button>)}</div><div className="segmented schedule-options">{PACT_TEMPLATES.map((item) => <button type="button" className={durationDays === item.durationDays ? "active" : ""} aria-pressed={durationDays === item.durationDays} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} WINS</small></button>)}</div><div className="segmented crew-options" aria-label="Maximum crew size">{[2, 4, 8].map((size) => <button type="button" className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size} onClick={() => setMaxParticipants(size)} key={size}>{size}<small>PLAYERS MAX</small></button>)}</div>{mission.type === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="duolingo-username">Duolingo username</label><input id="duolingo-username" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username" autoComplete="off"/><p>Reclaim verifies that the signed-in Duolingo account owns this profile, then records a fresh XP baseline. Your name and game settings stay untouched.</p></div>}</fieldset>}
         {step === 2 && <fieldset className="form-field"><legend><b>Your stake</b><span>Every player stakes the same amount.</span></legend><div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); return <button type="button" className={stakeInput === value ? "active" : ""} aria-pressed={stakeInput === value} disabled={maxStake !== undefined && option > maxStake} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div></fieldset>}
       </div>
-      <div className="pact-summary"><strong>{mission.name} · {template.requiredCompletions}/{durationDays} days</strong><span>{mission.targets.find((item) => item.value === dailyTarget)?.label} · up to {maxParticipants} players · {stakeInput} {symbol} each</span></div>
+      {step > 0 && <div className="pact-summary"><strong>{mission.name} · {template.requiredCompletions}/{durationDays} days</strong><span>{mission.targets.find((item) => item.value === dailyTarget)?.label} · up to {maxParticipants} players · {stakeInput} {symbol} each</span></div>}
       {step === 2 && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
-      <div className="stage-actions">{step > 0 && <button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>}{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" type="button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW LOCK</button>}</div>
+      {step > 0 && <div className="stage-actions"><button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" type="button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW LOCK</button>}</div>}
       {!creationEnabled && <p className="form-status safety-status" role="status">New locks are temporarily paused for safety.</p>}
       {status && <p className="form-status" aria-live="polite">{status}</p>}
       <ActionDialog open={reviewOpen} title="Create this lock?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
