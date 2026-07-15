@@ -216,6 +216,7 @@ export function CreatePact() {
     const next = MISSIONS.find((item) => item.id === id)!;
     setMissionId(id);
     setDailyTarget(next.defaultTarget);
+    setStep(1);
   }
 
   function review() {
@@ -241,7 +242,7 @@ export function CreatePact() {
       </div>
       <div className="pact-summary"><strong>{mission.name} · {template.requiredCompletions}/{durationDays} days</strong><span>{mission.targets.find((item) => item.value === dailyTarget)?.label} · {stakeInput} {symbol} each</span></div>
       {step === 2 && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
-      <div className="stage-actions">{step > 0 && <button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>}{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW LOCK</button>}</div>
+      {step > 0 && <div className="stage-actions"><button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW LOCK</button>}</div>}
       {!creationEnabled && <p className="form-status safety-status" role="status">New locks are temporarily paused for safety.</p>}
       {status && <p className="form-status" aria-live="polite">{status}</p>}
       <ActionDialog open={reviewOpen} title="Create this lock?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
