@@ -65,8 +65,10 @@ Changing a Vercel environment variable does not change the running deployment. A
 Before any window, each wallet connects Strava once, through the production app:
 
 1. The athlete signs in on Strava's own consent screen and grants `activity:read_all`. Lock In never sees the password.
-2. Confirm `/api/strava/connection` reports the connection for that wallet and no other.
-3. Confirm the two wallets resolve to two different athletes. If the second connection fails, check the application's athlete capacity before anything else.
+2. Confirm the app shows Strava connected, and that it still does after a full page refresh: the state must come from the stored connection, not from the redirect.
+3. Confirm the stored row with `pnpm strava:connections`. Both tokens must print as a `v1` envelope; a row that is not an envelope means a bare token reached the database. The script never prints a token.
+4. Disconnect, confirm the grant is gone at `strava.com/settings/apps`, confirm `pnpm strava:connections` shows the row deleted rather than flagged, then reconnect.
+5. Repeat for the second wallet with a second Strava account, and confirm the script reports two distinct athletes. If the second connection fails, check the application's athlete capacity before anything else: Strava's default single-athlete tier blocks it silently.
 
 The refresh token rotates on every refresh and is stored encrypted with AES-256-GCM. Nothing about the grant reaches the browser or the chain.
 

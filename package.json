@@ -8,6 +8,7 @@
     "build": "next build",
     "build:contracts": "forge build",
     "db:migrate": "tsx scripts/migrate-strava-tokens.ts",
+    "strava:connections": "tsx scripts/inspect-strava-connections.ts",
     "check:contract-sizes": "tsx scripts/check-contract-sizes.ts",
     "start": "next start",
     "test": "pnpm test:policy && pnpm test:solidity",
