@@ -30,6 +30,9 @@ async function main() {
   const request = await ReclaimProofRequest.init(required("ID"), required("SECRET"), providerId, {
     providerVersion,
     acceptTeeAttestation: true,
+    // Mirrors the production session route exactly. A capture taken under different options would not
+    // represent what the app actually accepts.
+    acceptAiProviders: false,
     canAutoSubmit: true,
     preferredLocale: "en",
   });
