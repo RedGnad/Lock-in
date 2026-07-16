@@ -19,13 +19,6 @@ import { addMonadGasBuffer } from "../src/monad-gas.js";
 
 const CHAIN_ID = 143;
 const EXPECTED_USDC = getAddress("0x754704Bc059F8C67012fEd69BC8A327a5aafb603");
-const EXPECTED_RECLAIM_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e5443a9072");
-const EXPECTED_STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-const EXPECTED_STRAVA_PROVIDER_VERSION = "6.0.0";
-const EXPECTED_DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.8";
-const EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
-const EXPECTED_DUOLINGO_XP_REQUEST_HASH = "0x92d80894f1f9e2f3574b840e846e41a49ae7491b587da9bd96cbcccbe001c8ed";
 const EXPECTED_CONTRACT_SCHEMA_ID = 1n;
 const OWNERSHIP_TRANSFER_GAS_RESERVE = 100_000n;
 
@@ -57,16 +50,6 @@ if (token !== EXPECTED_USDC) throw new Error("STAKE_TOKEN_ADDRESS must be canoni
 const deployer = privateKeyToAccount(localPrivateKey(["DEPLOYER_PRIVATE_KEY", "PRIVATE_KEY"]));
 const configuredDeployer = requiredAddress("LOCK_IN_DEPLOYER_ADDRESS");
 const finalOwner = requiredAddress("LOCK_IN_OWNER_ADDRESS");
-const stravaVerifier = requiredAddress("LOCK_IN_STRAVA_VERIFIER_ADDRESS");
-const duolingoVerifier = requiredAddress("LOCK_IN_DUOLINGO_VERIFIER_ADDRESS");
-const stravaParser = requiredAddress("LOCK_IN_STRAVA_PARSER_ADDRESS");
-const expectedStravaParserCodeHash = requiredHash("LOCK_IN_STRAVA_PARSER_CODE_HASH");
-const expectedStravaVerifierCodeHash = requiredHash("LOCK_IN_STRAVA_VERIFIER_CODE_HASH");
-const expectedDuolingoVerifierCodeHash = requiredHash("LOCK_IN_DUOLINGO_VERIFIER_CODE_HASH");
-const configuredReclaimWitness = requiredAddress("RECLAIM_WITNESS_ADDRESS");
-if (configuredReclaimWitness !== EXPECTED_RECLAIM_WITNESS) {
-  throw new Error("RECLAIM_WITNESS_ADDRESS does not match the audited pinned witness");
-}
 const evidenceSigner = privateKeyToAccount(localPrivateKey(["EVIDENCE_SIGNER_PRIVATE_KEY"])).address;
 const accessSigner = privateKeyToAccount(localPrivateKey(["ACCESS_SIGNER_PRIVATE_KEY"])).address;
 if (deployer.address !== configuredDeployer) {
@@ -91,101 +74,12 @@ const walletClient = createWalletClient({ account: deployer, chain, transport: h
 const actualChainId = await publicClient.getChainId();
 if (actualChainId !== CHAIN_ID) throw new Error(`Refusing deployment: RPC chain ID is ${actualChainId}`);
 
-const verifierAbi = [
-  { type: "function", name: "WITNESS", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "LIVE_SCHEMA_CONFIRMED", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
-  { type: "function", name: "STRAVA_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "PARSER", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
-] as const;
-const verificationBlock = await publicClient.getBlock({ blockTag: "latest" });
-const [
-  stravaVerifierCode,
-  duolingoVerifierCode,
-  stravaWitness,
-  duolingoWitness,
-  stravaLive,
-  duolingoLive,
-  stravaProviderId,
-  stravaProviderVersion,
-  duolingoProviderId,
-  duolingoProviderVersion,
-  duolingoOwnershipRequestHash,
-  duolingoXpRequestHash,
-  deployedStravaParser,
-] = await Promise.all([
-  publicClient.getCode({ address: stravaVerifier, blockNumber: verificationBlock.number }),
-  publicClient.getCode({ address: duolingoVerifier, blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "WITNESS", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "WITNESS", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_ID", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_ID", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_VERSION", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_XP_REQUEST_HASH", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "PARSER", blockNumber: verificationBlock.number }),
-]);
-if (!stravaVerifierCode || stravaVerifierCode === "0x" || !duolingoVerifierCode || duolingoVerifierCode === "0x") {
-  throw new Error("Both direct Reclaim verifiers must be deployed contracts");
-}
-if (!stravaLive || !duolingoLive) {
-  throw new Error("Escrow deployment refused until both deployed verifiers confirm their audited live proof schemas");
-}
-if (getAddress(stravaWitness) !== EXPECTED_RECLAIM_WITNESS || getAddress(duolingoWitness) !== EXPECTED_RECLAIM_WITNESS) {
-  throw new Error("A direct verifier does not pin the audited Reclaim witness");
-}
-if (stravaProviderId !== EXPECTED_STRAVA_PROVIDER_ID || stravaProviderVersion !== EXPECTED_STRAVA_PROVIDER_VERSION) {
-  throw new Error("The Strava verifier does not pin the release provider schema");
-}
-if (
-  duolingoProviderId !== EXPECTED_DUOLINGO_PROVIDER_ID
-    || duolingoProviderVersion !== EXPECTED_DUOLINGO_PROVIDER_VERSION
-    || duolingoOwnershipRequestHash !== EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH
-    || duolingoXpRequestHash !== EXPECTED_DUOLINGO_XP_REQUEST_HASH
-) {
-  throw new Error("The Duolingo verifier does not pin the release provider schema");
-}
-if (getAddress(deployedStravaParser) !== stravaParser) {
-  throw new Error("The Strava verifier does not pin LOCK_IN_STRAVA_PARSER_ADDRESS");
-}
-const [stravaParserCode, stravaParserLive, stravaParserSchemaId, stravaParserProviderId, stravaParserProviderVersion] = await Promise.all([
-  publicClient.getCode({ address: stravaParser, blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaParser, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaParser, abi: verifierAbi, functionName: "SCHEMA_ID", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaParser, abi: verifierAbi, functionName: "STRAVA_PROVIDER_ID", blockNumber: verificationBlock.number }),
-  publicClient.readContract({ address: stravaParser, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", blockNumber: verificationBlock.number }),
-]);
-if (!stravaParserCode || stravaParserCode === "0x" || !stravaParserLive || stravaParserSchemaId === `0x${"00".repeat(32)}`) {
-  throw new Error("The Strava parser is absent or its live schema is not confirmed");
-}
-if (stravaParserProviderId !== EXPECTED_STRAVA_PROVIDER_ID || stravaParserProviderVersion !== EXPECTED_STRAVA_PROVIDER_VERSION) {
-  throw new Error("The Strava parser does not pin the release provider schema");
-}
-const stravaVerifierCodeHash = keccak256(stravaVerifierCode);
-const duolingoVerifierCodeHash = keccak256(duolingoVerifierCode);
-const stravaParserCodeHash = keccak256(stravaParserCode);
-if (
-  stravaParserCodeHash !== expectedStravaParserCodeHash
-    || stravaVerifierCodeHash !== expectedStravaVerifierCodeHash
-    || duolingoVerifierCodeHash !== expectedDuolingoVerifierCodeHash
-) {
-  throw new Error("A deployed direct-proof component does not match its audited runtime bytecode hash");
-}
-
 const artifact = JSON.parse(
   await readFile("out/LockInEscrow.sol/LockInEscrow.json", "utf8"),
 ) as { abi: Abi; bytecode: { object: Hex } };
 if (!artifact.bytecode.object || artifact.bytecode.object === "0x") throw new Error("LockInEscrow artifact has no bytecode; run forge build");
 
-const args = [token, evidenceSigner, accessSigner, stravaVerifier, duolingoVerifier] as const;
+const args = [token, evidenceSigner, accessSigner] as const;
 const deploymentData = encodeDeployData({ abi: artifact.abi, bytecode: artifact.bytecode.object, args } as never);
 const deploymentDataHash = keccak256(deploymentData);
 const gasEstimate = await publicClient.estimateGas({ account: deployer, data: deploymentData });
@@ -213,7 +107,7 @@ if (evidenceSignerBalance !== 0n || accessSignerBalance !== 0n) {
 const execute = process.argv.slice(2).includes("--execute");
 const unknownOptions = process.argv.slice(2).filter((value) => value !== "--execute");
 if (unknownOptions.length > 0) throw new Error(`Unknown argument: ${unknownOptions[0]}`);
-const confirmation = `DEPLOY_LOCK_IN_ESCROW_${CHAIN_ID}_${deployer.address}_${finalOwner}_${token}_${evidenceSigner}_${accessSigner}_${stravaParser}_${stravaParserCodeHash}_${stravaVerifier}_${stravaVerifierCodeHash}_${duolingoVerifier}_${duolingoVerifierCodeHash}_${deploymentDataHash}`;
+const confirmation = `DEPLOY_LOCK_IN_ESCROW_${CHAIN_ID}_${deployer.address}_${finalOwner}_${token}_${evidenceSigner}_${accessSigner}`;
 if (execute && process.env.CONFIRM_DEPLOY_ESCROW?.trim() !== confirmation) {
   throw new Error(`Execution refused. Set CONFIRM_DEPLOY_ESCROW exactly to ${confirmation}`);
 }
@@ -230,28 +124,14 @@ const plan = {
   stakeToken: token,
   evidenceSigner,
   accessSigner,
-  directVerifiers: {
-    verificationBlock: verificationBlock.number.toString(),
-    reclaimWitness: EXPECTED_RECLAIM_WITNESS,
-    stravaParser: { address: stravaParser, codeHash: stravaParserCodeHash, schemaId: stravaParserSchemaId, providerId: stravaParserProviderId, providerVersion: stravaParserProviderVersion, liveSchemaConfirmed: stravaParserLive },
-    strava: { address: stravaVerifier, codeHash: stravaVerifierCodeHash, parser: stravaParser, providerId: stravaProviderId, providerVersion: stravaProviderVersion, liveSchemaConfirmed: stravaLive },
-    duolingo: {
-      address: duolingoVerifier,
-      codeHash: duolingoVerifierCodeHash,
-      providerId: duolingoProviderId,
-      providerVersion: duolingoProviderVersion,
-      ownershipRequestHash: duolingoOwnershipRequestHash,
-      xpRequestHash: duolingoXpRequestHash,
-      liveSchemaConfirmed: duolingoLive,
-    },
-  },
+  verification: { scheme: "STRAVA_OAUTH_V1", source: "Strava API over the athlete's OAuth grant" },
   signerBalancesWei: {
     evidence: evidenceSignerBalance.toString(),
     access: accessSignerBalance.toString(),
   },
   minStakeAtomicUnits: "100000",
   maxStakeAtomicUnits: "1000000",
-  initialPauses: { creation: true, joining: true, baseline: true, completion: true },
+  initialPauses: { creation: true, joining: true, completion: true },
   steps: [
     {
       order: 1,
@@ -309,8 +189,6 @@ const releaseAbi = [
   { type: "function", name: "stakeToken", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "evidenceSigner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "accessSigner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "stravaVerifier", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "duolingoVerifier", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   { type: "function", name: "CONTRACT_SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "MIN_STAKE", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "MAX_STAKE", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
@@ -319,7 +197,6 @@ const releaseAbi = [
   { type: "function", name: "SUBMISSION_GRACE_PERIOD", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "creationPaused", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
   { type: "function", name: "joiningPaused", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
-  { type: "function", name: "baselinePaused", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
   { type: "function", name: "completionPaused", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
 ] as const;
 const [
@@ -327,8 +204,6 @@ const [
   deployedToken,
   deployedEvidenceSigner,
   deployedAccessSigner,
-  deployedStravaVerifier,
-  deployedDuolingoVerifier,
   schemaId,
   minStake,
   maxStake,
@@ -337,15 +212,13 @@ const [
   submissionGracePeriod,
   creation,
   joining,
-  baseline,
   completion,
 ] = await Promise.all([
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "owner", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "stakeToken", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "evidenceSigner", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "accessSigner", blockNumber: receipt.blockNumber }),
-  publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "stravaVerifier", blockNumber: receipt.blockNumber }),
-  publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "duolingoVerifier", blockNumber: receipt.blockNumber }),
+
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "CONTRACT_SCHEMA_ID", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "MIN_STAKE", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "MAX_STAKE", blockNumber: receipt.blockNumber }),
@@ -354,7 +227,6 @@ const [
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "SUBMISSION_GRACE_PERIOD", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "creationPaused", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "joiningPaused", blockNumber: receipt.blockNumber }),
-  publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "baselinePaused", blockNumber: receipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "completionPaused", blockNumber: receipt.blockNumber }),
 ]);
 const deployedPausedAndVerified = schemaId === EXPECTED_CONTRACT_SCHEMA_ID
@@ -362,14 +234,12 @@ const deployedPausedAndVerified = schemaId === EXPECTED_CONTRACT_SCHEMA_ID
   && getAddress(deployedToken) === token
   && getAddress(deployedEvidenceSigner) === evidenceSigner
   && getAddress(deployedAccessSigner) === accessSigner
-  && getAddress(deployedStravaVerifier) === stravaVerifier
-  && getAddress(deployedDuolingoVerifier) === duolingoVerifier
   && minStake === 100_000n
   && maxStake === 1_000_000n
   && maxDurationDays === 30
   && maxParticipants === 100
   && submissionGracePeriod === 86_400n
-  && creation && joining && baseline && completion;
+  && creation && joining && completion;
 if (!deployedPausedAndVerified) throw new Error(`Paused post-deployment invariant failed for ${escrow}`);
 
 const ownershipTransferGasEstimate = await publicClient.estimateContractGas({
@@ -406,14 +276,13 @@ if (ownershipTransferReceipt.status !== "success") {
   throw new Error(`Ownership transfer failed; contract remains paused at ${escrow}`);
 }
 
-const [transferredOwner, finalCreation, finalJoining, finalBaseline, finalCompletion] = await Promise.all([
+const [transferredOwner, finalCreation, finalJoining, finalCompletion] = await Promise.all([
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "owner", blockNumber: ownershipTransferReceipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "creationPaused", blockNumber: ownershipTransferReceipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "joiningPaused", blockNumber: ownershipTransferReceipt.blockNumber }),
-  publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "baselinePaused", blockNumber: ownershipTransferReceipt.blockNumber }),
   publicClient.readContract({ address: escrow, abi: releaseAbi, functionName: "completionPaused", blockNumber: ownershipTransferReceipt.blockNumber }),
 ]);
-if (getAddress(transferredOwner) !== finalOwner || !finalCreation || !finalJoining || !finalBaseline || !finalCompletion) {
+if (getAddress(transferredOwner) !== finalOwner || !finalCreation || !finalJoining || !finalCompletion) {
   throw new Error(`Final ownership or pause invariant failed for ${escrow}`);
 }
 
