@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     if (body.action === "join" && pactId === 0n) throw new Error("Invalid Lock ID");
     const flags = readProductFlagState();
     const enabled = isProofActionEnabled(flags, {
-      phase: "baseline",
+      phase: "admission",
       intent: body.action,
     });
     if (!enabled) {

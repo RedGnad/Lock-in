@@ -17,13 +17,13 @@ Every Lock is an independent pool with immutable terms:
 - equal stake for every participant;
 - minimum crew and maximum capacity.
 
-A 3-day Strava Lock never competes with a 7-day Lock or a Duolingo Lock. Fixed capacity prevents an unexpected late crew from changing exposure. Registration closes at the published start.
+A 3-day Lock never competes with a 7-day Lock. Fixed capacity prevents an unexpected late crew from changing exposure. Registration closes at the published start.
 
 ## Social loop
 
 The social system is global across Locks but never mixes their pools or payout rules:
 
-- each wallet may claim an optional Lock In handle that is independent from its Strava or Duolingo identity;
+- each wallet may claim an optional Lock In handle that is independent from its Strava identity;
 - every Lock has one deterministic, checksummed `LOCK-…` invite code derived from its public onchain ID;
 - the crew view shows verified progress and permits one high-five from a joined participant to a crewmate for each verified day;
 - the Lock Board has Overall, Running, and Learning weekly rankings, plus an all-time Lock Score.
@@ -37,9 +37,8 @@ Lock Score is non-transferable, non-redeemable reputation metadata. Handles, ran
 ## Launch missions
 
 - **Strava GPS Run:** daily targets of 1, 3, 5, or 10 km.
-- **Duolingo XP:** daily targets of 10, 20, 30, or 50 new XP above a fresh wallet-bound baseline.
 
-Both missions use the same commitment templates:
+The mission uses these commitment templates:
 
 | Duration | Required successful days | Product role |
 | --- | ---: | --- |
@@ -50,15 +49,22 @@ Both missions use the same commitment templates:
 
 There is no one-day money-bearing mode. A participant cannot enter immediately before one already-planned activity and complete the whole challenge.
 
-## Proof policy
+## Verification policy
 
-Reclaim zkTLS proves what Strava or Duolingo returned over HTTPS. The release design requires two matching checks of the same canonical proof set: a mission-specific direct Reclaim witness verifier and a short-lived, contract-bound backend attestation after TEE and business-policy validation. The escrow rejects either check alone and rejects any mismatch between them.
+Lock In reads the run from Strava's official API, over the athlete's OAuth grant, and applies the policy on
+the server. A day counts when the activity is a GPS Run, started inside that day of the Lock, reaching the
+distance target, not manual, not on a treadmill, not flagged by Strava, and with coherent motion.
 
-For Strava, the policy requires a challenge-titled GPS Run with coherent motion data, the target distance, non-trainer status, and no Strava flag. It binds a stable athlete identity and globally consumes the activity nullifier.
+The scheme is named on chain as `STRAVA_OAUTH_V1`, and a Lock created under one scheme can never be
+completed under another. The backend signs the result with a short-lived EIP-712 attestation, and the
+escrow accepts that signature as sufficient: **the evidence signer is a trusted party**, and a compromised
+evidence key can create completions that never happened. The zkTLS design this replaced required an
+independent on-chain witness as well, so neither signature alone was enough. That property was traded for a
+flow an athlete will actually repeat daily, and the trade is stated rather than hidden.
 
-For Duolingo, a username or public XP lookup alone is insufficient. The server resolves the username to a stable numeric profile ID, then Reclaim returns two linked claims for that ID: an authenticated self-only privacy-settings request that discloses only the constant marker name `disable_social`, and a profile request that discloses only stable ID and cumulative XP. Duolingo returned `200` for the signed-in profile, `403` for another requested profile ID, and `401` without a session. Participants keep their normal username and display Name, and neither is published in the proof. Only XP earned after the accepted baseline can count, and consumed XP cannot be reused.
-
-Neither policy proves who performed the activity. GPS spoofing, imports, account sharing, bots, modified clients, outside help, upstream errors, and collusion remain residual risks. The product promise is replay-resistant, policy-checked service evidence—not impossible cheating.
+Verification does not prove physical movement, exclusive account use, or the absence of GPS spoofing, bots,
+modified devices or upstream errors. It reduces impersonation, replay, identity switching and obvious manual
+entries. One activity settles at most once, globally, and one Strava identity backs one wallet per Lock.
 
 ## Admission and cohort control
 
@@ -87,23 +93,36 @@ The initial cohort is adults-only. Participants must determine whether stake-bas
 
 ## Privacy
 
-Lock In does not intentionally retain the full Reclaim SDK proof object in a product-profile database. Monad permanently exposes wallets, Lock terms, membership, stake, mission, day, accepted metric, hashed identity, nullifier, settlement, claims, optional current and historical Lock In handles, handle-visibility moderation, Lock Score, overall and mission verified-day counters, and high-five sender/recipient/Lock/day events. Invite codes are deterministically derived from public Lock IDs and are not secrets.
+Lock In keeps one offchain record per athlete: the Strava connection, holding the athlete id, the granted
+scopes and both OAuth tokens encrypted with AES-256-GCM under a dedicated key. Nothing there reaches the
+browser or the chain; the tokens are decrypted in server memory only to call Strava. Disconnecting revokes
+the grant at Strava and deletes the row.
 
-The proof transaction also carries the SDK's `transformForOnchain` output. Signed `claimInfo.parameters`, signed `claimInfo.context`, claim metadata, and witness signatures are public and permanent calldata even when their contents are not copied into contract state or events. Duolingo calldata can expose stable profile ID, cumulative XP, the non-sensitive marker name `disable_social`, Reclaim session, wallet, internal Lock identifier, and phase; the username is not included. It must not disclose cookies, credentials, or privacy-setting values. Strava calldata can expose athlete marker, activity ID and title, start time, distance, motion and elevation values, GPS-presence status, trainer and flag status, Reclaim session, wallet, internal Lock identifier, and day. The top-level TEE attestation JWT is excluded from the transform. The GPS route is not requested or published.
-
-Before opening, Lock In must reject any signed proof containing a cookie, Authorization header, access token, API key, secret, privacy-setting value, unexpected personal field, or similar sensitive header before transaction preparation.
+Monad permanently exposes the wallet, the Lock terms, the stake, the day, the completion metric, the motion
+fields, the activity start time, and three values derived from Strava data by HMAC under a server-held key:
+one standing for the athlete, one for the single activity, one summarising it. Raw Strava identifiers are
+not published. A hash is not anonymity: anyone holding the key and a candidate identifier can confirm a
+match. The GPS route is never requested.
 
 ## Public-release gate
 
 Lock In remains closed until all of these conditions pass:
 
-1. the final escrow and direct verifiers are deployed paused and their source, constructor, verifier addresses and code hashes, USDC, cap, owner, authorities, mission policies, and pause states are publicly verified;
-2. Strava and two-claim Duolingo providers pass live exact-schema, request-hash, claim-ordering, TEE, witness, secret-header, privacy-value, positive, negative, stale, wrong-wallet, wrong-profile, and replay canaries;
-3. admission and evidence keys run in an auditable KMS or equivalent isolated signer with least privilege, monitoring, rotation, and emergency revocation;
-4. contract ownership is transferred to a tested multisig;
-5. the direct parsers and verifiers, escrow, oracle boundary, signer services, wallet authentication, deployment, rules, and privacy model receive independent review;
-6. two controlled wallets complete both hybrid mission paths at 0.1 USDC, including transformed-calldata size and gas, mobile-wallet handoff, capacity, partial completion, payout, zero-finisher, underfilled, cancellation, and emergency-refund branches;
-7. the same wallets pass handle uniqueness/change/clear, invite routing, weekly and mission score deduplication, high-five uniqueness, hide/unhide moderation, and proof that none of those paths changes settlement;
-8. production monitoring, handle-abuse response, liability reconciliation, incident response, and staffed support are operational.
+1. the escrow is deployed paused, and its address, runtime code hash, constructor arguments, USDC, cap,
+   owner and both signers are published and verifiable on chain;
+2. contract ownership is held by a tested multisig, and opening requires its signature over reviewed calldata;
+3. the evidence and access keys run in an auditable KMS or equivalent isolated signer, with least privilege,
+   monitoring, rotation and an emergency procedure. This matters more than it did under zkTLS: the evidence
+   key alone can now create completions;
+4. an independent security review covers the escrow, the attestation signer, and the OAuth token boundary;
+5. Strava's developer terms are clarified in writing. Strava reserves the right to revoke applications that
+   enable virtual races or competitions, and Lock In is a competition with real stakes. This is unresolved;
+6. two controlled wallets, on two distinct Strava accounts, complete create, join, check-in, settle and claim
+   at 0.1 USDC, including gas, mobile-wallet handoff and rejection behaviour;
+7. the same wallets pass handle uniqueness/change/clear, invite routing, score deduplication, high-five
+   uniqueness, moderation, and settlement isolation;
+8. disconnect and reconnect are exercised end to end, and the disconnect is confirmed to have revoked at
+   Strava and deleted locally;
+9. production health, source verification, addresses, privacy, rules, monitoring and support are all green.
 
-Passing the gate permits a small monitored cohort, not an uncapped public rollout.
+Until then, admission and check-ins stay paused and no one is invited to send real funds.

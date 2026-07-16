@@ -1,0 +1,40 @@
+{
+  "network": {
+    "name": "Monad mainnet",
+    "chainId": 143
+  },
+  "escrowAddress": "0xD37121112F240fE03a18D754B2fdB9dC750034d4",
+  "runtimeCodeHash": "0x50c65525ac451c96b0dd9128e105d9e55080f1fbc8b73d9601dfc07100b8adf8",
+  "deployment": {
+    "tx": "0xa3e978e1456a8fe15e06249d4f689b38a5afc454681628feb759ee05900a0a31",
+    "block": "88203155",
+    "status": "success",
+    "deployer": "0x344412229B3b581C19572f9BF1F5d08d4Ae897E6"
+  },
+  "ownershipTransfer": {
+    "tx": "0xd15d376cf818fd93a7661fe8e1792593e05ba013eb731b8abb2aba2bd67cd8eb",
+    "block": "88203160",
+    "status": "success"
+  },
+  "owner": {
+    "address": "0xf1be884698B9Ba4438f529699eC92320427b4dA1",
+    "type": "Safe 2/2 (contract)"
+  },
+  "evidenceSigner": "0x4a06010d269b335c3471dA9AABfc41a56b4ea1f6",
+  "accessSigner": "0x8a63E4828F3B35C12FC23d644C80DA67aF1EA304",
+  "stakeToken": "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+  "contractSchemaId": "1",
+  "verification": {
+    "scheme": "STRAVA_OAUTH_V1",
+    "schemeHash": "0x656f1cf8135b703c39b643981328a7adc49b0f74f81ddc4d2a33eced9995c454",
+    "missionPolicyHash": "0x99a84a67b7245bd9592d49a5c750096fb5990b373834c02cc0913c99161302bf",
+    "trustedParty": "the Lock In evidence signer",
+    "note": "The backend reads Strava over the athlete OAuth grant and signs the result. There is no independent on-chain witness: a compromised evidence key can mint completions."
+  },
+  "pausesAtWrite": {
+    "creation": true,
+    "joining": true,
+    "completion": true
+  },
+  "readBackAt": "2026-07-16T21:31:15.005Z"
+}

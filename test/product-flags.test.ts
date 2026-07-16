@@ -68,8 +68,8 @@ test("proof API actions follow the matching fail-closed product gate", () => {
     JOIN_ENABLED: "false",
     CHECK_INS_ENABLED: "false",
   });
-  assert.equal(isProofActionEnabled(paused, { phase: "baseline", intent: "create" }), false);
-  assert.equal(isProofActionEnabled(paused, { phase: "baseline", intent: "join" }), false);
+  assert.equal(isProofActionEnabled(paused, { phase: "admission", intent: "create" }), false);
+  assert.equal(isProofActionEnabled(paused, { phase: "admission", intent: "join" }), false);
   assert.equal(isProofActionEnabled(paused, { phase: "completion" }), false);
 
   const restricted = readProductFlagState({
@@ -77,8 +77,8 @@ test("proof API actions follow the matching fail-closed product gate", () => {
     JOIN_ENABLED: "false",
     CHECK_INS_ENABLED: "true",
   });
-  assert.equal(isProofActionEnabled(restricted, { phase: "baseline", intent: "create" }), true);
-  assert.equal(isProofActionEnabled(restricted, { phase: "baseline", intent: "join" }), false);
-  assert.equal(isProofActionEnabled(restricted, { phase: "baseline" }), false);
+  assert.equal(isProofActionEnabled(restricted, { phase: "admission", intent: "create" }), true);
+  assert.equal(isProofActionEnabled(restricted, { phase: "admission", intent: "join" }), false);
+  assert.equal(isProofActionEnabled(restricted, { phase: "admission" }), false);
   assert.equal(isProofActionEnabled(restricted, { phase: "completion" }), true);
 });

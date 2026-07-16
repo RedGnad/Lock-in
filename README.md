@@ -1,94 +1,102 @@
 # Lock In
 
-**Your word. Locked in.** Challenge friends to run or learn, stake up to 1 USDC each, and let finishers split the pool funded by those who quit.
+**Your word. Locked in.** Challenge your friends to run, stake up to 1 USDC each, and let the finishers split the pool funded by whoever quit.
 
-Lock In is being built as a small-cohort, adult-only accountability product on Monad. It has not opened to participants: the public test deployment is paused and must not be presented as accepting real funds.
+Lock In is a small-cohort, adult-only accountability product on Monad mainnet. It is **not open to participants**: the deployed escrow is paused and must not be presented as accepting funds from anyone.
 
-No public product version has shipped. Internal prototype labels belong only in the historical archive; the first build that clears the complete release gate is the first real release.
+## How it works
 
-The unreleased build supports two independent mission policies:
+1. **Connect Strava once.** You authorise Lock In through Strava's own consent screen.
+2. **Create or join a Lock.** Pick the distance and the days, bring your crew, everyone stakes the same amount.
+3. **Run, then check in.** One tap. Lock In reads the run from Strava and publishes the day on Monad.
 
-- **Strava run:** a challenge-named GPS Run must reach the distance target. Manual, trainer, Strava-flagged, missing-GPS, and implausible-motion records are rejected.
-- **Duolingo XP:** two linked Reclaim claims bind the active authenticated Duolingo session to the stable profile ID and cumulative XP. The player keeps their username, and it is not published in proof calldata. A fresh cumulative-XP baseline is accepted with the stake; only later XP above both the Lock baseline and previously consumed XP can count.
+There is nothing to rename, nothing to install, and no second login per check-in.
 
-Reclaim zkTLS proves what each service returned over HTTPS. It does not prove physical movement, human learning, exclusive account use, or the absence of GPS spoofing, bots, modified devices, outside help, or upstream errors. The mission policies reduce impersonation, replay, identity switching, old-progress reuse, obvious manual Strava entries, and several implausible-motion cases; they cannot make offchain activity fraud impossible.
+## Verification, and what you are trusting
 
-## Product and settlement
+A day counts when the run is a GPS **Run**, started inside that day of the Lock, reaching the distance target, not manual, not on a treadmill, not flagged by Strava, and with plausible motion. One run can only ever count once, in this Lock or any other, and one Strava account can only back one participant per Lock.
 
-The app offers 3, 7, 14, and 30-day Locks with fixed completion targets and a fixed crew capacity. Registration closes at the published start. Every participant stakes the same amount, from 0.1 to 1 USDC. The 1 USDC cap applies per participant, per Lock; Monad gas is separate.
+**Read this part.** Lock In's server reads your activity through Strava's official API over your OAuth grant, applies the policy above, and signs the result with an EIP-712 attestation. The escrow accepts that signature as sufficient. The verification scheme is named on chain as `STRAVA_OAUTH_V1`.
 
-- if some participants finish, finishers recover their stakes and split non-finishers' stakes;
+That means **the Lock In evidence signer is a trusted party**: a stolen signing key could create completions that never happened. Verification also does not prove physical movement, or the absence of GPS spoofing, account sharing, bots, modified devices, or errors by Strava. It reduces obvious and replayable fraud. No consumer data source makes cheating impossible.
+
+The escrow used to require a zkTLS witness proof **and** this attestation, so neither alone was enough. That property is gone, deliberately: see [the pivot](#why-not-zktls). `test/LockInEscrowRelease.t.sol:testCompletionRestsOnTheBackendSignatureAlone` asserts the current model rather than leaving it to be inferred, and `/api/health` names the scheme and its trusted party.
+
+## Settlement
+
+Locks run 3, 7, 14 or 30 days with a fixed target and a fixed crew size. Registration closes at the published start. Everyone stakes the same amount, 0.1 to 1 USDC per participant per Lock. Monad gas is separate.
+
+- if some finish, finishers recover their stakes and split the stakes of those who did not;
 - if everyone or nobody finishes, each participant recovers their own stake;
-- underfilled and cancelled Locks refund every participant;
-- settlement and claims remain permissionless even while admission or evidence is paused;
-- there is no protocol fee or operator withdrawal path.
+- underfilled and cancelled Locks refund everyone;
+- settlement and claims stay permissionless even while admission or check-ins are paused;
+- there is no protocol fee and no operator withdrawal path.
 
-[`contracts/LockInEscrow.sol`](contracts/LockInEscrow.sol) is the current escrow candidate. A mission completion succeeds only when a direct Reclaim witness proof and a short-lived backend EIP-712 attestation derived from the same canonical proof set agree on the settlement fields. The contract also binds one external identity per wallet inside each Lock, enforces fixed capacity and global event nullifiers, and prevents a consumed Duolingo XP range from settling another completion.
+[`contracts/LockInEscrow.sol`](contracts/LockInEscrow.sol) binds one Strava identity per wallet inside each Lock, enforces capacity, and holds a global nullifier per activity so a run cannot settle twice.
 
-The direct proof is not private. The Reclaim SDK's `transformForOnchain` output places signed `claimInfo.parameters`, signed `claimInfo.context`, claim metadata, and witness signatures in transaction calldata. Those bytes are public and permanent even though detailed provider fields are not copied into contract storage or events. The top-level TEE attestation JWT is excluded from this transform, and Lock In never requests a Strava GPS route.
+## Deployment
 
-## Social layer
+Read back from chain, in full, in [`deployments/monad-mainnet-oauth.json`](deployments/monad-mainnet-oauth.json).
 
-Lock In has its own optional onchain identity instead of changing a Strava or Duolingo profile. A wallet may claim a unique lowercase handle for leaderboards, share a checksummed `LOCK-…` code derived from a public Lock ID, and high-five a crewmate's verified day. Setting, changing, clearing, moderating, and reacting are public Monad actions. Clear removes the current handle from normal product surfaces and releases it for reuse, but historical events remain public. The owner can hide an abusive handle from Lock In surfaces without hiding the wallet or score.
+| | |
+|---|---|
+| Escrow | `0xD37121112F240fE03a18D754B2fdB9dC750034d4` |
+| Runtime code hash | `0x50c65525ac451c96b0dd9128e105d9e55080f1fbc8b73d9601dfc07100b8adf8` |
+| Deployment tx | `0xa3e978e1456a8fe15e06249d4f689b38a5afc454681628feb759ee05900a0a31` (block 88203155) |
+| Ownership transfer tx | `0xd15d376cf818fd93a7661fe8e1792593e05ba013eb731b8abb2aba2bd67cd8eb` (block 88203160) |
+| Owner | `0xf1be884698B9Ba4438f529699eC92320427b4dA1` (Safe 2/2) |
+| Evidence signer | `0x4a06010d269b335c3471dA9AABfc41a56b4ea1f6` |
+| Access signer | `0x8a63E4828F3B35C12FC23d644C80DA67aF1EA304` |
+| Stake token | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` (USDC, Monad) |
+| App shell | https://lock-in-liart-theta.vercel.app |
 
-The first accepted completion by a wallet in each UTC day earns 10 non-transferable overall Lock Score points. Each mission-scoped Strava or Duolingo identity can score only for its first bound wallet; a later valid completion from another wallet can still count for payout but earns no points. This limits multi-wallet farming, not human identity across services. Stake, distance, XP, high-fives, or extra Locks cannot multiply the daily award. Social identity, points, rank, invites, and reactions never change settlement or payouts.
+Creation, joining and check-ins are **all paused**. Ownership sits with the Safe, so opening them takes a multisig signature over calldata that `pnpm exec tsx scripts/set-pauses.ts` prints and that a release gate refuses to produce unless the escrow, chain, token, cap, scheme, owner and both signers all verify on chain first.
 
-## Release status — closed
-
-- App shell: https://lock-in-liart-theta.vercel.app
-- Historical paused canary escrow: `0xA75375E11A8564b9DFe5fe2084Ff277Bb41c6a6a`
-- Historical canary transaction: `0x1d67657eedb350206e49a44256bdb8c42625b987ed83884713e463a392cec3ba`
-- Strava proof provider: `f3ec8292-d8f3-487c-a79d-f53f482f88e2@6.0.0`
-- Duolingo proof provider: `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.8`
-- Release owner Safe: `0xf1be884698B9Ba4438f529699eC92320427b4dA1` (2/2)
-
-The listed escrow is historical test infrastructure, not the Lock In release contract and not an invitation to deposit funds. The release contract address will be published only after a fresh paused deployment, source and constructor verification, signer checks, independent review, and complete two-wallet rehearsals for every enabled mission.
-
-## Duolingo account-control decision
-
-The inspected public Reclaim provider `7c57a498-6b0e-4b3a-8235-de7ba938e823` is not used. It accepts a user-selected profile identifier and extracts only `totalXp`, so it can target somebody else's account.
-
-The Lock In provider in [`providers/duolingo-owned-xp.json`](providers/duolingo-owned-xp.json) requires two claims for the same stable profile ID. The ownership request targets Duolingo's authenticated self-only privacy-settings endpoint and discloses only the constant marker name `disable_social`; it returned `200` for the signed-in profile, `403` for another profile ID, and `401` without a session. The XP request discloses only stable profile ID, username, and `totalXp`. The direct verifier pins both request hashes, requires both claims, and rejects an ID mismatch. Creation or joining and baseline acceptance are atomic: a failed account-control proof cannot leave the user's stake locked.
-
-Participants keep their normal Duolingo username and display Name. They may need to sign in inside Reclaim's isolated browser; Lock In never asks for or receives their Duolingo password. The authenticated endpoint establishes session authorization for that stable profile at proof time. It does not prove legal identity, exclusive account use, who earned the XP, or human learning.
+`0xA75375E11A8564b9DFe5fe2084Ff277Bb41c6a6a` is a historical paused test escrow from the zkTLS era. It is not this release.
 
 ## Privacy
 
-The website currently has no offchain product-account database; the optional handle and score live in public contract state. Before a proof or admission request, the wallet authenticates with a short-lived, origin-bound signed challenge. During verification, Reclaim and the server function process the provider fields needed by the selected policy and return a short-lived attestation. Lock In does not intentionally retain the full Reclaim SDK proof object in a product database after verification.
+A check-in publishes, permanently and publicly, in Monad calldata: distance, moving and elapsed time, elevation gain, the activity start time, your wallet, the Lock and the day, plus three values derived from your Strava data by HMAC under a server-held key: one standing for your athlete account, one for that single activity, one summarising the activity. Raw Strava identifiers are not published. **A hash is not anonymity**: anyone who already knows an identifier and the key could confirm a match.
 
-Monad permanently exposes wallet, Lock terms, stake, mission, day, completion metric, hashed identity, nullifier, timestamps, settlement, claims, optional current and historical handles, profile moderation, scores, verified-day counters, and high-five participants. Invite codes are derived from public Lock IDs, not secrets. Proof transaction calldata can additionally expose the Duolingo stable profile ID, cumulative XP, the non-sensitive self-endpoint marker name `disable_social`, Reclaim session, wallet, internal Lock identifier and phase, or the Strava athlete marker, activity ID and title, start time, distance, motion and elevation fields, GPS-presence status, trainer and flag status, Reclaim session, wallet, internal Lock identifier and day. The Duolingo username, privacy-setting values, and Strava GPS route are not requested for disclosure. See [`app/privacy/page.tsx`](app/privacy/page.tsx) and [`PRIVACY.md`](PRIVACY.md).
+Your Strava tokens are held server-side only, encrypted with AES-256-GCM under a dedicated key, tied to your wallet. They are never exposed to your browser, to other users, or to the blockchain; they are decrypted in server memory only to talk to Strava. Your route, your other activities and your Strava password never reach Lock In. Disconnecting revokes the grant at Strava and deletes the stored connection outright.
 
-## Trust and launch requirements
+Full notice: [`app/privacy/page.tsx`](app/privacy/page.tsx).
 
-The current unreleased build is unaudited and has no release deployment. The candidate escrow requires both direct witness verification and the matching backend attestation, so the evidence signing key alone cannot fabricate a completion. The signer still applies TEE and business-policy checks, and failures involving the signer, direct verifier, witness configuration, upstream service, or user device remain security risks. The owner can pause or rotate authorities.
+## Why not zkTLS
 
-The repository contains direct-verification contracts for Duolingo and Strava and the escrow candidate is wired to require them. While `LIVE_SCHEMA_CONFIRMED=false`, both verifier entry points fail closed with `LiveSchemaUnconfirmed`; only test harnesses can exercise the parsers, and the escrow constructor refuses to deploy at all. Both verifiers pin the modern TEE-attested context shape, and a real captured proof of each mission is driven through the final on-chain grammar by `test/LockInDuolingoRealProof.t.sol` and `test/LockInStravaRealProof.t.sol`. What is still unproven is the release itself: no verifier bytecode is deployed, and the two-wallet end-to-end flow with real stakes has not been run. The web proof path and real-proof gas flow are therefore not release-ready.
+Lock In was built on Reclaim zkTLS first. Two findings ended that, both measured rather than assumed:
 
-- evidence and admission signing must use isolated, least-privilege keys in a managed KMS or equivalent auditable signing service, with rotation and monitoring;
-- contract ownership must move from a single deployer to a documented multisig with tested incident procedures;
-- live Strava and two-claim Duolingo proofs must confirm the exact signed schemas, provider versions and request hashes, claim ordering, TEE binding, witness configuration, direct-verifier outputs, and absence of credentials, secret headers, or privacy-setting values;
-- the direct verifier bytecode, oracle boundary, signer code, contract, and deployment configuration must receive an independent security review;
-- direct-proof calldata size, gas cost, mobile-wallet handoff, rejection behavior, and transaction privacy notice must pass end-to-end testing;
-- handle uniqueness/change/clear, invite routing, score deduplication, high-five uniqueness, hide/unhide moderation, and settlement isolation must pass onchain testing;
-- complete Strava and Duolingo success, failure, replay, capacity, settlement, claim, underfilled-refund, and emergency-refund rehearsals must pass with two controlled wallets at 0.1 USDC;
-- production health, source verification, addresses, privacy, rules, monitoring, and support coverage must all be green.
+- **The hosted flow re-authenticates on every check-in.** Verification runs in a remote browser that never holds the athlete's Strava or Google session, so a 30-day Lock means 30 logins. That is a channel problem, not something a provider version can fix.
+- **When the TEE proof fails, the portal silently substitutes an AI-witnessed proof** and still reports `PROOF_SUBMITTED`, despite `acceptAiProviders: false`. The fail-closed gate caught it, which is the part that worked as designed.
 
-Until those criteria pass, all admission and evidence controls remain paused and no tester should be invited to send real funds.
+The zkTLS work is not deleted. [`contracts/verifiers/`](contracts/verifiers/) still holds the Strava and Duolingo witness verifiers and their 35 passing tests. The verification layer is modular: the escrow binds a Lock to a **named scheme**, so a future scheme can serve platforms with no official API, which is where zkTLS earns its cost. Duolingo has no public API, so it is out of scope for now rather than impossible forever.
+
+## Status and what it would take to open
+
+Unaudited. No participant has been invited. Before any public opening:
+
+- an independent security review of the escrow, the attestation signer and the OAuth token boundary;
+- the evidence and access keys in a managed KMS rather than environment variables, with rotation and monitoring, since the evidence key alone can now mint completions;
+- Strava's developer terms clarified in writing: Strava reserves the right to revoke applications enabling **virtual races or competitions**, and Lock In is a competition with real stakes. That question is open, and this README does not claim otherwise;
+- a two-wallet canary at the minimum stake, then create, join, check-in, settle and claim rehearsed end to end;
+- production health, source verification, monitoring and support coverage all green.
+
+Until then admission and check-ins stay paused.
 
 ## Local development
 
-Requirements: Node.js 22+, pnpm 10+, Foundry, and a Monad RPC.
+Node.js 22+, pnpm 10+, Foundry, a Monad RPC, a Strava API application and a Postgres database.
 
 ```bash
 cp .env.example .env
 pnpm install
+pnpm db:migrate          # creates the Strava connection tables
 pnpm exec tsc --noEmit
-pnpm test
+pnpm test                # TypeScript policy + Solidity
 pnpm build
-forge test
 ```
 
-Required server-only configuration includes Reclaim credentials, a wallet-session secret, and separate unfunded evidence and admission signing keys. `LOCK_IN_OWNER_ADDRESS` identifies the deployed, tested multisig; `LOCK_IN_DEPLOYER_ADDRESS` records the public address used for the one-time deployment. Never expose private values through `NEXT_PUBLIC_*`, and never upload the funded deployer key to Vercel.
+Server-only configuration: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_TOKEN_ENCRYPTION_KEY` (32 bytes, base64), `DATABASE_URL`, `SESSION_SIGNING_SECRET`, and separate `EVIDENCE_SIGNER_PRIVATE_KEY` and `ACCESS_SIGNER_PRIVATE_KEY`. Strava allows one callback domain per application, so local and deployed need two applications.
 
 Every deployment starts closed:
 
@@ -98,24 +106,19 @@ JOIN_ENABLED=false
 CHECK_INS_ENABLED=false
 ```
 
-`pnpm deploy:verifiers` is the first read-only dry-run. Execution stays locked until the audited live Strava parser, Strava verifier and Duolingo verifier all compile with their live-schema gates enabled. A successful execution prints the three addresses and runtime code hashes that must be copied into the server-only release environment. `pnpm deploy:escrow` then refuses any address, witness, provider metadata, parser schema or bytecode hash that differs from that configuration. It validates that the owner is a deployed contract distinct from the deployer and application signers, estimates gas, and reserves ownership-transfer gas. The execute flow deploys with all four controls paused, verifies that state, transfers ownership to `LOCK_IN_OWNER_ADDRESS`, then verifies the final owner and pauses at the transfer block. Its final output includes `NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS` and the exact `LOCK_IN_ESCROW_CODE_HASH`; copy both into the release environment before any production check or canary. A release address is not valid if that complete flow does not finish successfully.
-
-After that handoff, owner actions are multisig operations. `pnpm pauses` and `pnpm incident:cancel-pact` read the chain and print ordered zero-value calls with exact destination and calldata without loading an owner key. Submit those calls through the configured multisig, then use `pauses:verify` or `incident:cancel-pact:verify` to confirm the external execution. The command names retain the contract's internal `pact` identifier; the consumer product term is **Lock**. Local `--execute` exists only for an EOA-owned development contract and refuses a contract/multisig owner.
-
-`pnpm production:check` must additionally match the onchain owner to `LOCK_IN_OWNER_ADDRESS`, confirm that it has contract code, reject any owner reused as the deployer or an application signer, and match the escrow plus every direct-proof runtime code hash. `/api/health` verifies the same code and direct-proof bindings plus Monad chain 143, contract schema ID 1, native Monad USDC, the immutable 1 USDC cap, the configured multisig, both configured signer addresses, every onchain pause, explicit product flags, and the privacy contact. Website flags do not stop direct contract calls; the matching onchain controls are authoritative.
+`pnpm deploy:escrow` is a read-only dry run until `--execute` plus an exact confirmation string. It deploys paused, transfers ownership to `LOCK_IN_OWNER_ADDRESS` and verifies both on chain before reporting success. Owner actions afterwards are multisig operations: `pnpm pauses` and `pnpm incident:cancel-pact` read the chain and print ordered calldata to review and sign. `pnpm production:check` matches the deployed escrow against configuration.
 
 ## Repository map
 
-- `contracts/LockInEscrow.sol` — current unreleased multi-mission escrow candidate.
-- `src/strava-proof-policy.ts` — Strava anti-cheat and challenge binding.
-- `src/duolingo-proof-policy.ts` — two-claim Duolingo self-session binding and XP snapshot policy.
-- `src/reclaim-onchain.ts` — strict SDK-proof validation and canonical direct-proof transformation.
-- `src/lock-invite.ts` and `src/social-score.ts` — invite-code validation and event-derived rankings.
-- `contracts/verifiers/*` — mission-specific direct Reclaim witness verifiers.
-- `app/api/reclaim/*` — session, polling, zkTLS verification, and evidence attestation.
+- `contracts/LockInEscrow.sol` — the escrow: stakes, settlement, claims, nullifiers, pauses.
+- `contracts/verifiers/*` — the zkTLS witness verifiers, kept as a prototype, not wired to the escrow.
+- `src/strava-oauth.ts` — authorize URL, signed single-use state, token exchange, refresh, revoke.
+- `src/strava-token-store.ts` — encrypted token storage, atomic refresh rotation, state consumption.
+- `src/strava-activities.ts` — the run policy and the pseudonymised evidence it produces.
+- `src/completion-attestation.ts` — the EIP-712 attestation the escrow accepts.
+- `app/api/strava/*` — authorize, callback, connection, check-in.
 - `app/api/access/*` — authenticated, capacity-aware admission attestations.
-- `providers/*` — pinned private Strava and Duolingo provider configurations.
 - `docs/product-model.md` — product and settlement decisions.
 - `docs/tester-runbook.md` — controlled-testing operations.
 
-Privacy, incident, and security contact: **mookipstore@hotmail.com**.
+Privacy, incident and security contact: **mookipstore@hotmail.com**.

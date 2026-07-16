@@ -19,6 +19,8 @@ import { releaseMetadataAbi, releasePactAbi, type ReleasePactTuple } from "./rel
 const CHAIN_ID = 143;
 const EXPECTED_USDC = getAddress("0x754704Bc059F8C67012fEd69BC8A327a5aafb603");
 const CANARY_STAKE = 100_000n;
+// One 0.1 USDC stake for the main Lock, plus 0.1 held back for the underfilled and cancellation
+// rehearsals, so the canary never stalls waiting on a refund to recycle.
 const REQUIRED_USDC_PER_WALLET = 200_000n;
 const DEFAULT_APP_URL = "https://lock-in-liart-theta.vercel.app";
 
@@ -249,7 +251,7 @@ async function walletSnapshot(address: Address) {
     usdcBalance: formatUnits(usdcBalance, 6),
     allowanceAtomic: allowance.toString(),
     hasNativeGas: nativeBalance > 0n,
-    hasParallelCanaryUsdc: usdcBalance >= REQUIRED_USDC_PER_WALLET,
+    hasCanaryUsdc: usdcBalance >= REQUIRED_USDC_PER_WALLET,
   };
 }
 
@@ -312,8 +314,8 @@ async function preflight(): Promise<void> {
         .every((name) => health.pauses?.[name] === identity.pauses[name]),
     walletAHasGas: walletASnapshot?.hasNativeGas ?? false,
     walletBHasGas: walletBSnapshot?.hasNativeGas ?? false,
-    walletAHasTwoPactUsdc: walletASnapshot?.hasParallelCanaryUsdc ?? false,
-    walletBHasTwoPactUsdc: walletBSnapshot?.hasParallelCanaryUsdc ?? false,
+    walletAFunded: walletASnapshot?.hasCanaryUsdc ?? false,
+    walletBFunded: walletBSnapshot?.hasCanaryUsdc ?? false,
   };
   const ok = allChecksPass(checks);
   print({
@@ -323,8 +325,8 @@ async function preflight(): Promise<void> {
     requirements: {
       canaryStakeAtomicPerParticipation: CANARY_STAKE.toString(),
       canaryStakeUsdcPerParticipation: formatUnits(CANARY_STAKE, 6),
-      minimumUsdcAtomicPerWalletForParallelStravaAndDuolingo: REQUIRED_USDC_PER_WALLET.toString(),
-      distinctExternalAccountsRequired: { strava: 2, duolingo: 2 },
+      minimumUsdcAtomicPerWallet: REQUIRED_USDC_PER_WALLET.toString(),
+      distinctStravaAccountsRequired: 2,
     },
     contract: {
       address: escrow,

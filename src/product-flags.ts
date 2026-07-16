@@ -26,7 +26,7 @@ export type ProductFlagState = Readonly<{
 }>;
 
 export type ProofAction = Readonly<{
-  phase: "baseline" | "completion";
+  phase: "admission" | "completion";
   intent?: "create" | "join";
 }>;
 
@@ -80,9 +80,9 @@ export function readProductFlagState(
 }
 
 /**
- * Maps every proof request to the same fail-closed release gate used by the UI.
- * This prevents paused deployments from spending provider quota or issuing a
- * short-lived evidence signature through a direct API call.
+ * Maps every signed-attestation request to the same fail-closed release gate used by the UI.
+ * This stops a paused deployment from issuing a short-lived signature through a direct API call,
+ * which matters more now that the evidence signature is the whole of the completion check.
  */
 export function isProofActionEnabled(state: ProductFlagState, action: ProofAction): boolean {
   if (action.phase === "completion") return state.actions.checkIns;
