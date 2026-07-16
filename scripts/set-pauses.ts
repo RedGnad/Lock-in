@@ -22,16 +22,6 @@ type PauseState = Record<PauseName, boolean>;
 type PauseOperation = { name: PauseName; functionName: SetterName; current: boolean; desired: boolean };
 
 const CHAIN_ID = 143;
-const EXPECTED_RECLAIM_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e5443a9072");
-const EXPECTED_STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-const EXPECTED_STRAVA_PROVIDER_VERSION = "6.0.0";
-const EXPECTED_STRAVA_SCHEMA_ID = keccak256(
-  stringToHex("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:6.0.0:two-claim"),
-);
-const EXPECTED_DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.8";
-const EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
-const EXPECTED_DUOLINGO_XP_REQUEST_HASH = "0x92d80894f1f9e2f3574b840e846e41a49ae7491b587da9bd96cbcccbe001c8ed";
 
 function requiredAddress(name: string): Address {
   const raw = process.env[name]?.trim() || "";
@@ -72,8 +62,8 @@ if (Number(execute) + Number(verify) + Number(snapshotOnly) > 1) {
   throw new Error("Choose only one of --execute, --verify, or --snapshot");
 }
 const values = rawArguments.filter((value) => !value.startsWith("--"));
-if (snapshotOnly ? values.length !== 0 : values.length !== 4) {
-  throw new Error(snapshotOnly ? "--snapshot takes no pause booleans" : "Pass exactly four pause booleans");
+if (snapshotOnly ? values.length !== 0 : values.length !== 3) {
+  throw new Error(snapshotOnly ? "--snapshot takes no pause booleans" : "Pass exactly three pause booleans: <creation> <joining> <completion>");
 }
 const desired = snapshotOnly
   ? null
@@ -98,138 +88,81 @@ const ownerAbi = [{
   inputs: [],
   outputs: [{ type: "address" }],
 }] as const;
-const escrowVerifierAbi = [
-  { type: "function", name: "stravaVerifier", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "duolingoVerifier", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-] as const;
-const verifierAbi = [
-  { type: "function", name: "WITNESS", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "LIVE_SCHEMA_CONFIRMED", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
-  { type: "function", name: "PARSER", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "STRAVA_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-] as const;
-const parserAbi = [
-  { type: "function", name: "LIVE_SCHEMA_CONFIRMED", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
-  { type: "function", name: "SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
-  { type: "function", name: "STRAVA_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+
+/**
+ * What must be true on chain before this script will produce calldata that OPENS anything.
+ *
+ * The zkTLS gate this replaces checked verifier bytecode, pinned witnesses and provider schemas. None of
+ * that exists now: a completion rests on the evidence signer's signature alone. So the gate checks the
+ * things that still decide whether real money is safe, and it checks them against the chain rather than
+ * against configuration: that this is the escrow we audited, on the right chain, holding the right token,
+ * owned by the Safe, and signing with the keys we hold.
+ */
+const EXPECTED_USDC = getAddress("0x754704Bc059F8C67012fEd69BC8A327a5aafb603");
+const releaseGateAbi = [
+  { type: "function", name: "CONTRACT_SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "stakeToken", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "MIN_STAKE", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "MAX_STAKE", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "evidenceSigner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "accessSigner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "owner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "STRAVA_OAUTH_SCHEME", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
+  { type: "function", name: "missionPolicyHash", stateMutability: "view", inputs: [{ type: "uint8" }], outputs: [{ type: "bytes32" }] },
 ] as const;
 
 async function assertReleaseGate(blockNumber: bigint) {
   const expectedEscrowCodeHash = requiredHash("LOCK_IN_ESCROW_CODE_HASH");
-  const expectedStravaVerifier = requiredAddress("LOCK_IN_STRAVA_VERIFIER_ADDRESS");
-  const expectedDuolingoVerifier = requiredAddress("LOCK_IN_DUOLINGO_VERIFIER_ADDRESS");
-  const expectedParser = requiredAddress("LOCK_IN_STRAVA_PARSER_ADDRESS");
-  const expectedStravaCodeHash = requiredHash("LOCK_IN_STRAVA_VERIFIER_CODE_HASH");
-  const expectedDuolingoCodeHash = requiredHash("LOCK_IN_DUOLINGO_VERIFIER_CODE_HASH");
-  const expectedParserCodeHash = requiredHash("LOCK_IN_STRAVA_PARSER_CODE_HASH");
-  const [escrowCode, rawStravaVerifier, rawDuolingoVerifier] = await Promise.all([
-    publicClient.getCode({ address: escrow, blockNumber }),
-    publicClient.readContract({ address: escrow, abi: escrowVerifierAbi, functionName: "stravaVerifier", blockNumber }),
-    publicClient.readContract({ address: escrow, abi: escrowVerifierAbi, functionName: "duolingoVerifier", blockNumber }),
-  ]);
-  if (!escrowCode || escrowCode === "0x" || keccak256(escrowCode) !== expectedEscrowCodeHash) {
-    throw new Error("Opening refused: escrow runtime bytecode does not match LOCK_IN_ESCROW_CODE_HASH");
-  }
-  const stravaVerifier = getAddress(rawStravaVerifier);
-  const duolingoVerifier = getAddress(rawDuolingoVerifier);
-  if (stravaVerifier !== expectedStravaVerifier || duolingoVerifier !== expectedDuolingoVerifier) {
-    throw new Error("Opening refused: escrow verifier bindings do not match the configured release addresses");
-  }
-  if (stravaVerifier === duolingoVerifier) {
-    throw new Error("Opening refused: Strava and Duolingo verifiers must be distinct");
-  }
+  const expectedEvidenceSigner = requiredAddress("LOCK_IN_EVIDENCE_SIGNER_ADDRESS");
+  const expectedAccessSigner = requiredAddress("LOCK_IN_ACCESS_SIGNER_ADDRESS");
+  const expectedOwner = requiredAddress("LOCK_IN_OWNER_ADDRESS");
 
-  const [
-    stravaCode,
-    duolingoCode,
-    stravaLive,
-    duolingoLive,
-    stravaWitness,
-    duolingoWitness,
-    stravaProviderId,
-    stravaProviderVersion,
-    duolingoProviderId,
-    duolingoProviderVersion,
-    duolingoOwnershipRequestHash,
-    duolingoXpRequestHash,
-    rawParser,
-  ] = await Promise.all([
-    publicClient.getCode({ address: stravaVerifier, blockNumber }),
-    publicClient.getCode({ address: duolingoVerifier, blockNumber }),
-    publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", blockNumber }),
-    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", blockNumber }),
-    publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "WITNESS", blockNumber }),
-    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "WITNESS", blockNumber }),
-    publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_ID", blockNumber }),
-    publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", blockNumber }),
-    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_ID", blockNumber }),
-    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_VERSION", blockNumber }),
-    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH", blockNumber }),
-    publicClient.readContract({ address: duolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_XP_REQUEST_HASH", blockNumber }),
-    publicClient.readContract({ address: stravaVerifier, abi: verifierAbi, functionName: "PARSER", blockNumber }),
-  ]);
-  const parser = getAddress(rawParser);
-  if (parser !== expectedParser) {
-    throw new Error("Opening refused: Strava parser binding does not match LOCK_IN_STRAVA_PARSER_ADDRESS");
-  }
-  const [parserCode, parserLive, parserSchemaId, parserProviderId, parserProviderVersion] = await Promise.all([
-    publicClient.getCode({ address: parser, blockNumber }),
-    publicClient.readContract({ address: parser, abi: parserAbi, functionName: "LIVE_SCHEMA_CONFIRMED", blockNumber }),
-    publicClient.readContract({ address: parser, abi: parserAbi, functionName: "SCHEMA_ID", blockNumber }),
-    publicClient.readContract({ address: parser, abi: parserAbi, functionName: "STRAVA_PROVIDER_ID", blockNumber }),
-    publicClient.readContract({ address: parser, abi: parserAbi, functionName: "STRAVA_PROVIDER_VERSION", blockNumber }),
-  ]);
+  const [escrowCode, schemaId, stakeToken, minStake, maxStake, evidenceSigner, accessSigner, owner, scheme, policyHash] =
+    await Promise.all([
+      publicClient.getCode({ address: escrow, blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "CONTRACT_SCHEMA_ID", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "stakeToken", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "MIN_STAKE", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "MAX_STAKE", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "evidenceSigner", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "accessSigner", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "owner", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "STRAVA_OAUTH_SCHEME", blockNumber }),
+      publicClient.readContract({ address: escrow, abi: releaseGateAbi, functionName: "missionPolicyHash", args: [1], blockNumber }),
+    ]);
+
+  if (!escrowCode || escrowCode === "0x") throw new Error("Opening refused: no code at the escrow address");
+  const ownerCode = await publicClient.getCode({ address: getAddress(owner), blockNumber });
 
   const checks = {
     escrowCodeHash: keccak256(escrowCode) === expectedEscrowCodeHash,
-    stravaCode: Boolean(stravaCode && stravaCode !== "0x"),
-    duolingoCode: Boolean(duolingoCode && duolingoCode !== "0x"),
-    parserCode: Boolean(parserCode && parserCode !== "0x"),
-    stravaCodeHash: Boolean(stravaCode && stravaCode !== "0x") && keccak256(stravaCode as Hex) === expectedStravaCodeHash,
-    duolingoCodeHash: Boolean(duolingoCode && duolingoCode !== "0x") && keccak256(duolingoCode as Hex) === expectedDuolingoCodeHash,
-    parserCodeHash: Boolean(parserCode && parserCode !== "0x") && keccak256(parserCode as Hex) === expectedParserCodeHash,
-    stravaLive,
-    duolingoLive,
-    parserLive,
-    stravaWitness: getAddress(stravaWitness) === EXPECTED_RECLAIM_WITNESS,
-    duolingoWitness: getAddress(duolingoWitness) === EXPECTED_RECLAIM_WITNESS,
-    stravaProvider:
-      stravaProviderId === EXPECTED_STRAVA_PROVIDER_ID && stravaProviderVersion === EXPECTED_STRAVA_PROVIDER_VERSION,
-    parserProvider:
-      parserProviderId === EXPECTED_STRAVA_PROVIDER_ID && parserProviderVersion === EXPECTED_STRAVA_PROVIDER_VERSION,
-    parserSchema: parserSchemaId === EXPECTED_STRAVA_SCHEMA_ID,
-    duolingoProvider:
-      duolingoProviderId === EXPECTED_DUOLINGO_PROVIDER_ID
-      && duolingoProviderVersion === EXPECTED_DUOLINGO_PROVIDER_VERSION
-      && duolingoOwnershipRequestHash === EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH
-      && duolingoXpRequestHash === EXPECTED_DUOLINGO_XP_REQUEST_HASH,
+    contractSchema: schemaId === 1n,
+    officialUsdc: getAddress(stakeToken) === EXPECTED_USDC,
+    oneUsdcCap: minStake === 100_000n && maxStake === 1_000_000n,
+    // The scheme the evidence signer must have applied. Its absence means this is not the OAuth escrow.
+    stravaOAuthScheme: scheme === keccak256(stringToHex("STRAVA_OAUTH_V1")),
+    missionPolicyBound: policyHash !== `0x${"00".repeat(32)}`,
+    // If the escrow does not know our signing key, every check-in reverts after we open.
+    evidenceSigner: getAddress(evidenceSigner) === expectedEvidenceSigner,
+    accessSigner: getAddress(accessSigner) === expectedAccessSigner,
+    signersSeparated: getAddress(evidenceSigner) !== getAddress(accessSigner),
+    ownerIsConfiguredSafe: getAddress(owner) === expectedOwner,
+    // Never an EOA: opening hands real money to whoever holds this key.
+    ownerIsContract: Boolean(ownerCode && ownerCode !== "0x"),
+    ownerSeparated: getAddress(owner) !== getAddress(evidenceSigner) && getAddress(owner) !== getAddress(accessSigner),
   };
   if (!Object.values(checks).every(Boolean)) {
-    throw new Error(`Opening refused: direct-proof release gate failed ${JSON.stringify(checks)}`);
+    throw new Error(`Opening refused: release gate failed ${JSON.stringify(checks)}`);
   }
   return {
     observedAtBlock: blockNumber.toString(),
     escrowRuntimeCodeHash: keccak256(escrowCode),
-    witness: EXPECTED_RECLAIM_WITNESS,
-    strava: {
-      address: stravaVerifier,
-      runtimeCodeHash: keccak256(stravaCode as Hex),
-      parser,
-      parserRuntimeCodeHash: keccak256(parserCode as Hex),
-      schemaId: parserSchemaId,
-    },
-    duolingo: {
-      address: duolingoVerifier,
-      runtimeCodeHash: keccak256(duolingoCode as Hex),
-      ownershipRequestHash: duolingoOwnershipRequestHash,
-      xpRequestHash: duolingoXpRequestHash,
-    },
+    verification: { scheme: "STRAVA_OAUTH_V1", trustedParty: getAddress(evidenceSigner) },
+    stakeToken: getAddress(stakeToken),
+    owner: getAddress(owner),
+    evidenceSigner: getAddress(evidenceSigner),
+    accessSigner: getAddress(accessSigner),
+    missionPolicyHash: policyHash,
     checks,
   };
 }
@@ -347,7 +280,7 @@ if (!execute) {
     multisigReview: {
       expectedSignerConfirmations: "Apply the configured multisig threshold to this exact ordered calldata bundle.",
       gas: "Estimate the multisig wrapper/batch in the multisig interface; directCallGasLimit excludes wrapper overhead.",
-      verifyCommand: `pnpm pauses:verify -- ${desired.creation} ${desired.joining} ${desired.completion}`,
+      verifyCommand: `pnpm exec tsx scripts/set-pauses.ts --verify ${desired.creation} ${desired.joining} ${desired.completion}`,
     },
     nextStep: operations.length === 0
       ? "No transaction is required. Run the verify command to record the state."
