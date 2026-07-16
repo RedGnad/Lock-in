@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getAddress, isAddress } from "viem";
 
 /**
@@ -12,6 +12,7 @@ import { getAddress, isAddress } from "viem";
 
 const AUTHORIZE_URL = "https://www.strava.com/oauth/authorize";
 const TOKEN_URL = "https://www.strava.com/oauth/token";
+const REVOKE_URL = "https://www.strava.com/oauth/revoke";
 const DEAUTHORIZE_URL = "https://www.strava.com/oauth/deauthorize";
 
 /**
@@ -71,12 +72,20 @@ export function issueStravaState(
   return `${encoded}.${sign(encoded, stateSecret(env))}`;
 }
 
-/** Returns the wallet that started the flow, or throws. Never trust the callback's word for it. */
+export type VerifiedState = Readonly<{ wallet: string; nonceHash: string; expiresAt: Date }>;
+
+/**
+ * Returns who started the flow, plus what the caller needs to burn the state.
+ *
+ * The signature proves the state was not modified. It CANNOT prove the state was not replayed: a stolen
+ * but still-valid state verifies perfectly. The nonce hash is returned so the callback can record it as
+ * spent, which is the part that actually stops a replay.
+ */
 export function verifyStravaState(
   state: string,
   env: NodeJS.ProcessEnv = process.env,
   nowMs = Date.now(),
-): string {
+): VerifiedState {
   const [encoded, signature] = state.split(".");
   if (!encoded || !signature) reject("Malformed OAuth state");
 
@@ -93,8 +102,14 @@ export function verifyStravaState(
     return reject("Malformed OAuth state payload");
   }
   if (!payload.wallet || !isAddress(payload.wallet)) reject("OAuth state carries no wallet");
+  if (typeof payload.nonce !== "string" || payload.nonce.length === 0) reject("OAuth state carries no nonce");
   if (!Number.isSafeInteger(payload.exp) || payload.exp < nowMs) reject("OAuth state has expired");
-  return getAddress(payload.wallet);
+  return {
+    wallet: getAddress(payload.wallet),
+    // Hashed, so a database read never reveals a live nonce.
+    nonceHash: createHash("sha256").update(payload.nonce).digest("hex"),
+    expiresAt: new Date(payload.exp),
+  };
 }
 
 export function stravaAuthorizeUrl(input: {
@@ -189,15 +204,44 @@ export async function refreshStravaTokens(
   };
 }
 
-/** Best effort: revoking at Strava can fail, and the local connection must still be dropped. */
-export async function deauthorizeStrava(accessToken: string): Promise<boolean> {
+/**
+ * Revokes the athlete's grant at Strava.
+ *
+ * `/oauth/revoke` is the current endpoint: it authenticates the APPLICATION with HTTP Basic
+ * client_id:client_secret and takes the token in the form body. The older `/oauth/deauthorize` takes the
+ * athlete's access token instead, and is kept as a fallback so a revoke still lands if the new endpoint
+ * is unavailable to this application.
+ *
+ * Best effort by design: the caller must delete the local connection whether or not this succeeds. The
+ * athlete asked to be disconnected, and an outage at Strava must not keep their tokens in our database.
+ */
+export async function revokeStravaGrant(
+  accessToken: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ revoked: boolean; via?: "revoke" | "deauthorize" }> {
+  try {
+    const basic = Buffer.from(`${stravaClientId(env)}:${stravaClientSecret(env)}`, "utf8").toString("base64");
+    const response = await fetch(REVOKE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ token: accessToken }),
+    });
+    if (response.ok) return { revoked: true, via: "revoke" };
+  } catch {
+    // Fall through: a network failure here must not stop the local delete.
+  }
   try {
     const response = await fetch(DEAUTHORIZE_URL, {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ access_token: accessToken }),
     });
-    return response.ok;
+    if (response.ok) return { revoked: true, via: "deauthorize" };
   } catch {
-    return false;
+    // Same: report failure, never throw.
   }
+  return { revoked: false };
 }

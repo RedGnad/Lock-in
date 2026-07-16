@@ -1,4 +1,5 @@
-import { keccak256, stringToHex } from "viem";
+import { createHmac } from "node:crypto";
+
 
 /**
  * Reads a Lock's run straight from Strava's own API, over the athlete's OAuth grant.
@@ -53,6 +54,26 @@ export type StravaRunEvidence = Readonly<{
   nullifier: `0x${string}`;
   activityHash: `0x${string}`;
 }>;
+
+/**
+ * Pseudonymises a Strava identifier for publication.
+ *
+ * keccak256 of a numeric Strava id is NOT anonymity: athlete and activity ids are small integers, so
+ * anyone can enumerate them and match the hash. An HMAC under a server-held key removes that: without the
+ * key the published value cannot be linked back to an account. The backend is already trusted under
+ * STRAVA_OAUTH_V1, so holding this key adds no new trust assumption.
+ *
+ * The key must be stable: changing it changes every identity and nullifier, which would let an athlete
+ * replay a run that was already spent, and would break the one-identity-per-Lock rule.
+ */
+function pseudonymise(kind: "athlete" | "activity" | "run", value: string): `0x${string}` {
+  const key = process.env.STRAVA_TOKEN_ENCRYPTION_KEY?.trim();
+  if (!key) throw new StravaActivityError("SERVER_MISCONFIGURED", "The pseudonymisation key is not configured");
+  const digest = createHmac("sha256", Buffer.from(key, "base64"))
+    .update(`${STRAVA_ATTESTATION_SCHEME}:${kind}:${value}`)
+    .digest("hex");
+  return `0x${digest}`;
+}
 
 export type StravaRunPolicy = Readonly<{
   athleteId: string;
@@ -148,7 +169,6 @@ export function selectQualifyingRun(
     reject("IMPLAUSIBLE_ELAPSED_TIME", "This run was paused for too long to count as one run");
   }
 
-  const scheme = keccak256(stringToHex(STRAVA_ATTESTATION_SCHEME));
   return {
     athleteId: policy.athleteId,
     activityId: String(best.id),
@@ -159,11 +179,12 @@ export function selectQualifyingRun(
     elapsedTimeSeconds,
     elevationGainMeters: Math.floor(best.total_elevation_gain ?? 0),
     // Identity is the athlete, so one Strava account maps to one participant per Lock.
-    identityHash: keccak256(stringToHex(`${STRAVA_ATTESTATION_SCHEME}:athlete:${policy.athleteId}`)),
+    identityHash: pseudonymise("athlete", policy.athleteId),
     // The nullifier is the activity, so a single run can never be claimed twice, here or in another Lock.
-    nullifier: keccak256(stringToHex(`${STRAVA_ATTESTATION_SCHEME}:activity:${best.id}`)),
-    activityHash: keccak256(stringToHex(
-      `${scheme}:${best.id}:${distanceMeters}:${movingTimeSeconds}:${elapsedTimeSeconds}:${best.start_date}`,
-    )),
+    nullifier: pseudonymise("activity", String(best.id)),
+    activityHash: pseudonymise(
+      "run",
+      `${best.id}:${distanceMeters}:${movingTimeSeconds}:${elapsedTimeSeconds}:${best.start_date}`,
+    ),
   };
 }

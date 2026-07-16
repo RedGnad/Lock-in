@@ -4,6 +4,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { escrowAddress, lockInPublicClient } from "@/src/chain";
 import { erc20Abi, lockInAbi, STRAVA_RUN_MISSION } from "@/src/lock-in-abi";
 import { readProductFlagState } from "@/src/product-flags";
+import { stravaStorageReachable } from "@/src/strava-token-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,6 +116,7 @@ export async function GET() {
     stravaOAuthConfigured: Boolean(process.env.STRAVA_CLIENT_ID?.trim() && process.env.STRAVA_CLIENT_SECRET?.trim()),
     tokenEncryptionConfigured: Boolean(encryptionKey) && Buffer.from(encryptionKey!, "base64").length === 32,
     tokenStorageConfigured: Boolean(process.env.DATABASE_URL?.trim()),
+    tokenStorageReachable: false,
     stateSigningConfigured: (process.env.SESSION_SIGNING_SECRET?.trim().length ?? 0) >= 32,
     rpc: false,
     chainId: false,
@@ -130,6 +132,10 @@ export async function GET() {
     accessSigner: false,
     contractPauseControls: false,
   };
+
+  // Ask the database rather than trusting its URL: an unmigrated or unreachable Neon fails the first
+  // check-in, which is after the athlete has staked.
+  checks.tokenStorageReachable = await stravaStorageReachable();
 
   if (!configured || !rpcConfigured()) return respond({ checks });
 

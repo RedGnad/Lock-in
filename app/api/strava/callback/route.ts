@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { exchangeStravaCode, STRAVA_SCOPE, verifyStravaState } from "@/src/strava-oauth";
-import { saveStravaConnection } from "@/src/strava-token-store";
+import { consumeStravaState, saveStravaConnection } from "@/src/strava-token-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,13 +29,22 @@ export async function GET(request: Request) {
   if (error) return back(request, { strava: "cancelled" });
   if (!code || !state) return back(request, { strava: "failed" });
 
-  let wallet: string;
+  let verified;
   try {
-    wallet = verifyStravaState(state);
+    verified = verifyStravaState(state);
   } catch {
     // A bad state is the CSRF case: someone tried to attach their Strava account to another wallet.
     return back(request, { strava: "invalid_state" });
   }
+  // Burn it. The signature says the state is genuine; only this says it has not been used already.
+  if (!(await consumeStravaState({
+    nonceHash: verified.nonceHash,
+    walletAddress: verified.wallet,
+    expiresAt: verified.expiresAt,
+  }))) {
+    return back(request, { strava: "invalid_state" });
+  }
+  const wallet = verified.wallet;
 
   // Strava lets the athlete untick scopes on the consent screen. Without activity:read_all their private
   // runs are invisible to us, and they would only find out after staking, so refuse now.

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHmac } from "node:crypto";
 import {
   issueStravaState,
   stravaAuthorizeUrl,
@@ -16,9 +17,25 @@ const ENV = {
   SESSION_SIGNING_SECRET: "a-test-session-secret-of-at-least-32-chars",
 } as unknown as NodeJS.ProcessEnv;
 
-test("state round-trips the wallet that started the flow", () => {
+test("state round-trips the wallet that started the flow, and yields what burns it", () => {
   const state = issueStravaState(WALLET, ENV);
-  assert.equal(verifyStravaState(state, ENV), WALLET);
+  const verified = verifyStravaState(state, ENV);
+  assert.equal(verified.wallet, WALLET);
+  // The callback needs these to record the state as spent; the signature alone cannot stop a replay.
+  assert.match(verified.nonceHash, /^[0-9a-f]{64}$/);
+  assert.ok(verified.expiresAt.getTime() > Date.now());
+});
+
+test("each state carries its own nonce hash, so burning one cannot burn another", () => {
+  const first = verifyStravaState(issueStravaState(WALLET, ENV), ENV);
+  const second = verifyStravaState(issueStravaState(WALLET, ENV), ENV);
+  assert.notEqual(first.nonceHash, second.nonceHash);
+});
+
+test("the same state always yields the same nonce hash, so a replay is recognisable", () => {
+  // This is what makes single-use enforceable: a replayed state hashes to a nonce already recorded.
+  const state = issueStravaState(WALLET, ENV);
+  assert.equal(verifyStravaState(state, ENV).nonceHash, verifyStravaState(state, ENV).nonceHash);
 });
 
 test("state is bound to its wallet and cannot be grafted onto another", () => {
@@ -40,7 +57,7 @@ test("state signed with another secret is rejected", () => {
 test("state expires, so a stale authorize link cannot be replayed later", () => {
   const now = Date.now();
   const state = issueStravaState(WALLET, ENV, now);
-  assert.equal(verifyStravaState(state, ENV, now + 9 * 60_000), WALLET);
+  assert.equal(verifyStravaState(state, ENV, now + 9 * 60_000).wallet, WALLET);
   assert.throws(() => verifyStravaState(state, ENV, now + 11 * 60_000), /expired/);
 });
 
@@ -50,8 +67,14 @@ test("malformed state is rejected on shape", () => {
   }
 });
 
-test("two states for the same wallet differ, so a state is single-use in practice", () => {
+test("two states for the same wallet are never the same string", () => {
   assert.notEqual(issueStravaState(WALLET, ENV), issueStravaState(WALLET, ENV));
+});
+
+test("a state with no nonce is refused, since it could never be burned", () => {
+  const forged = Buffer.from(JSON.stringify({ wallet: WALLET, exp: Date.now() + 60_000 }), "utf8").toString("base64url");
+  const signature = createHmac("sha256", String(ENV.SESSION_SIGNING_SECRET)).update(forged).digest("base64url");
+  assert.throws(() => verifyStravaState(`${forged}.${signature}`, ENV), /carries no nonce/);
 });
 
 test("the authorize URL asks for private activities and forces the consent screen", () => {
@@ -69,7 +92,7 @@ test("the authorize URL asks for private activities and forces the consent scree
   assert.equal(STRAVA_SCOPE, "activity:read_all");
   // force: otherwise Strava silently reuses a narrower prior grant.
   assert.equal(url.searchParams.get("approval_prompt"), "force");
-  assert.equal(verifyStravaState(url.searchParams.get("state")!, ENV), WALLET);
+  assert.equal(verifyStravaState(url.searchParams.get("state")!, ENV).wallet, WALLET);
 });
 
 test("a missing signing secret fails closed rather than issuing an unsigned state", () => {

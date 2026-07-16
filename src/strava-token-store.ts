@@ -32,6 +32,25 @@ function sql() {
   return neon(url);
 }
 
+/**
+ * Proves the database actually answers and carries our tables.
+ *
+ * Checking that DATABASE_URL is set proves nothing: a wrong URL, an unmigrated database or a Neon outage
+ * all pass that test and then fail at the athlete's first check-in, after they have staked.
+ */
+export async function stravaStorageReachable(): Promise<boolean> {
+  try {
+    const query = sql();
+    const rows = (await query`
+      SELECT count(*)::int AS present FROM information_schema.tables
+      WHERE table_name IN ('strava_connections', 'strava_oauth_states')
+    `) as { present: number }[];
+    return rows[0]?.present === 2;
+  } catch {
+    return false;
+  }
+}
+
 export function normaliseWallet(walletAddress: string): string {
   if (!isAddress(walletAddress)) throw new StravaTokenStoreError("Invalid wallet address");
   return getAddress(walletAddress);
@@ -53,7 +72,38 @@ export const STRAVA_TOKENS_SCHEMA = `
   -- reconnect from another wallet without deleting the audit row.
   CREATE UNIQUE INDEX IF NOT EXISTS strava_connections_athlete_active
     ON strava_connections (athlete_id) WHERE revoked_at IS NULL;
+
+  -- One authorisation per state. The HMAC proves a state was not modified; only a record of what has
+  -- already been used can stop the same valid state being replayed inside its window.
+  CREATE TABLE IF NOT EXISTS strava_oauth_states (
+    nonce_hash  text PRIMARY KEY,
+    wallet_address text NOT NULL,
+    expires_at  timestamptz NOT NULL,
+    consumed_at timestamptz NOT NULL DEFAULT now()
+  );
 `;
+
+/**
+ * Records a state nonce as used, and reports whether it had already been used.
+ *
+ * The INSERT is the lock: two callbacks racing with the same state produce one insert and one conflict,
+ * so exactly one of them can proceed. Expired rows are cleared opportunistically rather than by a cron.
+ */
+export async function consumeStravaState(input: {
+  nonceHash: string;
+  walletAddress: string;
+  expiresAt: Date;
+}): Promise<boolean> {
+  const query = sql();
+  await query`DELETE FROM strava_oauth_states WHERE expires_at < now()`;
+  const rows = (await query`
+    INSERT INTO strava_oauth_states (nonce_hash, wallet_address, expires_at)
+    VALUES (${input.nonceHash}, ${normaliseWallet(input.walletAddress)}, ${input.expiresAt.toISOString()})
+    ON CONFLICT (nonce_hash) DO NOTHING
+    RETURNING nonce_hash
+  `) as { nonce_hash: string }[];
+  return rows.length === 1;
+}
 
 /** Upserts a connection. Called on first authorisation and on every reconnect. */
 export async function saveStravaConnection(input: {
@@ -136,12 +186,16 @@ async function rotateTokens(input: {
   `;
 }
 
-export async function markStravaConnectionRevoked(walletAddress: string): Promise<void> {
+/**
+ * Deletes the connection outright.
+ *
+ * Marking `revoked_at` and keeping the row would leave the athlete id, the scopes and both encrypted
+ * tokens in the database after someone asked to be forgotten, which is not what disconnecting means and
+ * not what the privacy page promises. The row goes.
+ */
+export async function deleteStravaConnection(walletAddress: string): Promise<void> {
   const query = sql();
-  await query`
-    UPDATE strava_connections SET revoked_at = now(), updated_at = now()
-    WHERE wallet_address = ${normaliseWallet(walletAddress)} AND revoked_at IS NULL
-  `;
+  await query`DELETE FROM strava_connections WHERE wallet_address = ${normaliseWallet(walletAddress)}`;
 }
 
 /** Reads the refresh token for the revoke call. Server-only, and never surfaced to a caller. */

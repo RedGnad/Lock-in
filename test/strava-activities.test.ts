@@ -1,5 +1,9 @@
+// The pseudonymisation key must exist before the module under test reads it.
+process.env.STRAVA_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+
 import assert from "node:assert/strict";
 import test from "node:test";
+import { keccak256, stringToHex } from "viem";
 import {
   selectQualifyingRun,
   StravaActivityError,
@@ -39,6 +43,14 @@ test("accepts a real GPS run inside the Lock day", () => {
   assert.equal(evidence.activityId, "19335732297");
   assert.match(evidence.nullifier, /^0x[0-9a-f]{64}$/);
   assert.match(evidence.identityHash, /^0x[0-9a-f]{64}$/);
+});
+
+test("published identifiers are not bare hashes of an enumerable Strava id", () => {
+  // Strava ids are small integers. keccak256(id) would be trivially reversible by enumeration, so the
+  // published values must depend on a server-held key.
+  const evidence = selectQualifyingRun([run()], POLICY);
+  assert.notEqual(evidence.nullifier, keccak256(stringToHex("STRAVA_OAUTH_V1:activity:19335732297")));
+  assert.notEqual(evidence.identityHash, keccak256(stringToHex("STRAVA_OAUTH_V1:athlete:1815502280")));
 });
 
 test("the nullifier is the activity and the identity is the athlete", () => {

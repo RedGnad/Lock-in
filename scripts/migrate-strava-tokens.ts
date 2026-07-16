@@ -19,18 +19,26 @@ if (!process.env.DATABASE_URL_UNPOOLED?.trim()) {
 }
 
 const sql = neon(url);
-for (const statement of STRAVA_TOKENS_SCHEMA.split(";").map((s) => s.trim()).filter(Boolean)) {
+// Strip `--` comments BEFORE splitting: a prose semicolon inside a comment would otherwise cut a
+// statement in half and send the second half to Postgres on its own.
+const statements = STRAVA_TOKENS_SCHEMA
+  .split("\n")
+  .map((line) => line.replace(/--.*$/, ""))
+  .join("\n")
+  .split(";")
+  .map((statement) => statement.trim())
+  .filter(Boolean);
+for (const statement of statements) {
   await sql.query(statement);
-  console.log("applied:", statement.split("\n")[0].trim());
+  console.log("applied:", statement.split("\n")[0].trim().slice(0, 70));
 }
 
-const columns = (await sql.query(
-  `SELECT column_name, data_type, is_nullable FROM information_schema.columns
-   WHERE table_name = 'strava_connections' ORDER BY ordinal_position`,
-)) as { column_name: string; data_type: string; is_nullable: string }[];
-
-console.log("\nstrava_connections:");
-for (const column of columns) {
-  console.log(`  ${column.column_name.padEnd(24)} ${column.data_type} ${column.is_nullable === "NO" ? "NOT NULL" : ""}`);
+for (const table of ["strava_connections", "strava_oauth_states"]) {
+  const columns = (await sql.query(
+    `SELECT column_name, data_type FROM information_schema.columns
+     WHERE table_name = $1 ORDER BY ordinal_position`,
+    [table],
+  )) as { column_name: string; data_type: string }[];
+  if (columns.length === 0) throw new Error(`${table} was not created`);
+  console.log(`\n${table}: ${columns.map((c) => c.column_name).join(", ")}`);
 }
-if (columns.length === 0) throw new Error("The table was not created");
