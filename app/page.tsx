@@ -1,6 +1,7 @@
 import { PactHub } from "@/components/pact-hub";
 import { ReleaseActions } from "@/components/release-actions";
 import { SocialLeaderboard } from "@/components/social-leaderboard";
+import { StravaConnect } from "@/components/strava-connect";
 
 export default function Home() {
   return (
@@ -15,6 +16,9 @@ export default function Home() {
         <div className="hero-mark" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="lock-core"><span>NO</span><strong>EXCUSES</strong></div></div>
         <div className="proof-strip"><span>VERIFIED ON STRAVA</span><b>PVP PAYOUTS</b><i>SETTLED ON MONAD</i></div>
       </section>
+      {/* Strava sends the athlete back to this page, so the outcome of the authorization is read here.
+          The card hides itself until a wallet is connected. */}
+      <section className="home-strava"><StravaConnect /></section>
       <PactHub />
       <SocialLeaderboard />
       <section className="mechanic">

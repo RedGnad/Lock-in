@@ -86,7 +86,7 @@ export function SocialLeaderboard({ full = false }: { full?: boolean }) {
           <span className="social-kicker">THE LOCK BOARD · LIVE ON MONAD</span>
           <h2 id={full ? "full-leaderboard-title" : "home-leaderboard-title"}>Proof earns rank.</h2>
         </div>
-        <p>Ten points per verified UTC day. A bigger stake, extra distance, extra XP, or multiple Locks cannot multiply a day&apos;s score.</p>
+        <p>Ten points per verified UTC day. A bigger stake, extra distance, or multiple Locks cannot multiply a day&apos;s score.</p>
       </header>
 
       <div className="social-tabs" role="tablist" aria-label="Leaderboard mission">

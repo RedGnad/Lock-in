@@ -18,6 +18,27 @@ function sameWallet(first: string | undefined, second: string): boolean {
   return Boolean(first && first.toLowerCase() === second.toLowerCase());
 }
 
+/**
+ * Whether a wallet session already exists, WITHOUT asking the wallet to sign.
+ *
+ * Reading whether Strava is connected must not pop a signature request the moment the page loads. This
+ * answers from the existing cookie only, so an unauthenticated visitor simply sees the connect button.
+ */
+export async function hasWalletSession(walletAddress: string): Promise<boolean> {
+  if (!/^0x[0-9a-f]{40}$/i.test(walletAddress)) return false;
+  try {
+    const response = await fetch(`/api/auth/session?${new URLSearchParams({ walletAddress })}`, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    const session = await responseJson(response);
+    return response.ok && Boolean(session.authenticated) && sameWallet(session.walletAddress, walletAddress);
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureWalletSession(
   walletAddress: string,
   signMessage: SignWalletMessage,

@@ -425,6 +425,19 @@ a { color: inherit; }
 .proof-prep span { font-size: 10px; font-weight: 950; letter-spacing: .12em; }
 .proof-prep code { overflow-wrap: anywhere; color: var(--acid); font: 900 14px/1.3 Arial, sans-serif; }
 .proof-prep small { color: var(--muted); font: 13px/1.35 Georgia, serif; }
+.home-strava { width: min(1180px, 100%); margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px); }
+.strava-connect { flex: 0 0 100%; padding: 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; border: 1px solid var(--ink); background: var(--surface); }
+.strava-connect-body { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.strava-connect-body > div { min-width: 0; display: grid; gap: 5px; }
+.strava-connect b { font-size: 14px; font-weight: 950; letter-spacing: -.01em; }
+.strava-connect small { color: var(--muted); font: 13px/1.35 Georgia, serif; }
+.strava-connect .lock-button, .strava-connect .secondary-button { width: auto; }
+.strava-dot { width: 10px; height: 10px; flex: 0 0 auto; border: 1px solid var(--ink); border-radius: 50%; }
+.strava-dot.on { background: var(--acid); }
+.strava-dot.off { background: transparent; }
+.strava-confirm { flex: 0 0 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.strava-confirm p { flex: 0 0 100%; margin: 0; color: var(--muted); font: 13px/1.4 Georgia, serif; }
+
 .proof-disclosure { padding: 12px 14px; border-left: 3px solid var(--acid); color: var(--ink); background: rgba(255, 255, 255, .45); font: 13px/1.45 Arial, sans-serif !important; }
 .proof-disclosure strong { font-weight: 900; }
 .proof-disclosure-inline { flex: 0 0 100%; margin: 0 !important; }
@@ -571,6 +584,8 @@ footer div { display: flex; gap: 22px; }
   .pact-actions { align-items: stretch; flex-direction: column; }
   .pact-actions .lock-button { width: 100%; }
   .proof-prep { align-items: stretch; flex-direction: column; }
+  .strava-connect { align-items: stretch; flex-direction: column; }
+  .strava-connect .lock-button, .strava-connect .secondary-button { width: 100%; }
   .dialog-backdrop { padding: 12px; align-items: end; }
   .action-dialog { width: 100%; max-height: calc(100vh - 24px); padding: 25px 20px; box-shadow: none; }
   .dialog-actions { grid-template-columns: 1fr; }
