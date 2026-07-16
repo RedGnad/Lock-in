@@ -4,9 +4,8 @@ import { resolve } from "node:path";
 import { ReclaimProofRequest, fetchStatusUrl, type Proof } from "@reclaimprotocol/js-sdk";
 import { getAddress, isAddress } from "viem";
 
-// Flexible Strava proof capture used to compare provider versions.
-// Mirrors the app Strava request: context = wallet + "pactId:dayIndex", param
-// context_challenge = the daily proof code that must equal the activity title.
+// Strava proof capture. Mirrors the app request: context = wallet + "pactId:dayIndex", and no
+// parameter at all: 7.0.0 reads the athlete's most recent run rather than a titled one.
 // Diagnostic only: no stake, no deploy, no gate flip.
 
 function required(name: string): string {
@@ -16,11 +15,7 @@ function required(name: string): string {
 }
 
 const providerId = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-const providerVersion = (process.argv[2] || process.env.STRAVA_VERSION || "6.0.0").trim();
-const proofCode = (process.argv[3] || process.env.STRAVA_PROOF_CODE || "").trim();
-if (!/^LI-[A-Z0-9]{16,28}D(?:0[1-9]|[12][0-9]|30)$/.test(proofCode)) {
-  throw new Error("Usage: pnpm tsx scripts/capture-strava-proof.ts <version> <LI-...D01>");
-}
+const providerVersion = (process.argv[2] || process.env.STRAVA_VERSION || "7.0.0").trim();
 const rawWallet = process.env.WALLET_ADDRESS?.trim() || "0x000000000000000000000000000000000000dEaD";
 if (!isAddress(rawWallet)) throw new Error("WALLET_ADDRESS is invalid");
 const wallet = getAddress(rawWallet).toLowerCase();
@@ -37,14 +32,13 @@ async function main() {
     preferredLocale: "en",
   });
   request.setContext(wallet, "0:0");
-  request.setParams({ context_challenge: proofCode });
 
   const sessionId = request.getSessionId();
   const appMode = process.argv.includes("--app");
   const requestUrl = appMode
     ? await request.getRequestUrl({ verificationMode: "app" } as never)
     : await request.getRequestUrl();
-  console.log(JSON.stringify({ sessionId, provider: `${providerId}@${providerVersion}`, mode: appMode ? "app" : "portal", proofCode, contextAddress: wallet }, null, 2));
+  console.log(JSON.stringify({ sessionId, provider: `${providerId}@${providerVersion}`, mode: appMode ? "app" : "portal", contextAddress: wallet }, null, 2));
   console.log("REQUEST_URL:", requestUrl);
 
   if (openCdp) {
