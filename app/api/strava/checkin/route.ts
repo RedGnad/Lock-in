@@ -7,7 +7,7 @@ import { signCompletion } from "@/src/completion-attestation";
 import { lockInAbi, STRAVA_RUN_MISSION } from "@/src/lock-in-abi";
 import { loadProofPolicy } from "@/src/pact-server";
 import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
-import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
+import { checkRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 import {
   fetchStravaActivities,
   selectQualifyingRun,
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   try {
     const body = await readJsonBody<Record<string, unknown>>(request, 8 * 1_024);
     const walletSession = requireWalletAuthSession(request, String(body.walletAddress || ""));
-    const rateLimit = checkReclaimRateLimit("verify", request, walletSession.walletAddress);
+    const rateLimit = checkRateLimit("verify", request, walletSession.walletAddress);
     if (!rateLimit.allowed) {
       return NextResponse.json({ error: "Too many check-ins. Try again shortly." }, {
         status: 429,

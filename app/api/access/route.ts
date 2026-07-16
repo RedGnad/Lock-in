@@ -13,7 +13,7 @@ import { escrowAddress, lockInPublicClient } from "@/src/chain";
 import { lockInAbi } from "@/src/lock-in-abi";
 import { hashPactConfiguration, type PactConfiguration } from "@/src/pact-configuration";
 import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
-import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
+import { checkRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 import {
   requireWalletAuthSession,
   walletAuthErrorStatus,
@@ -43,7 +43,6 @@ const RELEASE_TEMPLATES = new Map([[3, 3], [7, 5], [14, 10], [30, 20]]);
 const RELEASE_STAKES = new Set([100_000n, 500_000n, 1_000_000n]);
 const RELEASE_CAPACITIES = new Set([2, 4, 8]);
 const STRAVA_TARGETS = new Set([1_000, 3_000, 5_000, 10_000]);
-const DUOLINGO_TARGETS = new Set([10, 20, 30, 50]);
 
 function exactInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value)) throw new Error(`Invalid ${label}`);
@@ -79,11 +78,7 @@ function releaseConfiguration(body: AccessBody["configuration"], chainNow: bigin
       || configuration.startsAt > chainNow + 3n * 60n * 60n
   ) throw new Error("The registration window must last between one and three hours");
   if (
-    configuration.missionType === 1
-      ? !STRAVA_TARGETS.has(configuration.dailyTarget)
-      : configuration.missionType === 2
-        ? !DUOLINGO_TARGETS.has(configuration.dailyTarget)
-        : true
+    configuration.missionType !== 1 || !STRAVA_TARGETS.has(configuration.dailyTarget)
   ) throw new Error("Choose a supported mission target");
   return configuration;
 }
@@ -95,7 +90,7 @@ function accessSignerKey(): Hex {
 }
 
 export async function POST(request: Request) {
-  const rateLimit = checkReclaimRateLimit("access", request);
+  const rateLimit = checkRateLimit("access", request);
   if (!rateLimit.allowed) {
     return NextResponse.json({ error: "Too many access requests. Try again later." }, {
       status: 429,

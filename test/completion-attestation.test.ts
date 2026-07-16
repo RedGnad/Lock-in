@@ -3,10 +3,8 @@ import test from "node:test";
 import { recoverTypedDataAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import {
-  baselineTypes,
   attestationExpiry,
   completionTypes,
-  signBaseline,
   signCompletion,
 } from "../src/completion-attestation.js";
 
@@ -15,42 +13,11 @@ const ACCOUNT = privateKeyToAccount(PRIVATE_KEY);
 const ESCROW = "0x1111111111111111111111111111111111111111";
 const domain = { name: "Lock In", version: "1", chainId: 143, verifyingContract: ESCROW } as const;
 
-test("attestation expiry never outlives either the signer or oldest-proof freshness window", () => {
+test("attestation expiry never outlives either the signer window or the oldest observation", () => {
   assert.equal(attestationExpiry(1_000n, [950, 960]), 1_300n);
   assert.equal(attestationExpiry(1_000n, [650, 990]), 1_250n);
   assert.throws(() => attestationExpiry(1_000n, [400]), /expired before it could be attested/);
-  assert.throws(() => attestationExpiry(1_000n, []), /valid proof timestamp/);
-});
-
-test("baseline signature includes its issue time in the release domain", async () => {
-  const baseline = {
-    pactId: 0n,
-    account: ACCOUNT.address,
-    missionType: 2,
-    policyHash: `0x${"66".repeat(32)}` as const,
-    sessionIdHash: `0x${"77".repeat(32)}` as const,
-    identityHash: `0x${"11".repeat(32)}` as const,
-    metric: 8_193n,
-    proofSetHash: `0x${"22".repeat(32)}` as const,
-    observedAt: 1_800_000_000n,
-    issuedAt: 1_800_000_010n,
-    expiresAt: 1_800_000_310n,
-  };
-  const signature = await signBaseline({ privateKey: PRIVATE_KEY, chainId: 143, verifyingContract: ESCROW, baseline });
-  assert.equal(await recoverTypedDataAddress({
-    domain,
-    types: baselineTypes,
-    primaryType: "Baseline",
-    message: baseline,
-    signature,
-  }), ACCOUNT.address);
-  assert.notEqual(await recoverTypedDataAddress({
-    domain,
-    types: baselineTypes,
-    primaryType: "Baseline",
-    message: { ...baseline, issuedAt: baseline.issuedAt + 1n },
-    signature,
-  }), ACCOUNT.address);
+  assert.throws(() => attestationExpiry(1_000n, []), /valid observation timestamp/);
 });
 
 test("completion signature binds day, mission, metric, occurrence, issue time, and contract", async () => {

@@ -4,7 +4,7 @@ export const LOCK_SCORE_PER_VERIFIED_DAY = 10;
 export const RUNNING_MISSION_TYPE = 1;
 export const LEARNING_MISSION_TYPE = 2;
 
-export type LeaderboardFilter = "overall" | "running" | "learning";
+export type LeaderboardFilter = "overall" | "running";
 export type ScoreDayEvent = { account: Address | string; utcDay: bigint | number | string };
 export type MissionDayScoreEvent = ScoreDayEvent & { missionType: number };
 export type PlayerHandleEvent = { account: Address | string; handle: string };
@@ -102,13 +102,12 @@ function buildEntries(
 
 /**
  * Rebuilds the public rankings from deduplicated onchain day events. Amount
- * staked, distance, XP and the number of Locks completed on one day are absent
+ * staked, distance and the number of Locks completed on one day are absent
  * by design: one wallet can earn at most ten points per UTC day in each table.
  */
 export function buildSocialLeaderboards({ scoreEvents, missionEvents, handleEvents = [], visibilityEvents = [], now = Date.now() }: BuildLeaderboardInput): SocialLeaderboardData {
   const overallDays = new Map<string, Set<bigint>>();
   const runningDays = new Map<string, Set<bigint>>();
-  const learningDays = new Map<string, Set<bigint>>();
   const handles = new Map<string, string>();
   const hiddenProfiles = new Set<string>();
   const accounts = new Map<string, Address>();
@@ -121,12 +120,7 @@ export function buildSocialLeaderboards({ scoreEvents, missionEvents, handleEven
   for (const event of missionEvents) {
     const key = addressKey(event.account);
     accounts.set(key, event.account as Address);
-    const target = event.missionType === RUNNING_MISSION_TYPE
-      ? runningDays
-      : event.missionType === LEARNING_MISSION_TYPE
-        ? learningDays
-        : null;
-    if (target) addDay(target, key, utcDay(event.utcDay));
+    if (event.missionType === RUNNING_MISSION_TYPE) addDay(runningDays, key, utcDay(event.utcDay));
   }
   for (const event of handleEvents) {
     const key = addressKey(event.account);
@@ -153,7 +147,6 @@ export function buildSocialLeaderboards({ scoreEvents, missionEvents, handleEven
     leaderboards: {
       overall: buildEntries(overallDays, overallDays, handles, hiddenProfiles, accounts, weekStart),
       running: buildEntries(runningDays, overallDays, handles, hiddenProfiles, accounts, weekStart),
-      learning: buildEntries(learningDays, overallDays, handles, hiddenProfiles, accounts, weekStart),
     },
   };
 }

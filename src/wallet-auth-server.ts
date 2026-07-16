@@ -189,7 +189,7 @@ function challengeMessage(payload: WalletAuthChallengePayload): string {
   return [
     "Lock In wallet authentication",
     "",
-    "Sign this message to let this browser request Reclaim proofs for 12 hours.",
+    "Sign this message to let this browser check in your runs for 12 hours.",
     "This does not submit a transaction, approve tokens, or move funds.",
     "",
     `Domain: ${domain}`,

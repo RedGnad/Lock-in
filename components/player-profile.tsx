@@ -113,7 +113,7 @@ export function PlayerProfile() {
       <div className="player-profile-copy">
         <span>YOUR LOCK IN PROFILE</span>
         <h2 id="player-profile-title">{address ? currentHandle && !profileHidden ? `@${currentHandle}` : profileHidden ? "Handle hidden." : "Claim your name." : "Connect to join the board."}</h2>
-        <p>This optional handle is only for Lock In leaderboards. It never changes your Strava or Duolingo name.</p>
+        <p>This optional handle is only for Lock In leaderboards. It never changes your Strava name.</p>
       </div>
       <div className="profile-score"><strong>{address ? lockScore.toString() : "—"}</strong><span>ALL-TIME LOCK SCORE</span></div>
       {address && <form className="profile-form" onSubmit={save}>

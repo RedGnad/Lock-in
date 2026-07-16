@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readJsonBody } from "@/src/api-guard";
-import { checkReclaimRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
+import { checkRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 import { issueStravaState, stravaAuthorizeUrl } from "@/src/strava-oauth";
 import {
   requireWalletAuthSession,
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   try {
     const body = await readJsonBody<Record<string, unknown>>(request, 4 * 1_024);
     const walletSession = requireWalletAuthSession(request, String(body.walletAddress || ""));
-    const rateLimit = checkReclaimRateLimit("session", request, walletSession.walletAddress);
+    const rateLimit = checkRateLimit("session", request, walletSession.walletAddress);
     if (!rateLimit.allowed) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, {
         status: 429,

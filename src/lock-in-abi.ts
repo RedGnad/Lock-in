@@ -60,23 +60,8 @@ const completionComponents = [
   { name: "signature", type: "bytes" },
 ] as const;
 
-export const reclaimClaimInfoComponents = [
-  { name: "provider", type: "string" },
-  { name: "parameters", type: "string" },
-  { name: "context", type: "string" },
-] as const;
 
-export const reclaimCompleteClaimComponents = [
-  { name: "identifier", type: "bytes32" },
-  { name: "owner", type: "address" },
-  { name: "timestampS", type: "uint32" },
-  { name: "epoch", type: "uint32" },
-] as const;
 
-export const reclaimSignedClaimComponents = [
-  { name: "claim", type: "tuple", components: reclaimCompleteClaimComponents },
-  { name: "signatures", type: "bytes[]" },
-] as const;
 
 
 const accessComponents = [
@@ -206,7 +191,6 @@ export const lockInAbi = [
   { type: "event", name: "PactJoined", anonymous: false, inputs: [{ indexed: true, name: "pactId", type: "uint256" }, { indexed: true, name: "account", type: "address" }] },
   { type: "event", name: "IdentityBound", anonymous: false, inputs: [{ indexed: true, name: "pactId", type: "uint256" }, { indexed: true, name: "account", type: "address" }, { indexed: true, name: "identityHash", type: "bytes32" }] },
   { type: "event", name: "BaselineAccepted", anonymous: false, inputs: [{ indexed: true, name: "pactId", type: "uint256" }, { indexed: true, name: "account", type: "address" }, { indexed: true, name: "identityHash", type: "bytes32" }, { indexed: false, name: "totalMetric", type: "uint64" }] },
-  { type: "event", name: "DuolingoIdentityReleased", anonymous: false, inputs: [{ indexed: true, name: "pactId", type: "uint256" }, { indexed: true, name: "account", type: "address" }, { indexed: true, name: "identityHash", type: "bytes32" }] },
   { type: "event", name: "CompletionAccepted", anonymous: false, inputs: [{ indexed: true, name: "pactId", type: "uint256" }, { indexed: true, name: "account", type: "address" }, { indexed: true, name: "dayIndex", type: "uint8" }, { indexed: false, name: "missionType", type: "uint8" }, { indexed: false, name: "eventNullifier", type: "bytes32" }, { indexed: false, name: "metric", type: "uint64" }, { indexed: false, name: "occurredAt", type: "uint64" }] },
   { type: "event", name: "PactCancelled", anonymous: false, inputs: [{ indexed: true, name: "pactId", type: "uint256" }] },
   { type: "event", name: "PactFinalized", anonymous: false, inputs: [{ indexed: true, name: "pactId", type: "uint256" }, { indexed: false, name: "pool", type: "uint256" }, { indexed: false, name: "eligibleClaimants", type: "uint256" }, { indexed: false, name: "finishers", type: "uint256" }, { indexed: false, name: "cancelled", type: "bool" }] },

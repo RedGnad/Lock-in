@@ -12,9 +12,8 @@ type LeaderboardApiResponse = SocialLeaderboardData & {
 };
 
 const FILTERS: { id: LeaderboardFilter; label: string; detail: string }[] = [
-  { id: "overall", label: "Overall", detail: "Any verified mission" },
+  { id: "overall", label: "Overall", detail: "Any verified day" },
   { id: "running", label: "Running", detail: "Strava days" },
-  { id: "learning", label: "Learning", detail: "Duolingo days" },
 ];
 
 function compactAddress(address: string) {

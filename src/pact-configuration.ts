@@ -1,7 +1,6 @@
 import { encodeAbiParameters, keccak256, stringToHex, type Hash } from "viem";
 
 export const STRAVA_MISSION_POLICY_ID = keccak256(stringToHex("LOCK_IN_POLICY_STRAVA_RUN"));
-export const DUOLINGO_MISSION_POLICY_ID = keccak256(stringToHex("LOCK_IN_POLICY_DUOLINGO_XP"));
 
 export type PactConfiguration = Readonly<{
   stake: bigint;
@@ -16,7 +15,6 @@ export type PactConfiguration = Readonly<{
 
 export function missionPolicyIdForType(missionType: number): Hash {
   if (missionType === 1) return STRAVA_MISSION_POLICY_ID;
-  if (missionType === 2) return DUOLINGO_MISSION_POLICY_ID;
   throw new Error("Unsupported mission");
 }
 

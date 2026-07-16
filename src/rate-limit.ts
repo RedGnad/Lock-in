@@ -130,28 +130,28 @@ export function clientIpFromRequest(request: Request): string {
   );
 }
 
-export const reclaimRateLimitPolicies = {
+export const rateLimitPolicies = {
   access: { limit: 10, windowMs: 10 * 60_000, maxEntries: 5_000 },
   session: { limit: 30, windowMs: 10 * 60_000, maxEntries: 5_000 },
   status: { limit: 180, windowMs: 10 * 60_000, maxEntries: 10_000 },
   verify: { limit: 10, windowMs: 10 * 60_000, maxEntries: 5_000 },
 } as const;
 
-export type ReclaimRateLimitKind = keyof typeof reclaimRateLimitPolicies;
+export type RateLimitKind = keyof typeof rateLimitPolicies;
 
-const reclaimLimiters: Record<ReclaimRateLimitKind, FixedWindowRateLimiter> = {
-  access: new FixedWindowRateLimiter(reclaimRateLimitPolicies.access),
-  session: new FixedWindowRateLimiter(reclaimRateLimitPolicies.session),
-  status: new FixedWindowRateLimiter(reclaimRateLimitPolicies.status),
-  verify: new FixedWindowRateLimiter(reclaimRateLimitPolicies.verify),
+const limiters: Record<RateLimitKind, FixedWindowRateLimiter> = {
+  access: new FixedWindowRateLimiter(rateLimitPolicies.access),
+  session: new FixedWindowRateLimiter(rateLimitPolicies.session),
+  status: new FixedWindowRateLimiter(rateLimitPolicies.status),
+  verify: new FixedWindowRateLimiter(rateLimitPolicies.verify),
 };
 
-export function checkReclaimRateLimit(
-  kind: ReclaimRateLimitKind,
+export function checkRateLimit(
+  kind: RateLimitKind,
   request: Request,
   signedScope?: string,
 ): RateLimitDecision {
-  return reclaimLimiters[kind].check(rateLimitKeyForRequest(request, signedScope));
+  return limiters[kind].check(rateLimitKeyForRequest(request, signedScope));
 }
 
 export function rateLimitKeyForRequest(request: Request, signedScope?: string): string {

@@ -43,13 +43,12 @@ test("keeps Running and Learning independent while overall stays deduplicated", 
     missionEvents: [
       { account: ALICE, missionType: 1, utcDay: MONDAY },
       { account: ALICE, missionType: 1, utcDay: MONDAY },
-      { account: ALICE, missionType: 2, utcDay: MONDAY },
     ],
   });
 
+  // Two runs on one UTC day are still ten points: the table counts days, not activities.
   assert.equal(data.leaderboards.overall[0].weeklyScore, 10);
   assert.equal(data.leaderboards.running[0].weeklyScore, 10);
-  assert.equal(data.leaderboards.learning[0].weeklyScore, 10);
 });
 
 test("shows category all-time points, total Lock Score and the latest optional handle", () => {

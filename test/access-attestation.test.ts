@@ -10,7 +10,6 @@ import {
   type AccessAttestation,
 } from "../src/access-attestation.js";
 import {
-  DUOLINGO_MISSION_POLICY_ID,
   STRAVA_MISSION_POLICY_ID,
   hashPactConfiguration,
   missionPolicyIdForType,
@@ -31,11 +30,12 @@ const configuration = {
   missionType: 1,
 } as const;
 
-test("mission policy identifiers are stable and mission-specific", () => {
+test("the mission policy identifier is stable, and an unknown mission is refused", () => {
   assert.equal(missionPolicyIdForType(1), STRAVA_MISSION_POLICY_ID);
-  assert.equal(missionPolicyIdForType(2), DUOLINGO_MISSION_POLICY_ID);
-  assert.notEqual(STRAVA_MISSION_POLICY_ID, DUOLINGO_MISSION_POLICY_ID);
-  assert.throws(() => missionPolicyIdForType(3), /Unsupported mission/);
+  // Strava is the only mission: anything else must be refused rather than silently defaulted.
+  for (const unknown of [0, 2, 3, 255]) {
+    assert.throws(() => missionPolicyIdForType(unknown), /Unsupported mission/);
+  }
 });
 
 test("pact configuration hash binds every user-controlled field", () => {
@@ -48,9 +48,11 @@ test("pact configuration hash binds every user-controlled field", () => {
     { ...configuration, minParticipants: 3 },
     { ...configuration, maxParticipants: 8 },
     { ...configuration, startsAt: configuration.startsAt + 1n },
-    { ...configuration, missionType: 2 },
   ];
   for (const mutation of mutations) assert.notEqual(hashPactConfiguration(mutation), expected);
+  // missionType is bound too, but there is only one mission now: an unknown one cannot be hashed at all,
+  // so it can never reach an access pass.
+  assert.throws(() => hashPactConfiguration({ ...configuration, missionType: 2 }), /Unsupported mission/);
 });
 
 test("access signature binds account, action, pact, configuration, issue time, and expiry", async () => {
