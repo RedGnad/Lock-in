@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { zeroAddress, type Address } from "viem";
 import { usePublicClient, useReadContracts } from "wagmi";
 import { escrowAddress, escrowDeploymentBlock } from "@/src/chain";
+import { readEventsInChunks } from "@/src/monad-logs";
 import { lockInAbi } from "@/src/lock-in-abi";
 
 function compactAddress(address: Address) {
@@ -38,23 +39,26 @@ export function PactCrew({ pactId, participantCount, durationDays, requiredCompl
     async function loadCrew() {
       if (!publicClient || !escrowAddress) return;
       try {
+        // Paged: a single scan to "latest" exceeds Monad's RPC block-range cap and comes back as a 413,
+        // which this component would show as an empty crew.
+        const latestBlock = await publicClient.getBlockNumber();
         const [joinLogs, highFiveLogs] = await Promise.all([
-          publicClient.getContractEvents({
+          readEventsInChunks(publicClient, {
             address: escrowAddress,
             abi: lockInAbi,
             eventName: "PactJoined",
             args: { pactId },
             fromBlock: escrowDeploymentBlock,
-            toBlock: "latest",
-          }),
-          publicClient.getContractEvents({
+            toBlock: latestBlock,
+          }) as Promise<{ args: { account?: Address } }[]>,
+          readEventsInChunks(publicClient, {
             address: escrowAddress,
             abi: lockInAbi,
             eventName: "HighFiveSent",
             args: { pactId },
             fromBlock: escrowDeploymentBlock,
-            toBlock: "latest",
-          }),
+            toBlock: latestBlock,
+          }) as Promise<{ args: { from?: Address; to?: Address; dayIndex?: number } }[]>,
         ]);
         const unique = Array.from(new Set(joinLogs.map((log) => log.args.account).filter(Boolean))) as Address[];
         const reactions = highFiveLogs.flatMap((log) => {

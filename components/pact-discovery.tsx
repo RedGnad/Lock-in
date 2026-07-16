@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { formatUnits, zeroAddress, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useReadContracts } from "wagmi";
 import { escrowAddress, escrowDeploymentBlock } from "@/src/chain";
+import { readEventsInChunks } from "@/src/monad-logs";
 import { lockInAbi, type PactTuple } from "@/src/lock-in-abi";
 import { decodeLockInviteCode, encodeLockInviteCode } from "@/src/lock-invite";
 import { formatMissionTarget, missionByType } from "@/src/missions";
@@ -55,14 +56,15 @@ export function PactDiscovery() {
         return;
       }
       try {
-        const logs = await publicClient.getContractEvents({
+        const latestBlock = await publicClient.getBlockNumber();
+        const logs = await readEventsInChunks(publicClient, {
           address: escrowAddress,
           abi: lockInAbi,
           eventName: "PactJoined",
           args: { account: address },
           fromBlock: escrowDeploymentBlock,
-          toBlock: "latest",
-        });
+          toBlock: latestBlock,
+        }) as { args: { pactId?: bigint } }[];
         const ids = Array.from(new Set(logs.map((log) => log.args.pactId).filter((id): id is bigint => id !== undefined))).sort((a, b) => a > b ? -1 : 1);
         if (alive) setMyPactIds(ids.slice(0, 6));
       } catch {

@@ -13,7 +13,16 @@ import {
 export const dynamic = "force-dynamic";
 
 const CACHE_TTL_MS = 15_000;
-const FALLBACK_BLOCK_RANGE = 10_000n;
+/**
+ * Monad's public RPCs cap eth_getLogs by BLOCK RANGE, and the caps are small on purpose: a block lands
+ * every 400ms and carries far more than an Ethereum block. QuickNode's rpc.monad.xyz allows 100 and
+ * answers HTTP 413 above it; Alchemy's rpc1.monad.xyz allows 1,000 blocks or 10,000 logs, whichever binds
+ * first. https://docs.monad.xyz/reference/rpc-limits
+ *
+ * 1,000 is the documented ceiling of the endpoint we point at. Raising it past what the provider allows
+ * does not fail loudly, it fails as a 413 that this route turns into a 503.
+ */
+const FALLBACK_BLOCK_RANGE = 1_000n;
 const successHeaders = { "Cache-Control": "public, s-maxage=15, must-revalidate" };
 const failureHeaders = { "Cache-Control": "no-store", "Retry-After": "15" };
 
