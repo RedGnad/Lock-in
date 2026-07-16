@@ -60,6 +60,9 @@ export async function POST(request: Request) {
     const proofRequest = await ReclaimProofRequest.init(required("ID"), required("SECRET"), providerId, {
       providerVersion,
       acceptTeeAttestation: true,
+      // Explicit even though false is the documented default: Lock In only settles proofs produced by
+      // the exact deterministic provider version, never by an AI provider path.
+      acceptAiProviders: false,
       canAutoSubmit: true,
       preferredLocale: "en",
     });

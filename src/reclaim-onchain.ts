@@ -166,6 +166,48 @@ function canonicalClaimContext(context: string): string {
   }
 }
 
+/** The only terminal Reclaim state Lock In accepts. Notably NOT AI_PROOF_SUBMITTED. */
+export const RECLAIM_PROOF_SUBMITTED = "PROOF_SUBMITTED";
+
+export type ReclaimSessionSummary = Readonly<{
+  sessionId?: string;
+  appId?: string;
+  providerId?: string;
+  providerVersionString?: string;
+  statusV2?: string;
+  proofs?: unknown;
+}>;
+
+/**
+ * Fail-closed provenance gate on the Reclaim session itself, checked before any proof byte is trusted.
+ *
+ * The signed context carries an `isAiProof` flag that Lock In deliberately does not use as a trust
+ * selector (verifyProof applies signature, content pin and TEE checks regardless of it). Trust is
+ * established here instead: the session must have been executed by the exact pinned provider and
+ * version, under our application, and must have reached the deterministic PROOF_SUBMITTED terminal
+ * state. That rejects AI_PROOF_SUBMITTED and every unknown state explicitly.
+ */
+export function assertReclaimSessionProvenance(input: {
+  session: ReclaimSessionSummary | undefined;
+  expected: Readonly<{ sessionId: string; appId: string; providerId: string; providerVersion: string }>;
+}): void {
+  const { session, expected } = input;
+  if (!session) reject("Reclaim session is incomplete");
+  if (!expected.appId) reject("Reclaim application id is not configured");
+  if (session.sessionId !== expected.sessionId) reject("Reclaim session mismatch");
+  if (typeof session.appId !== "string" || session.appId.toLowerCase() !== expected.appId.toLowerCase()) {
+    reject("Reclaim application mismatch");
+  }
+  if (session.providerId !== expected.providerId) reject("Reclaim provider mismatch");
+  if (session.providerVersionString !== expected.providerVersion) {
+    reject("Reclaim provider version mismatch");
+  }
+  if (session.statusV2 !== RECLAIM_PROOF_SUBMITTED) {
+    reject(`Unexpected Reclaim submission state: ${String(session.statusV2)}`);
+  }
+  if (!session.proofs) reject("Reclaim proof set is absent");
+}
+
 /**
  * Accept only the concrete JSON shape returned by the Reclaim SDK. In particular,
  * signatures must remain an array: accepting a hand-shaped singular signature here

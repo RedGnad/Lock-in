@@ -438,6 +438,21 @@ contract LockInStravaReclaimVerifierTest {
         _assertRejected(proofs, _policy());
     }
 
+    /// @dev The flags are not a trust selector, but a bundle must be homogeneous: one claim classified
+    ///      differently from the other is not a coherent proof set.
+    function testRejectsHeterogeneousProvenanceFlags() public {
+        Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
+        proofs[1].claimInfo.context = _replaceOnce(proofs[1].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":false");
+        proofs[1] = _rebindAndSign(proofs[1], WITNESS_KEY);
+        _assertRejected(proofs, _policy());
+
+        proofs = _validProofs(WITNESS_KEY);
+        proofs[1].claimInfo.context =
+            _replaceOnce(proofs[1].claimInfo.context, "\"isPortalProof\":true", "\"isPortalProof\":false");
+        proofs[1] = _rebindAndSign(proofs[1], WITNESS_KEY);
+        _assertRejected(proofs, _policy());
+    }
+
     function _validProofs(uint256 signerKey) private returns (Reclaim.Proof[] memory proofs) {
         proofs = new Reclaim.Proof[](2);
         for (uint8 role; role < 2; ++role) {

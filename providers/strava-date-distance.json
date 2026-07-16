@@ -2,7 +2,7 @@
   "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
   "version": "6.0.0",
   "name": "Lock In Strava authenticated GPS activity",
-  "status": "two-claim-redesign",
+  "status": "two-claim-live-capture-verified",
   "loginUrl": "https://www.strava.com/athlete/training",
   "useIncognitoWebview": false,
   "description": "Proves a logged-in Strava athlete and a challenge-bound Run using canonical activity id, title, UTC start time, distance, GPS, trainer, Strava flag, and signed motion metrics.",
@@ -29,7 +29,10 @@
       "method": "GET",
       "credentials": "include",
       "responseMatches": [
-        { "type": "contains", "value": "\",\n   {{marker}},\n   " }
+        {
+          "type": "contains",
+          "value": "\",\n   {{marker}},\n   "
+        }
       ],
       "responseRedactions": [
         {
@@ -45,30 +48,96 @@
       "method": "GET",
       "credentials": "include",
       "responseMatches": [
-        { "type": "contains", "value": "\"id\":{{id}}" },
-        { "type": "contains", "value": "\"name\":\"{{name}}\"" },
-        { "type": "contains", "value": "\"sport_type\":\"{{type}}\"" },
-        { "type": "contains", "value": "\"start_time\":\"{{time}}\"" },
-        { "type": "contains", "value": "\"distance_raw\":{{raw}}" },
-        { "type": "contains", "value": "\"flagged\":{{flagged}}" },
-        { "type": "contains", "value": "\"moving_time_raw\":{{moving}}" },
-        { "type": "contains", "value": "\"elapsed_time_raw\":{{elapsed}}" },
-        { "type": "contains", "value": "\"elevation_gain_raw\":{{elevation}}" },
-        { "type": "contains", "value": "\"has_latlng\":{{latlng}}" },
-        { "type": "contains", "value": "\"trainer\":{{trainer}}" }
+        {
+          "type": "contains",
+          "value": "\"id\":{{id}}"
+        },
+        {
+          "type": "contains",
+          "value": "\"name\":\"{{name}}\""
+        },
+        {
+          "type": "contains",
+          "value": "\"sport_type\":\"{{type}}\""
+        },
+        {
+          "type": "contains",
+          "value": "\"start_time\":\"{{time}}\""
+        },
+        {
+          "type": "contains",
+          "value": "\"distance_raw\":{{raw}}"
+        },
+        {
+          "type": "contains",
+          "value": "\"flagged\":{{flagged}}"
+        },
+        {
+          "type": "contains",
+          "value": "\"moving_time_raw\":{{moving}}"
+        },
+        {
+          "type": "contains",
+          "value": "\"elapsed_time_raw\":{{elapsed}}"
+        },
+        {
+          "type": "contains",
+          "value": "\"elevation_gain_raw\":{{elevation}}"
+        },
+        {
+          "type": "contains",
+          "value": "\"has_latlng\":{{latlng}}"
+        },
+        {
+          "type": "contains",
+          "value": "\"trainer\":{{trainer}}"
+        }
       ],
       "responseRedactions": [
-        { "jsonPath": "$.models[0].id", "regex": "\"id\":(?<id>\\d+)" },
-        { "jsonPath": "$.models[0].name", "regex": "\"name\":\"(?<name>[^\"<>\\n]+)\"" },
-        { "jsonPath": "$.models[0].sport_type", "regex": "\"sport_type\":\"(?<type>[A-Za-z0-9_-]+)\"" },
-        { "jsonPath": "$.models[0].start_time", "regex": "\"start_time\":\"(?<time>[^\"<>\\n]+)\"" },
-        { "jsonPath": "$.models[0].distance_raw", "regex": "\"distance_raw\":(?<raw>\\d+)" },
-        { "jsonPath": "$.models[0].flagged", "regex": "\"flagged\":(?<flagged>true|false)" },
-        { "jsonPath": "$.models[0].moving_time_raw", "regex": "\"moving_time_raw\":(?<moving>\\d+)" },
-        { "jsonPath": "$.models[0].elapsed_time_raw", "regex": "\"elapsed_time_raw\":(?<elapsed>\\d+)" },
-        { "jsonPath": "$.models[0].elevation_gain_raw", "regex": "\"elevation_gain_raw\":(?<elevation>\\d+)" },
-        { "jsonPath": "$.models[0].has_latlng", "regex": "\"has_latlng\":(?<latlng>true|false)" },
-        { "jsonPath": "$.models[0].trainer", "regex": "\"trainer\":(?<trainer>true|false)" }
+        {
+          "jsonPath": "$.models[0].id",
+          "regex": "\"id\":(?<id>\\d+)"
+        },
+        {
+          "jsonPath": "$.models[0].name",
+          "regex": "\"name\":\"(?<name>[^\"<>\\n]+)\""
+        },
+        {
+          "jsonPath": "$.models[0].sport_type",
+          "regex": "\"sport_type\":\"(?<type>[A-Za-z0-9_-]+)\""
+        },
+        {
+          "jsonPath": "$.models[0].start_time",
+          "regex": "\"start_time\":\"(?<time>[^\"<>\\n]+)\""
+        },
+        {
+          "jsonPath": "$.models[0].distance_raw",
+          "regex": "\"distance_raw\":(?<raw>\\d+)"
+        },
+        {
+          "jsonPath": "$.models[0].flagged",
+          "regex": "\"flagged\":(?<flagged>true|false)"
+        },
+        {
+          "jsonPath": "$.models[0].moving_time_raw",
+          "regex": "\"moving_time_raw\":(?<moving>\\d+)"
+        },
+        {
+          "jsonPath": "$.models[0].elapsed_time_raw",
+          "regex": "\"elapsed_time_raw\":(?<elapsed>\\d+)"
+        },
+        {
+          "jsonPath": "$.models[0].elevation_gain_raw",
+          "regex": "\"elevation_gain_raw\":(?<elevation>\\d+)"
+        },
+        {
+          "jsonPath": "$.models[0].has_latlng",
+          "regex": "\"has_latlng\":(?<latlng>true|false)"
+        },
+        {
+          "jsonPath": "$.models[0].trainer",
+          "regex": "\"trainer\":(?<trainer>true|false)"
+        }
       ]
     }
   ],
@@ -81,18 +150,27 @@
     "inheritsRequestSchemaFrom": "1.0.3",
     "requestSchemaUnchanged": false,
     "requestSchemaChange": "merged the 4 training_activities claims into 1 combined claim; provider now has 2 claims (marker + activity)",
+    "claimCount": 2,
+    "claimCountReducedFrom": 4,
+    "publishedProviderVersionOnReclaim": "6.0.0",
+    "hostedFlowRootCauseConfirmed": true,
+    "hostedFlowRootCause": "the 4-claim set exceeded the hosted (Popcorn) browser lifecycle: the login-indicator re-check timed out during proof generation and the session was declared BROWSER_CONNECTION_FAILED. 2 claims reach submission.",
+    "hostedFlowLastStatusObserved": "PROOF_SUBMITTED (session fa8968844e, provider version 6.0.0, no -ai prerelease tag)",
+    "liveAppProofCanary": true,
+    "liveConfigurationReadBackViaMcp": true,
+    "liveVerificationType": "WITNESS",
+    "liveRequestHashes": [
+      "0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67",
+      "0xe3d80a409ec480b9ef026ebc96e1737a5789b0ca05e198e37d137f36eaa7705d"
+    ],
+    "liveRequestHashesMatchPinnedPolicy": true,
+    "capturedProofPassesContentBarrier": true,
+    "capturedProofPassesOnchainGrammar": true,
     "previousVersionAuthenticatedReplaySucceeded": true,
     "previousVersionAnonymousReplayRejected": true,
     "manualFetchReturnedJsonWithLatLng": true,
-    "publishedProviderVersionOnReclaim": "6.0.0",
     "instrumentedWithDiagnosticLogs": true,
-    "claimCount": 2,
-    "claimCountReducedFrom": 4,
-    "hostedFlowLastStatusObserved": "USER_TYPED then SESSION_CANCELLED",
-    "hostedFlowRootCauseConfirmed": false,
     "draftInjectionSyntaxChecked": true,
-    "liveConfigurationReadBackViaMcp": false,
-    "liveAppProofCanary": false,
     "reuseBrowserSession": true
   }
 }

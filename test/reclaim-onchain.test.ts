@@ -3,6 +3,7 @@ import test from "node:test";
 import { encodeAbiParameters, keccak256, parseAbiParameters, stringToHex } from "viem";
 import { getIdentifierFromClaimInfo, type Proof } from "@reclaimprotocol/js-sdk";
 import {
+  assertReclaimSessionProvenance,
   assertSdkProofSet,
   assertDuolingoDirectParity,
   assertPinnedHybridDeployment,
@@ -199,5 +200,64 @@ test("pins both verifier addresses and the audited Reclaim witness", () => {
       duolingoWitness: "0x0000000000000000000000000000000000003003",
     }),
     /witness mismatch/,
+  );
+});
+
+const STRAVA_SESSION = {
+  sessionId: "fa8968844e",
+  appId: "0x15678cD04e54ccc2bC1c24cb455be3C60Eb11ADf",
+  providerId: "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
+  providerVersionString: "6.0.0",
+  statusV2: "PROOF_SUBMITTED",
+  proofs: [{}, {}],
+};
+
+const STRAVA_EXPECTED = {
+  sessionId: "fa8968844e",
+  appId: "0x15678cD04e54ccc2bC1c24cb455be3C60Eb11ADf",
+  providerId: "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
+  providerVersion: "6.0.0",
+};
+
+test("accepts a Strava session executed by the exact pinned provider and submitted deterministically", () => {
+  assert.doesNotThrow(() =>
+    assertReclaimSessionProvenance({ session: STRAVA_SESSION, expected: STRAVA_EXPECTED }));
+  // App id casing is cosmetic; the identity is not.
+  assert.doesNotThrow(() => assertReclaimSessionProvenance({
+    session: { ...STRAVA_SESSION, appId: STRAVA_SESSION.appId.toLowerCase() },
+    expected: STRAVA_EXPECTED,
+  }));
+});
+
+test("rejects a Reclaim session whose provenance does not match the initiated one", () => {
+  const cases: Array<[Record<string, unknown> | undefined, RegExp]> = [
+    [undefined, /incomplete/],
+    [{ ...STRAVA_SESSION, sessionId: "other" }, /session mismatch/],
+    [{ ...STRAVA_SESSION, appId: "0x0000000000000000000000000000000000000bad" }, /application mismatch/],
+    [{ ...STRAVA_SESSION, providerId: "cdf8cb3b-2976-4413-ab2d-693ae5028380" }, /provider mismatch/],
+    // A -ai prerelease or any other build is not the audited deterministic provider.
+    [{ ...STRAVA_SESSION, providerVersionString: "6.0.0-ai.1" }, /provider version mismatch/],
+    [{ ...STRAVA_SESSION, providerVersionString: "5.0.0" }, /provider version mismatch/],
+    // The AI submission path must be refused explicitly, as must any unknown terminal state.
+    [{ ...STRAVA_SESSION, statusV2: "AI_PROOF_SUBMITTED" }, /Unexpected Reclaim submission state/],
+    [{ ...STRAVA_SESSION, statusV2: "ERROR_SUBMISSION_FAILED" }, /Unexpected Reclaim submission state/],
+    [{ ...STRAVA_SESSION, statusV2: undefined }, /Unexpected Reclaim submission state/],
+    [{ ...STRAVA_SESSION, proofs: undefined }, /proof set is absent/],
+  ];
+  for (const [session, expected] of cases) {
+    assert.throws(
+      () => assertReclaimSessionProvenance({ session: session as never, expected: STRAVA_EXPECTED }),
+      expected,
+    );
+  }
+});
+
+test("refuses to verify when the application id is not configured", () => {
+  assert.throws(
+    () => assertReclaimSessionProvenance({
+      session: STRAVA_SESSION,
+      expected: { ...STRAVA_EXPECTED, appId: "" },
+    }),
+    /application id is not configured/,
   );
 });

@@ -25,6 +25,7 @@ import {
 import {
   assertFreshProofTimestamps,
   canonicalizeStravaProofs,
+  STRAVA_PROOF_COUNT,
   STRAVA_PROVIDER_ID,
   STRAVA_PROVIDER_VERSION,
   validateStravaEvidence,
@@ -37,6 +38,7 @@ import {
   assertDuolingoDirectParity,
   assertHash,
   assertPinnedHybridDeployment,
+  assertReclaimSessionProvenance,
   assertSdkProofSet,
   assertStravaDirectParity,
   DUOLINGO_MAX_SIGNED_JSON_BYTES,
@@ -242,12 +244,18 @@ async function refetchProofs(token: ProofSession): Promise<Proof[]> {
   } catch {
     throw new ReclaimProofRejectedError("Reclaim session cannot be fetched");
   }
-  if (status.session?.sessionId !== token.sessionId || !status.session?.proofs) {
-    throw new ReclaimProofRejectedError("Reclaim session is not complete");
-  }
+  assertReclaimSessionProvenance({
+    session: status.session,
+    expected: {
+      sessionId: token.sessionId,
+      appId: process.env.ID?.trim() || "",
+      providerId: token.providerId,
+      providerVersion: token.providerVersion,
+    },
+  });
   const isDuolingo = token.missionType === DUOLINGO_XP_MISSION;
-  const proofs = assertSdkProofSet(status.session.proofs, {
-    expectedCount: 2,
+  const proofs = assertSdkProofSet(status.session!.proofs, {
+    expectedCount: isDuolingo ? 2 : STRAVA_PROOF_COUNT,
     maxSignedJsonBytes: isDuolingo ? DUOLINGO_MAX_SIGNED_JSON_BYTES : STRAVA_MAX_SIGNED_JSON_BYTES,
   });
   return isDuolingo ? proofs : canonicalizeStravaProofs(proofs);
@@ -289,7 +297,11 @@ async function directStrava(input: {
   dailyTarget: number;
   challenge: string;
 }) {
-  if (!escrowAddress || input.directProof.proofs.length !== 4 || input.token.dayIndex === undefined) {
+  if (
+    !escrowAddress
+    || input.directProof.proofs.length !== STRAVA_PROOF_COUNT
+    || input.token.dayIndex === undefined
+  ) {
     throw new ReclaimProofRejectedError();
   }
   try {

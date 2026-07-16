@@ -37,3 +37,6 @@ raw-proof*.json
 # Hosting
 .vercel/
 .vercel
+
+# Private release evidence (TEE tokens, raw captures)
+release-artifacts/

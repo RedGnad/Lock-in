@@ -117,9 +117,9 @@ contract LockInStravaClaimParser {
 
         parsed.geoHash = geoHash;
         parsed.teeGroupHash = context_.teeGroupHash;
-        // Parsed and surfaced, never gated on: `isAiProof`/`isPortalProof` are portal-orchestration
-        // flags. The executed session is a clean deterministic 6.0.0 (PROOF_SUBMITTED, no -ai tag),
-        // so the schema decides trust here; these two only have to be present and canonical booleans.
+        // Signed provenance metadata. Parsed and required to be canonical and cross-proof consistent,
+        // but never used as the trust selector. Trust is established by the pinned HTTP grammar, the
+        // witness signature, the exact provider/session status enforced off-chain, and TEE verification.
         parsed.isAiProof = context_.isAiProof;
         parsed.isPortalProof = context_.isPortalProof;
 
@@ -819,6 +819,12 @@ contract LockInStravaReclaimVerifier {
         {
             revert InvalidContext();
         }
+        // The flags stay out of the trust decision, but a bundle must be homogeneous: one claim
+        // classified differently from the other is not a coherent proof set.
+        if (
+            marker.fields.isAiProof != activity.fields.isAiProof
+                || marker.fields.isPortalProof != activity.fields.isPortalProof
+        ) revert InvalidContext();
         if (
             activity.fields.nameHash != keccak256(bytes(policy.challenge)) || activity.fields.typeHash != keccak256("Run")
                 || activity.fields.flagged || !activity.fields.latlng || activity.fields.trainer

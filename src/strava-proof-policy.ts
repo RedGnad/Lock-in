@@ -14,6 +14,22 @@ export const STRAVA_PROVIDER_VERSION = "6.0.0";
 export const STRAVA_PROVIDER_KEY = keccak256(stringToHex(`${STRAVA_PROVIDER_ID}@${STRAVA_PROVIDER_VERSION}`));
 /** The 6.0.0 provider returns exactly two claims: the athlete marker, then the combined activity. */
 export const STRAVA_PROOF_COUNT = 2;
+/**
+ * Deterministic request hashes of the published 6.0.0 provider, in canonical request order.
+ *
+ * A 6.0.0 proof context carries no `providerHash`, so these are NOT used to pin a proof (the on-chain
+ * parser pins the request from `claimData.parameters`). They exist to detect drift of the LIVE provider
+ * configuration before a user ever launches a proof. Both were recomputed with the SDK's
+ * `hashRequestSpec` over `providers/strava-date-distance.json`; the marker value reproduces the hash
+ * historically pinned for the unchanged marker request, which validates the derivation.
+ */
+export const STRAVA_MARKER_REQUEST_HASH =
+  "0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67";
+export const STRAVA_ACTIVITY_REQUEST_HASH =
+  "0xe3d80a409ec480b9ef026ebc96e1737a5789b0ca05e198e37d137f36eaa7705d";
+export const STRAVA_REQUEST_HASHES = [STRAVA_MARKER_REQUEST_HASH, STRAVA_ACTIVITY_REQUEST_HASH] as const;
+/** Reclaim classifies a provider as AI when this is "AI"; Lock In requires the witness path. */
+export const STRAVA_VERIFICATION_TYPE = "WITNESS";
 export const STRAVA_CHALLENGE_PATTERN = STRAVA_PACT_CHALLENGE_PATTERN;
 
 const REQUIRED_FIELDS = [
