@@ -9,8 +9,9 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
-/// @notice Fixed-stake social pacts settled only when a direct Reclaim proof and a short-lived
-///         mission-specific backend attestation independently agree on every settlement field.
+/// @notice Fixed-stake social pacts settled on a short-lived, mission-specific backend attestation.
+/// @dev    There is no second, independent witness any more: under STRAVA_OAUTH_V1 the evidence signer
+///         is a trusted party, and a compromised evidence key can mint completions that never happened.
 contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 

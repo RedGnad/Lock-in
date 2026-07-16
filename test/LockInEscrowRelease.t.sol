@@ -260,6 +260,80 @@ contract LockInEscrowReleaseTest {
         require(escrow.claim(bobLock) == 2 * ONE_USDC, "second Lock payout changed");
     }
 
+    /// @dev The exact canary: A and B join, ONLY A finishes, A takes the pot. Pinned because the runbook
+    ///      sends real money down this path and the numbers must be the ones we promised.
+    function testOnlyFinisherTakesTheWholePot() public {
+        uint256 pactId = _createStravaTerms(uint96(ONE_USDC), 3, 3, 2, 4, uint64(START), keccak256("canary-create"));
+        _joinStrava(pactId, BOB, keccak256("canary-join"));
+
+        // A three-day Lock needs three days. One run is not a finish.
+        for (uint8 day = 0; day < 3; ++day) {
+            // Each day is checked in on that day, exactly as an athlete would.
+            VM.warp(START + uint256(day) * 1 days + 2 hours);
+            _submit(
+                ALICE,
+                pactId,
+                day,
+                1,
+                keccak256("canary:athlete:a"),
+                keccak256(abi.encodePacked("canary:activity:a", day)),
+                1_300,
+                START + uint256(day) * 1 days + 1 hours
+            );
+        }
+        require(escrow.isFinisher(pactId, ALICE), "A ran three days and did not finish");
+        require(!escrow.isFinisher(pactId, BOB), "B never ran and finished anyway");
+
+        VM.warp(START + 4 days);
+        escrow.finalizePact(pactId);
+        VM.prank(ALICE);
+        require(escrow.claim(pactId) == 2 * ONE_USDC, "the only finisher did not take both stakes");
+        VM.prank(BOB);
+        (bool bobClaimed,) = address(escrow).call(abi.encodeCall(escrow.claim, (pactId)));
+        require(!bobClaimed, "a non-finisher claimed");
+    }
+
+    /// @dev A completion pause overlapping a live Lock refunds EVERYONE, including a wallet that already
+    ///      finished. This is correct (we took away their ability to submit, so we cannot keep their
+    ///      stake), but it means the operational habit of closing check-ins between windows silently
+    ///      converts a Lock into a refund. The canary must know this before it opens anything.
+    function testAPauseDuringALiveLockRefundsEveryoneIncludingTheFinisher() public {
+        uint256 pactId = _createStravaTerms(uint96(ONE_USDC), 3, 3, 2, 4, uint64(START), keccak256("paused-create"));
+        _joinStrava(pactId, BOB, keccak256("paused-join"));
+
+        for (uint8 day = 0; day < 3; ++day) {
+            // Each day is checked in on that day, exactly as an athlete would.
+            VM.warp(START + uint256(day) * 1 days + 2 hours);
+            _submit(
+                ALICE,
+                pactId,
+                day,
+                1,
+                keccak256("paused:athlete:a"),
+                keccak256(abi.encodePacked("paused:activity:a", day)),
+                1_300,
+                START + uint256(day) * 1 days + 1 hours
+            );
+        }
+        require(escrow.isFinisher(pactId, ALICE), "A did not finish before the pause");
+
+        // Exactly what "never leave check-ins open overnight" would do, then reopen the next morning.
+        escrow.setCompletionPaused(true);
+        VM.warp(START + 2 days);
+        escrow.setCompletionPaused(false);
+
+        VM.warp(START + 4 days);
+        escrow.finalizePact(pactId);
+        (,,,,,,,,,,,,,,, bool finalized, bool cancelled) = escrow.pacts(pactId);
+        require(finalized && cancelled, "the pause did not cancel the Lock");
+
+        // A finished and still only gets its own stake back. B, who never ran, gets its stake back too.
+        VM.prank(ALICE);
+        require(escrow.claim(pactId) == ONE_USDC, "the finisher was not refunded its own stake");
+        VM.prank(BOB);
+        require(escrow.claim(pactId) == ONE_USDC, "the non-finisher was not refunded");
+    }
+
     function testPlayerHandlesAreOptionalCanonicalAndUnique() public {
         VM.prank(ALICE);
         escrow.setPlayerHandle("red_g");

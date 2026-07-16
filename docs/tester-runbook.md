@@ -76,14 +76,14 @@ The refresh token rotates on every refresh and is stored encrypted with AES-256-
 
 Start with contract pauses `true / true / true` and Vercel flags all `false`.
 
-1. Set Vercel production to `NEW_PACTS_ENABLED=true`, `JOIN_ENABLED=false`, `CHECK_INS_ENABLED=false`; deploy production.
-2. Generate contract pauses `false / true / true`, inspect and execute the ordered calls through the multisig, then run `pnpm pauses:verify -- false true true`.
+1. Set Vercel production to `NEW_PACTS_ENABLED=true`, `JOIN_ENABLED=false`, `CHECK_INS_ENABLED=true`; deploy production. The flags must mirror the on-chain pauses exactly, or `/api/health` fails `flagPauseAlignment` and answers 503.
+2. Generate contract pauses `false / true / false`, inspect and execute the ordered calls through the multisig, then run `pnpm pauses:verify -- false true false`. Completion opens here and does NOT close again until the Lock has settled: see the check-in section.
 3. Wallet A creates one Strava Lock through the production UI at exactly `0.1 USDC` on the three-day template. Review the wallet calldata warning. Record the displayed `LOCK-…` invite code and confirm it resolves deterministically to the created on-chain Lock ID.
 4. Record the pact ID and every approval and create transaction hash.
-5. Immediately close the contract to `true / true / true`.
-6. Set the Vercel flags back to `false`, redeploy, snapshot the pact and reconcile the escrow.
+5. Immediately close creation and joining: `true / true / false`. Leave completion open.
+6. Set `NEW_PACTS_ENABLED=false`, keep `CHECK_INS_ENABLED=true`, redeploy, snapshot the pact and reconcile the escrow.
 
-Only creation is open during this window. No unrelated or already-active Lock may exist during the exception. If `nextPactId` advances unexpectedly, close first and investigate every new Lock.
+Only creation is open to a newcomer during this window. No unrelated or already-active Lock may exist during the exception. If `nextPactId` advances unexpectedly, close first and investigate every new Lock.
 
 ```bash
 pnpm canary:status -- --pact 1
@@ -96,29 +96,44 @@ Replace the example ID with the recorded ID.
 
 Complete this before the published start. `joinPact` reverts once the start time passes.
 
-1. Set Vercel production to `NEW_PACTS_ENABLED=false`, `JOIN_ENABLED=true`, `CHECK_INS_ENABLED=false`; deploy production.
-2. Generate contract pauses `true / false / true`, execute through the multisig, then run `pnpm pauses:verify -- true false true`.
+1. Set Vercel production to `NEW_PACTS_ENABLED=false`, `JOIN_ENABLED=true`, `CHECK_INS_ENABLED=true`; deploy production.
+2. Generate contract pauses `true / false / false`, execute through the multisig, then run `pnpm pauses:verify -- true false false`.
 3. Wallet B opens the Lock from wallet A's `LOCK-…` invite link and joins through the production UI at exactly `0.1 USDC`. Confirm an altered checksum is rejected, and that a valid code does not bypass admission, capacity, timing or stake requirements.
 4. Record the approval and join transaction hashes.
-5. Close the contract to `true / true / true` first.
-6. Disable the Vercel flags, redeploy, snapshot and reconcile.
+5. Close creation and joining first: `true / true / false`.
+6. Set `JOIN_ENABLED=false`, keep `CHECK_INS_ENABLED=true`, redeploy, snapshot and reconcile.
 
 Participant counts, event counts, identities and escrow liability must agree before the Lock starts.
 
-## Daily check-in windows
+## The check-in window is ONE window, and it cannot be closed
 
-The three-day template cannot finalize early: settlement opens only after the third day and the 24-hour submission grace period both end.
+Read this before opening anything. `finalizePact` cancels a Lock and refunds every participant if a
+completion pause overlaps `[startsAt, submissionDeadline)`, even a wallet that already finished. That is
+correct: pausing check-ins takes away the athlete's ability to submit, so we cannot keep their stake. But
+it means the habitual "close it overnight, reopen in the morning" converts the Lock into a refund and
+destroys the settlement the canary exists to prove.
+`test/LockInEscrowRelease.t.sol:testAPauseDuringALiveLockRefundsEveryoneIncludingTheFinisher` pins this.
 
-For each open day:
+So for a live Lock:
 
-1. Both athletes record a real GPS run of at least the target, outdoors, not manual, not on a treadmill, inside that UTC day of the Lock. Wait for the activity to appear in Strava.
-2. Set Vercel production to `NEW_PACTS_ENABLED=false`, `JOIN_ENABLED=false`, `CHECK_INS_ENABLED=true`; deploy production.
-3. Generate contract pauses `true / true / false`, execute through the multisig, then run `pnpm pauses:verify -- true true false`.
-4. Each wallet presses Check in and waits for the `submitCompletion` receipt. The attestation is short-lived, so do not close the window while a valid participant transaction is pending. Record calldata bytes, gas estimate, receipt gas, wallet type, device and any handoff failure.
-5. Close the contract to `true / true / true` first.
-6. Set `CHECK_INS_ENABLED=false`, redeploy, snapshot and reconcile.
+- completion is unpaused ONCE, before `startsAt`, and stays unpaused until the submission deadline has
+  passed, which for the three-day template is `startsAt + 4 days`;
+- creation and joining are closed as soon as their windows end. They carry no such rule, and closing them
+  is what keeps a stranger from staking into an unaudited escrow;
+- the only reason to pause completion mid-Lock is an incident where continuing is worse than refunding.
+  Then the refund is the intended outcome, not a side effect.
 
-Never leave check-ins open overnight. A check-in publishes distance, moving and elapsed time, elevation gain, the activity start time, the wallet, the Lock, the day, and the three HMAC-derived values. Never request or publish a GPS route.
+For each day of the Lock:
+
+1. The athlete records a real GPS run of at least the target, outdoors, not manual, not on a treadmill,
+   inside that UTC day of the Lock. Wait for it to appear in Strava.
+2. Press Check in and wait for the `submitCompletion` receipt. The attestation lives ten minutes.
+3. Record calldata bytes, gas estimate, receipt gas, wallet type, device and any handoff failure.
+4. Snapshot and reconcile.
+
+A check-in publishes distance, moving and elapsed time, elevation gain, the activity start time, the
+wallet, the Lock, the day, and four values derived under the server-held key. Never request or publish a
+GPS route.
 
 ## Disconnect and reconnect
 
@@ -143,7 +158,7 @@ Safe live negative checks: a run below the target, a run outside the Lock day, a
 
 After the Lock's exact `submissionDeadline` (`endsAt + 24 hours`):
 
-1. Anyone calls `finalizePact`; creation, joining and check-ins remain paused.
+1. Anyone calls `finalizePact`; creation and joining are already closed, and completion closes only after this. Confirm the emitted `PactFinalized` carries `cancelled = false`: `true` means a completion pause overlapped the Lock and everyone is being refunded.
 2. Eligible wallets claim through the production UI.
 3. Snapshot the pact after finalization and after every claim.
 4. Run `CANARY_EXPECTED_PACT_IDS=<comma-separated IDs> pnpm canary:reconcile`.
@@ -180,7 +195,7 @@ Snapshot the Lock and reconcile the whole escrow after each rehearsal.
 - **Unexpected Lock or participant:** close all contract controls immediately, then close Vercel, reconcile and inspect every new event.
 - **Creation defect:** pause creation on chain before disabling `NEW_PACTS_ENABLED` in Vercel.
 - **Join/funding defect:** pause joining on chain before disabling `JOIN_ENABLED`; identify every forming Lock.
-- **Check-in, Strava-API or signer defect:** pause completion on chain before disabling `CHECK_INS_ENABLED`; move affected unsettled Locks into refunds if continuing would be unfair.
+- **Check-in, Strava-API or signer defect:** pause completion on chain before disabling `CHECK_INS_ENABLED`. Know what you are choosing: this refunds every live Lock at finalization, including athletes who already finished. That is the right call when check-ins are broken, and the wrong one for a defect that does not stop athletes submitting.
 - **Suspected evidence-key compromise:** this is the highest-severity case, because that key alone can mint completions. Pause completion first, then creation and joining, inventory every unsettled Lock, rotate the key, redeploy only after the new signer is on chain, and publish a UTC notice.
 - **Suspected Strava token or encryption-key compromise:** pause check-ins, revoke the affected grants at Strava, rotate the encryption key knowing it also rotates every pseudonymised identity and nullifier, and treat previously published values as spent.
 - **Strava revokes or restricts the application:** check-ins stop working. Pause completion, and move unsettled Locks into refunds rather than leaving athletes staked against a verification path that no longer exists.
