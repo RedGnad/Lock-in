@@ -38,7 +38,7 @@ The first accepted completion by a wallet in each UTC day earns 10 non-transfera
 - App shell: https://lock-in-liart-theta.vercel.app
 - Historical paused canary escrow: `0xA75375E11A8564b9DFe5fe2084Ff277Bb41c6a6a`
 - Historical canary transaction: `0x1d67657eedb350206e49a44256bdb8c42625b987ed83884713e463a392cec3ba`
-- Strava proof provider: `f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.3`
+- Strava proof provider: `f3ec8292-d8f3-487c-a79d-f53f482f88e2@6.0.0`
 - Duolingo proof provider: `cdf8cb3b-2976-4413-ab2d-693ae5028380@1.0.8`
 - Release owner Safe: `0xf1be884698B9Ba4438f529699eC92320427b4dA1` (2/2)
 
@@ -62,7 +62,7 @@ Monad permanently exposes wallet, Lock terms, stake, mission, day, completion me
 
 The current unreleased build is unaudited and has no release deployment. The candidate escrow requires both direct witness verification and the matching backend attestation, so the evidence signing key alone cannot fabricate a completion. The signer still applies TEE and business-policy checks, and failures involving the signer, direct verifier, witness configuration, upstream service, or user device remain security risks. The owner can pause or rotate authorities.
 
-The repository contains direct-verification contracts for Duolingo and Strava and the escrow candidate is wired to require them. While `LIVE_SCHEMA_CONFIRMED=false`, both verifier entry points fail closed with `LiveSchemaUnconfirmed`; only test harnesses can exercise the synthetic parsers. Modern TEE contexts remain rejected until current live proofs are captured and audited. The web proof path, deployed verifier bytecode, and real-proof gas flow are therefore not release-ready.
+The repository contains direct-verification contracts for Duolingo and Strava and the escrow candidate is wired to require them. While `LIVE_SCHEMA_CONFIRMED=false`, both verifier entry points fail closed with `LiveSchemaUnconfirmed`; only test harnesses can exercise the parsers, and the escrow constructor refuses to deploy at all. Both verifiers pin the modern TEE-attested context shape, and a real captured proof of each mission is driven through the final on-chain grammar by `test/LockInDuolingoRealProof.t.sol` and `test/LockInStravaRealProof.t.sol`. What is still unproven is the release itself: no verifier bytecode is deployed, and the two-wallet end-to-end flow with real stakes has not been run. The web proof path and real-proof gas flow are therefore not release-ready.
 
 - evidence and admission signing must use isolated, least-privilege keys in a managed KMS or equivalent auditable signing service, with rotation and monitoring;
 - contract ownership must move from a single deployer to a documented multisig with tested incident procedures;
