@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAddress, keccak256, stringToHex, type Address, type Hex } from "viem";
+import { getAddress, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { readJsonBody } from "@/src/api-guard";
 import { escrowAddress, lockInPublicClient, monad } from "@/src/chain";
@@ -12,7 +12,6 @@ import {
   fetchStravaActivities,
   selectQualifyingRun,
   StravaActivityError,
-  STRAVA_ATTESTATION_SCHEME,
 } from "@/src/strava-activities";
 import { refreshStravaTokens } from "@/src/strava-oauth";
 import { getUsableStravaAccessToken } from "@/src/strava-token-store";
@@ -109,8 +108,9 @@ export async function POST(request: Request) {
       dayIndex: policy.dayIndex,
       missionType: STRAVA_RUN_MISSION,
       policyHash: policyHash as Hex,
-      // No Reclaim session exists any more; this names the scheme that produced the evidence.
-      sessionIdHash: keccak256(stringToHex(`${STRAVA_ATTESTATION_SCHEME}:${run.activityId}`)),
+      // No Reclaim session exists any more. This is keyed like every other published identifier: a bare
+      // hash of the activity id would let anyone with a Strava activity URL link it to this wallet.
+      sessionIdHash: run.sessionHash,
       identityHash: run.identityHash,
       eventNullifier: run.nullifier,
       metric: BigInt(run.distanceMeters),

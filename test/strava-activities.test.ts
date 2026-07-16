@@ -53,6 +53,24 @@ test("published identifiers are not bare hashes of an enumerable Strava id", () 
   assert.notEqual(evidence.identityHash, keccak256(stringToHex("STRAVA_OAUTH_V1:athlete:1815502280")));
 });
 
+test("EVERY published value is keyed, including the session hash", () => {
+  // Regression: sessionIdHash was built in the check-in route as keccak256("STRAVA_OAUTH_V1:<id>").
+  // Anyone holding a public strava.com/activities/<id> URL could hash it and match the wallet that
+  // checked in, which defeats the pseudonymisation of the other three values. Every identifier that
+  // reaches calldata must go through the server-held key, so a candidate id proves nothing without it.
+  const evidence = selectQualifyingRun([run()], POLICY);
+  const published = [evidence.identityHash, evidence.nullifier, evidence.activityHash, evidence.sessionHash];
+  const guessable = [
+    keccak256(stringToHex("STRAVA_OAUTH_V1:19335732297")),
+    keccak256(stringToHex("19335732297")),
+    keccak256(stringToHex("STRAVA_OAUTH_V1:1815502280")),
+  ];
+  for (const value of published) {
+    assert.ok(!guessable.includes(value), `${value} is recoverable from an id alone`);
+  }
+  assert.equal(new Set(published).size, published.length, "distinct roles must not collapse to one value");
+});
+
 test("the nullifier is the activity and the identity is the athlete", () => {
   // One run can never be claimed twice, and one Strava account is one participant.
   const first = selectQualifyingRun([run()], POLICY);

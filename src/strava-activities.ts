@@ -53,6 +53,7 @@ export type StravaRunEvidence = Readonly<{
   identityHash: `0x${string}`;
   nullifier: `0x${string}`;
   activityHash: `0x${string}`;
+  sessionHash: `0x${string}`;
 }>;
 
 /**
@@ -66,7 +67,7 @@ export type StravaRunEvidence = Readonly<{
  * The key must be stable: changing it changes every identity and nullifier, which would let an athlete
  * replay a run that was already spent, and would break the one-identity-per-Lock rule.
  */
-function pseudonymise(kind: "athlete" | "activity" | "run", value: string): `0x${string}` {
+function pseudonymise(kind: "athlete" | "activity" | "run" | "session", value: string): `0x${string}` {
   const key = process.env.STRAVA_TOKEN_ENCRYPTION_KEY?.trim();
   if (!key) throw new StravaActivityError("SERVER_MISCONFIGURED", "The pseudonymisation key is not configured");
   const digest = createHmac("sha256", Buffer.from(key, "base64"))
@@ -186,5 +187,9 @@ export function selectQualifyingRun(
       "run",
       `${best.id}:${distanceMeters}:${movingTimeSeconds}:${elapsedTimeSeconds}:${best.start_date}`,
     ),
+    // Named the "session" for the escrow's sake: under zkTLS this field held the Reclaim session id.
+    // It MUST go through the same key: a bare keccak256 of the activity id would be recoverable by
+    // anyone holding a candidate id, which is every public Strava activity URL.
+    sessionHash: pseudonymise("session", String(best.id)),
   };
 }
