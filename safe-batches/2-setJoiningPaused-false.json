@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "chainId": "143",
+  "createdAt": 1784243421696,
+  "meta": {
+    "name": "2. setJoiningPaused(false)",
+    "description": "Open joining. Meaningless before check-ins work.",
+    "txBuilderVersion": "1.17.1"
+  },
+  "transactions": [
+    {
+      "to": "0xD37121112F240fE03a18D754B2fdB9dC750034d4",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          {
+            "name": "paused",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "name": "setJoiningPaused",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "paused": "false"
+      }
+    }
+  ]
+}

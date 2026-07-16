@@ -3,7 +3,15 @@
 One phone, two browser profiles, two wallets, two Strava accounts. Wallet A creates and finishes, wallet B
 joins and does not. Stake `0.1 USDC` each. Real money, paused-by-default escrow, Monad mainnet.
 
-Escrow `0xD37121112F240fE03a18D754B2fdB9dC750034d4`, owner Safe `0xf1be884698B9Ba4438f529699eC92320427b4dA1` (2/2).
+Wallet A `0x79C53151315FaD9163f75a65A8Bd4D04a10e1e45` creates and finishes.
+Wallet B `0x344412229B3b581C19572f9BF1F5d08d4Ae897E6` joins and does not.
+
+Escrow `0xD37121112F240fE03a18D754B2fdB9dC750034d4`, owner Safe
+`0xf1be884698B9Ba4438f529699eC92320427b4dA1`, Safe v1.4.1, threshold 2 of 2.
+
+The Safe's two owners are wallet A and wallet B themselves, so the same person holds both keys. That is
+key-loss protection, not a separation of powers: read "2 of 2" as "sign twice", not as "two independent
+parties reviewed this". Nothing downstream should be described as multi-party controlled.
 
 ## The two constraints that decide the schedule
 
@@ -31,7 +39,14 @@ Settlement is therefore `startsAt + 3 days + 24h grace`, and it cannot be shorte
 
 ## Safe transactions, in opening order
 
-`pnpm exec tsx scripts/set-pauses.ts <creation> <joining> <completion>` prints the calldata; it never holds a key.
+`pnpm exec tsx scripts/set-pauses.ts <creation> <joining> <completion>` prints the calldata; it never holds
+a key. `safe-batches/*.json` are the same three calls as Safe Transaction Builder imports, so nothing is
+pasted by hand. Import one file at a time: a single-transaction batch executes as a direct `Call` to the
+escrow, while importing several at once would batch them into one `DelegateCall` to MultiSend.
+
+Signing path: propose in app.safe.global (`monad:0xf1be…4dA1`), sign with wallet A, sign with wallet B,
+then either owner executes. The executor pays gas from its own wallet; the Safe holds no MON and needs
+none. The Safe's nonce is 0, so these are the first transactions it has ever run.
 
 | # | Call | Target state | Why this order |
 |---|---|---|---|
