@@ -100,6 +100,19 @@ const sdkVersion = (JSON.parse(
   readFileSync(resolve("node_modules/@reclaimprotocol/js-sdk/package.json"), "utf8"),
 ) as { version: string }).version;
 
+// A capture with no attestation at all can never pass, whatever the mode: say so up front instead of
+// letting it look like an expiry. This is what a capture saved before Reclaim attached the TEE looks like.
+const withoutTee = proofs.filter(
+  (proof) => typeof (proof.teeAttestation as { attestation?: { token?: unknown } } | undefined)?.attestation
+    ?.token !== "string",
+).length;
+if (withoutTee > 0) {
+  throw new Error(
+    `${withoutTee} of ${proofs.length} proofs carry no teeAttestation token. This capture is unusable and `
+    + "re-running will not help: it was saved before Reclaim attached the attestation. Capture again.",
+  );
+}
+
 const context = JSON.parse(proofs[0].claimData.context) as Record<string, unknown>;
 const sessionId = String(context.reclaimSessionId || "");
 
