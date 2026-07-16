@@ -1,6 +1,6 @@
 {
   "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
-  "version": "4.0.0",
+  "version": "6.0.0",
   "name": "Lock In Strava authenticated GPS activity",
   "status": "two-claim-redesign",
   "loginUrl": "https://www.strava.com/athlete/training",
@@ -84,7 +84,7 @@
     "previousVersionAuthenticatedReplaySucceeded": true,
     "previousVersionAnonymousReplayRejected": true,
     "manualFetchReturnedJsonWithLatLng": true,
-    "publishedProviderVersionOnReclaim": "4.0.0",
+    "publishedProviderVersionOnReclaim": "6.0.0",
     "instrumentedWithDiagnosticLogs": true,
     "claimCount": 2,
     "claimCountReducedFrom": 4,
