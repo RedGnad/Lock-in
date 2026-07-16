@@ -15,6 +15,7 @@ import {
   type Proof,
 } from "@reclaimprotocol/js-sdk";
 import { reclaimProofComponents } from "./lock-in-abi";
+import { STRAVA_PROOF_COUNT } from "./strava-proof-policy";
 
 const HASH = /^0x[0-9a-fA-F]{64}$/;
 const SIGNATURE = /^0x[0-9a-fA-F]{130}$/;
@@ -168,6 +169,24 @@ function canonicalClaimContext(context: string): string {
 
 /** The only terminal Reclaim state Lock In accepts. Notably NOT AI_PROOF_SUBMITTED. */
 export const RECLAIM_PROOF_SUBMITTED = "PROOF_SUBMITTED";
+
+/**
+ * Guards the direct Strava verifier call. This lives here, rather than inline in the route, because an
+ * inline count is exactly what silently drifted: the route kept requiring 4 proofs after the provider was
+ * redesigned to 2, so every valid 6.0.0 proof was refused before reaching Solidity while the suites stayed
+ * green. The count comes from STRAVA_PROOF_COUNT so the provider shape has a single source of truth.
+ */
+export function assertDirectStravaInput(input: {
+  hasEscrow: boolean;
+  proofCount: number;
+  dayIndex?: number;
+}): void {
+  if (!input.hasEscrow) reject("The escrow address is not configured");
+  if (input.proofCount !== STRAVA_PROOF_COUNT) {
+    reject(`A Strava proof set must contain exactly ${STRAVA_PROOF_COUNT} proofs, received ${input.proofCount}`);
+  }
+  if (input.dayIndex === undefined) reject("A Strava proof must be bound to a day index");
+}
 
 export type ReclaimSessionSummary = Readonly<{
   sessionId?: string;

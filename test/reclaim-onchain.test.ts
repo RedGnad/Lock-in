@@ -3,6 +3,7 @@ import test from "node:test";
 import { encodeAbiParameters, keccak256, parseAbiParameters, stringToHex } from "viem";
 import { getIdentifierFromClaimInfo, type Proof } from "@reclaimprotocol/js-sdk";
 import {
+  assertDirectStravaInput,
   assertReclaimSessionProvenance,
   assertSdkProofSet,
   assertDuolingoDirectParity,
@@ -259,5 +260,29 @@ test("refuses to verify when the application id is not configured", () => {
       expected: { ...STRAVA_EXPECTED, appId: "" },
     }),
     /application id is not configured/,
+  );
+});
+
+test("guards the direct Strava verifier call with the live provider proof count", () => {
+  // Regression: the route required 4 proofs after the provider was redesigned to 2, so every valid
+  // 6.0.0 proof was refused before reaching Solidity. The route now calls this exact helper.
+  assert.doesNotThrow(() => assertDirectStravaInput({ hasEscrow: true, proofCount: 2, dayIndex: 0 }));
+  assert.doesNotThrow(() => assertDirectStravaInput({ hasEscrow: true, proofCount: 2, dayIndex: 29 }));
+
+  assert.throws(
+    () => assertDirectStravaInput({ hasEscrow: true, proofCount: 4, dayIndex: 0 }),
+    /exactly 2 proofs, received 4/,
+  );
+  assert.throws(
+    () => assertDirectStravaInput({ hasEscrow: true, proofCount: 1, dayIndex: 0 }),
+    /exactly 2 proofs, received 1/,
+  );
+  assert.throws(
+    () => assertDirectStravaInput({ hasEscrow: false, proofCount: 2, dayIndex: 0 }),
+    /escrow address is not configured/,
+  );
+  assert.throws(
+    () => assertDirectStravaInput({ hasEscrow: true, proofCount: 2, dayIndex: undefined }),
+    /bound to a day index/,
   );
 });

@@ -1,35 +1,91 @@
 import "dotenv/config";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { fetchProviderConfigs, fetchStatusUrl, verifyProof, type Proof } from "@reclaimprotocol/js-sdk";
+import { fetchStatusUrl, verifyProof, verifyTeeAttestation, type Proof } from "@reclaimprotocol/js-sdk";
+import { assertReclaimSessionProvenance } from "../src/reclaim-onchain.js";
+import { assertLiveProviderForMission } from "../src/reclaim-provider-check.js";
 import { STRAVA_PROVIDER_ID, STRAVA_PROVIDER_VERSION } from "../src/strava-proof-policy.js";
 import { DUOLINGO_PROVIDER_ID, DUOLINGO_PROVIDER_VERSION } from "../src/duolingo-proof-policy.js";
 
 /*
- * Builds the PRIVATE release artifact that lets a reviewer reproduce the half of the hybrid proof barrier
- * that the public repo cannot carry.
+ * Builds the release artifact recording the half of the hybrid proof barrier that the public repo cannot
+ * carry. The committed fixtures hold only the on-chain half (claimInfo, identifier, witness signature),
+ * never the TEE attestation token, so a forge test can prove the Solidity grammar but never
+ * `isTeeAttestationVerified`. Output goes to gitignored release-artifacts/.
  *
- * The committed fixture (test/fixtures/*-real-onchain.json) holds only the on-chain half: claimInfo,
- * identifier and witness signature. It deliberately does not carry the top-level `teeAttestation` object
- * or the witness list, so the forge test can prove the Solidity grammar but never `isTeeAttestationVerified`.
- * This script records the off-chain half against the raw capture, and writes it OUTSIDE the repo history
- * (release-artifacts/ is gitignored) because a full TEE token is not something to publish.
+ * Two modes, because the two halves age differently:
  *
- * Usage: pnpm tsx scripts/build-release-artifact.ts <sessions/capture.json> <strava|duolingo>
+ *   --require-fresh  Release gate. Exits non-zero unless EVERY barrier is green: content validation, TEE
+ *                    attestation, session provenance, and the live provider configuration. Run it within
+ *                    the attestation's validity window, immediately after the capture.
+ *   --audit-old      Analysis. Records red results without failing, for a capture whose attestation has
+ *                    already expired.
+ *
+ * Signature, witness and content pin re-verify from the captured bytes indefinitely. TEE attestation does
+ * not: the SDK checks the attestation JWT's nbf/exp/iat with a 60s tolerance (TOKEN_CLOCK_SKEW_S), and the
+ * observed tokens carry a 1 hour lifetime (exp - iat = 3600). Replaying later fails a still-genuine proof.
+ * Production never hits this: the verify route validates within minutes of generation.
+ *
+ * Usage: pnpm release:artifact <capture.json> <strava|duolingo> [--require-fresh|--audit-old]
  */
 
 const inPath = process.argv[2];
 const mission = process.argv[3];
+const modeFlag = process.argv[4] || "--require-fresh";
 if (!inPath || (mission !== "strava" && mission !== "duolingo")) {
-  throw new Error("Usage: pnpm tsx scripts/build-release-artifact.ts <capture.json> <strava|duolingo>");
+  throw new Error("Usage: pnpm release:artifact <capture.json> <strava|duolingo> [--require-fresh|--audit-old]");
 }
+if (modeFlag !== "--require-fresh" && modeFlag !== "--audit-old") {
+  throw new Error(`Unknown mode ${modeFlag}. Use --require-fresh (release gate) or --audit-old (analysis).`);
+}
+const requireFresh = modeFlag === "--require-fresh";
 
 const appSecret = process.env.SECRET?.trim();
-if (!appSecret) throw new Error("SECRET is required to reproduce the TEE attestation verification");
+const appId = process.env.ID?.trim();
+if (!appSecret || !appId) throw new Error("ID and SECRET are required to verify the TEE attestation");
 
 const providerId = mission === "strava" ? STRAVA_PROVIDER_ID : DUOLINGO_PROVIDER_ID;
 const providerVersion = mission === "strava" ? STRAVA_PROVIDER_VERSION : DUOLINGO_PROVIDER_VERSION;
+
+/** A thrown Error keeps name/message/stack non-enumerable, so JSON.stringify would record `{}`. */
+function serialiseError(error: unknown): unknown {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause instanceof Error
+        ? { name: error.cause.name, message: error.cause.message }
+        : error.cause,
+    };
+  }
+  return error === undefined ? undefined : { message: String(error) };
+}
+
+function decodeJwtClaims(token: unknown): Record<string, unknown> | undefined {
+  if (typeof token !== "string") return undefined;
+  const payload = token.split(".")[1];
+  if (!payload) return undefined;
+  try {
+    const claims = JSON.parse(
+      Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
+    ) as Record<string, unknown>;
+    // Claims only, never the token: iat/nbf/exp are what make a historical validation auditable.
+    return { iat: claims.iat, nbf: claims.nbf, exp: claims.exp, kid: undefined };
+  } catch {
+    return undefined;
+  }
+}
+
+function git(...args: string[]): string {
+  try {
+    return execFileSync("git", args, { encoding: "utf8" }).trim();
+  } catch {
+    return "";
+  }
+}
 
 const raw = readFileSync(inPath, "utf8");
 const captureSha256 = createHash("sha256").update(raw).digest("hex");
@@ -47,24 +103,20 @@ const sdkVersion = (JSON.parse(
 const context = JSON.parse(proofs[0].claimData.context) as Record<string, unknown>;
 const sessionId = String(context.reclaimSessionId || "");
 
-/*
- * The barrier has two halves, and only one of them is reproducible after the fact.
- *
- * Signature + witness + content pin are durable: they re-verify from the captured bytes at any time.
- * TEE attestation verification is TIME-BOUND by design (the attestation is validated near-real-time), so
- * replaying it hours after the capture fails on a still-genuine proof. Production never hits that: the
- * verify route validates within minutes of generation, and the on-chain verifier independently rejects
- * anything older than MAX_PROOF_AGE_SECONDS (10 minutes).
- *
- * Both halves are therefore recorded separately, with their real results. Run this script DURING the
- * capture window to obtain a green TEE half.
- */
-const contentVerification = await verifyProof(proofs, { providerId, providerVersion, allowedTags: [] });
+const failures: string[] = [];
+function record(ok: boolean, failure: string): boolean {
+  if (!ok) failures.push(failure);
+  return ok;
+}
 
-// verifyProof reports a failed TEE by RETURNING { isVerified: false, error }, it does not throw. Deciding
-// on a thrown exception would silently record a green TEE half for a red result.
-let teeVerification: { isVerified?: boolean; error?: unknown } | undefined;
-let teeError: string | undefined;
+// 1. Durable half: signature + witness + content pin against the exact requested provider.
+const contentVerification = await verifyProof(proofs, { providerId, providerVersion, allowedTags: [] });
+record(contentVerification.isVerified === true, "content validation (signature, witness, content pin) is not verified");
+
+// 2. Time-bound half. verifyProof signals a failed TEE by RETURNING { isVerified: false, error }; it does
+//    not throw, so deciding on a caught exception would silently record a green TEE for a red result.
+let teeVerification: { isVerified?: boolean; isTeeAttestationVerified?: boolean; error?: unknown } | undefined;
+let teeThrew: string | undefined;
 try {
   teeVerification = await verifyProof(proofs, {
     providerId,
@@ -73,42 +125,91 @@ try {
     teeAttestation: { appSecret },
   });
 } catch (error) {
-  teeError = error instanceof Error ? error.message : String(error);
+  teeThrew = error instanceof Error ? error.message : String(error);
 }
-const teeVerified = teeVerification?.isVerified === true;
+const teeVerified = teeVerification?.isVerified === true && teeVerification?.isTeeAttestationVerified === true;
+record(teeVerified, "TEE attestation is not verified (expired attestation, or a genuine failure)");
 
-const attestationTimestamp = (proofs[0].teeAttestation as Record<string, unknown> | undefined)?.timestamp;
+// Per-proof reason: verifyProof aggregates into one TeeVerificationError, this reports each proof.
+// Note the signature is verifyTeeAttestation(proof, appSecret) with the secret as a bare string.
+const perProofTee = [] as unknown[];
+for (const [index, proof] of proofs.entries()) {
+  try {
+    const result = await verifyTeeAttestation(proof, appSecret);
+    perProofTee.push({ index, isVerified: result.isVerified, error: serialiseError(result.error) });
+  } catch (error) {
+    perProofTee.push({ index, isVerified: false, error: serialiseError(error) });
+  }
+}
+
+const attestation = proofs[0].teeAttestation as Record<string, unknown> | undefined;
+const attestationTimestamp = attestation?.timestamp;
 const attestationAgeHours = typeof attestationTimestamp === "string"
   ? (Date.now() - Date.parse(attestationTimestamp)) / 3_600_000
   : undefined;
 
-// 2. The session's own terminal state and the provider version Reclaim says it actually executed.
+// 3. The session's own terminal state and the provider version Reclaim says it actually executed.
 const status = await fetchStatusUrl(sessionId);
+let sessionProvenance: string | undefined;
+try {
+  assertReclaimSessionProvenance({
+    session: status.session,
+    expected: { sessionId, appId, providerId, providerVersion },
+  });
+} catch (error) {
+  sessionProvenance = error instanceof Error ? error.message : String(error);
+}
+record(sessionProvenance === undefined, `session provenance rejected: ${sessionProvenance}`);
 
-// 3. The live provider configuration at the moment of the release.
-const configResponse = await fetchProviderConfigs(providerId, providerVersion, []);
-const config = configResponse.providers?.[0];
+// 4. The live provider configuration, asserted with the same code path as `pnpm provider:check`.
+let liveProvider: unknown;
+let liveProviderError: string | undefined;
+try {
+  liveProvider = await assertLiveProviderForMission(mission);
+} catch (error) {
+  liveProviderError = error instanceof Error ? error.message : String(error);
+}
+record(liveProviderError === undefined, `live provider configuration rejected: ${liveProviderError}`);
 
 const artifact = {
   generatedAt: new Date().toISOString(),
   mission,
+  mode: modeFlag,
+  green: failures.length === 0,
+  failures,
+  release: {
+    // Binds the evidence to the exact tree it was produced from. A dirty tree means the artifact does not
+    // describe any reviewable commit.
+    commit: git("rev-parse", "HEAD"),
+    branch: git("rev-parse", "--abbrev-ref", "HEAD"),
+    workingTreeClean: git("status", "--porcelain") === "",
+  },
   capture: { path: inPath, sha256: captureSha256, proofCount: proofs.length },
   sdk: { package: "@reclaimprotocol/js-sdk", version: sdkVersion },
   contentBarrier: {
-    call: `verifyProof(proofs, { providerId: "${providerId}", providerVersion: "${providerVersion}", allowedTags: [] })`,
-    note: "Durable: signature + witness + content pin re-verify from the captured bytes at any time.",
+    call: `verifyProof(proofs, { providerId, providerVersion: "${providerVersion}", allowedTags: [] })`,
+    note: "Durable: re-verifies from the captured bytes at any time.",
+    isVerified: contentVerification.isVerified,
     result: contentVerification,
   },
   teeBarrier: {
-    call: `verifyProof(proofs, { providerId: "${providerId}", providerVersion: "${providerVersion}", allowedTags: [], teeAttestation: { appSecret } })`,
+    call: `verifyProof(proofs, { ..., teeAttestation: { appSecret } })`,
     note:
-      "TIME-BOUND: TEE attestation is validated near-real-time, so a replay hours after capture fails on a "
-      + "genuine proof. A green result here is only meaningful when this script runs during the capture window.",
+      "TIME-BOUND: the SDK checks the attestation JWT nbf/exp/iat (60s tolerance); observed tokens live "
+      + "1 hour (exp - iat = 3600). A green result is only obtainable inside that window.",
+    isVerified: teeVerified,
     attestationTimestamp,
     attestationAgeHoursAtRun: attestationAgeHours,
-    reproducedNow: teeVerified,
-    result: teeVerification,
-    error: teeError,
+    jwtClaims: proofs.map((proof) => {
+      const proofAttestation = proof.teeAttestation as Record<string, unknown> | undefined;
+      const token = (proofAttestation?.attestation as Record<string, unknown> | undefined)?.token;
+      return decodeJwtClaims(token);
+    }),
+    perProof: perProofTee,
+    result: teeVerification
+      ? { ...teeVerification, error: serialiseError(teeVerification.error) }
+      : undefined,
+    threw: teeThrew,
   },
   session: {
     sessionId: status.session?.sessionId,
@@ -116,23 +217,19 @@ const artifact = {
     providerId: status.session?.providerId,
     providerVersionString: status.session?.providerVersionString,
     statusV2: status.session?.statusV2,
+    provenanceRejection: sessionProvenance,
   },
-  liveProviderConfig: {
-    verificationType: config?.verificationType,
-    injectionType: config?.injectionType,
-    version: (config as unknown as { version?: unknown })?.version,
-    requiredRequests: config?.requestData?.length,
-  },
+  liveProviderConfig: liveProvider ?? { error: liveProviderError },
   teeAttestations: proofs.map((proof) => {
-    const attestation = proof.teeAttestation as Record<string, unknown> | undefined;
+    const proofAttestation = proof.teeAttestation as Record<string, unknown> | undefined;
     return {
-      proof_version: attestation?.proof_version,
-      tee_provider: attestation?.tee_provider,
-      tee_technology: attestation?.tee_technology,
-      timestamp: attestation?.timestamp,
+      proof_version: proofAttestation?.proof_version,
+      tee_provider: proofAttestation?.tee_provider,
+      tee_technology: proofAttestation?.tee_technology,
+      timestamp: proofAttestation?.timestamp,
       // Digests only. The attestation token itself stays out of the artifact.
-      workload: attestation?.workload,
-      verifier: attestation?.verifier,
+      workload: proofAttestation?.workload,
+      verifier: proofAttestation?.verifier,
     };
   }),
   witnesses: proofs.map((proof) => proof.witnesses),
@@ -142,24 +239,38 @@ const artifact = {
 const outDir = resolve("release-artifacts");
 mkdirSync(outDir, { recursive: true });
 const outPath = resolve(outDir, `${mission}-${providerVersion}-${sessionId}-release-artifact.json`);
-writeFileSync(outPath, JSON.stringify(artifact, null, 2));
+const serialised = JSON.stringify(artifact, null, 2);
+writeFileSync(outPath, serialised);
+// Self-hash of the written bytes, so the artifact can be pinned or signed and later shown unmodified.
+const artifactSha256 = createHash("sha256").update(serialised).digest("hex");
+writeFileSync(`${outPath}.sha256`, `${artifactSha256}  ${outPath.split("/").pop()}\n`);
 
 console.log(JSON.stringify({
   wrote: outPath,
+  artifactSha256,
   captureSha256,
   sdkVersion,
+  commit: artifact.release.commit,
+  workingTreeClean: artifact.release.workingTreeClean,
   contentBarrierVerified: contentVerification.isVerified,
-  teeBarrierReproducedNow: teeVerified,
+  teeBarrierVerified: teeVerified,
   attestationAgeHoursAtRun: attestationAgeHours === undefined ? undefined : Number(attestationAgeHours.toFixed(2)),
   statusV2: status.session?.statusV2,
-  providerVersionString: status.session?.providerVersionString,
-  verificationType: config?.verificationType,
+  green: artifact.green,
+  failures,
 }, null, 2));
 
-if (!teeVerified) {
-  console.warn(
-    "\nTEE half NOT reproduced in this run. If the capture is old this is expected and does not impeach the "
-    + "proof; the artifact records it explicitly. Generate the artifact during the capture window for a green "
-    + "TEE half.",
-  );
+if (requireFresh) {
+  if (!artifact.release.workingTreeClean) {
+    failures.push("working tree is dirty, the artifact does not describe a reviewable commit");
+  }
+  if (failures.length > 0) {
+    console.error(`\nRELEASE GATE FAILED (${failures.length}):`);
+    for (const failure of failures) console.error(`  - ${failure}`);
+    console.error("\nRun inside the attestation window, immediately after the capture. Nothing may be deployed.");
+    process.exit(1);
+  }
+  console.log("\nRELEASE GATE PASSED: every barrier is green. Pin or sign the artifact hash above.");
+} else if (failures.length > 0) {
+  console.warn(`\n--audit-old: ${failures.length} barrier(s) red, recorded without failing. NOT a release artifact.`);
 }

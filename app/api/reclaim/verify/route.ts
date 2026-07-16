@@ -37,6 +37,7 @@ import {
   assertAddress,
   assertDuolingoDirectParity,
   assertHash,
+  assertDirectStravaInput,
   assertPinnedHybridDeployment,
   assertReclaimSessionProvenance,
   assertSdkProofSet,
@@ -297,13 +298,11 @@ async function directStrava(input: {
   dailyTarget: number;
   challenge: string;
 }) {
-  if (
-    !escrowAddress
-    || input.directProof.proofs.length !== STRAVA_PROOF_COUNT
-    || input.token.dayIndex === undefined
-  ) {
-    throw new ReclaimProofRejectedError();
-  }
+  assertDirectStravaInput({
+    hasEscrow: Boolean(escrowAddress),
+    proofCount: input.directProof.proofs.length,
+    dayIndex: input.token.dayIndex,
+  });
   try {
     const output = await lockInPublicClient().readContract({
       address: input.verifier,
@@ -312,7 +311,8 @@ async function directStrava(input: {
       args: [input.directProof.proofs, {
         account: getAddress(input.token.walletAddress),
         pactId: BigInt(input.token.pactId),
-        dayIndex: input.token.dayIndex,
+        // assertDirectStravaInput above rejects an undefined dayIndex.
+        dayIndex: input.token.dayIndex!,
         expectedSessionId: input.directProof.sessionId,
         challenge: input.challenge,
         startsAt: BigInt(Math.floor(input.startsAtMs / 1_000)),

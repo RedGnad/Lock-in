@@ -88,6 +88,11 @@ contract LockInStravaRealProofTest {
         return new StravaRealProofHarness(REAL_WITNESS, address(parser));
     }
 
+    /// @dev minDistanceMeters is 200 here because this capture is a 209 m diagnostic run. That is BELOW
+    ///      LockInEscrow.MIN_STRAVA_DISTANCE_METERS (500), so this fixture proves the grammar, the
+    ///      signature and the extraction, but it could never satisfy a real Lock: the escrow refuses any
+    ///      dailyTarget under 500 m. The release capture must be a run of at least 500 m and be exercised
+    ///      against a policy using the real target.
     function _policy(string memory json) private view returns (LockInProofTypes.StravaPolicy memory policy) {
         uint256 startTime = 1784140730; // 2026-07-15T18:38:50+0000, the real run's start_time
         policy = LockInProofTypes.StravaPolicy({
