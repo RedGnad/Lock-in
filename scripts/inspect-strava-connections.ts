@@ -52,7 +52,10 @@ for (const row of rows) {
   console.log(`access token  : ${envelope(row.encrypted_access_token)}`);
   console.log(`access expires: ${row.access_token_expires_at} (${expiresInSeconds}s from now)`);
   console.log(`created       : ${row.created_at}`);
-  console.log(`updated       : ${row.updated_at}${row.updated_at !== row.created_at ? " (token has rotated)" : ""}`);
+  // Compare the instants, not the objects: node-postgres hands back two distinct Date instances, so `!==`
+  // is always true and would report a rotation on every freshly created row.
+  const rotated = Date.parse(String(row.updated_at)) !== Date.parse(String(row.created_at));
+  console.log(`updated       : ${row.updated_at}${rotated ? " (token has rotated since connecting)" : " (not refreshed yet)"}`);
   console.log(`revoked       : ${row.revoked_at ?? "no"}\n`);
 }
 

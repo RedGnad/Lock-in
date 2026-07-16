@@ -25,11 +25,13 @@ Settlement is therefore `startsAt + 3 days + 24h grace`, and it cannot be shorte
 - [ ] `pnpm strava:connections` shows two rows, two distinct athletes, both tokens as `v1` envelopes.
 - [ ] Disconnect, deletion and reconnect exercised on at least one wallet.
 - [ ] `CANARY_WALLET_A` / `CANARY_WALLET_B` set, `pnpm canary:preflight` green.
+- [ ] `CANARY_ALLOWED_WALLETS` in production holds exactly those two addresses. This, not the pause, is what
+      keeps the public out once creation is open: no other wallet can obtain an admission attestation.
 - [ ] Both wallets hold MON for gas and at least `0.2 USDC`.
 
 ## Safe transactions, in opening order
 
-`pnpm pauses -- <creation> <joining> <completion>` prints the calldata; it never holds a key.
+`pnpm exec tsx scripts/set-pauses.ts <creation> <joining> <completion>` prints the calldata; it never holds a key.
 
 | # | Call | Target state | Why this order |
 |---|---|---|---|
@@ -37,7 +39,7 @@ Settlement is therefore `startsAt + 3 days + 24h grace`, and it cannot be shorte
 | 2 | `setJoiningPaused(false)` | joining open | Meaningless before completion works. |
 | 3 | `setCreationPaused(false)` | creation open | Last: it is the only call that lets a stranger stake into an unaudited escrow. |
 
-Then `pnpm pauses:verify -- false false false`, and Vercel flags set to `true/true/true` and redeployed, or
+Then `pnpm exec tsx scripts/set-pauses.ts --verify false false false`, and Vercel flags set to `true/true/true` and redeployed, or
 `/api/health` fails `flagPauseAlignment` and answers 503.
 
 Close creation and joining (`true true false`) as soon as B has joined. Leave completion open.
@@ -53,7 +55,7 @@ Close creation and joining (`true true false`) as soon as B has joined. Leave co
 | Fails if | `startsAt` more than 3h out (`InvalidSchedule`), or admission attestation older than 10 min |
 
 - [ ] Invite code resolves to the created Lock ID.
-- [ ] `pnpm canary:status -- --pact <id>` shows 1 participant, not finalized, not cancelled.
+- [ ] `pnpm exec tsx scripts/canary.ts snapshot --pact <id>` shows 1 participant, not finalized, not cancelled.
 
 ## join — wallet B
 

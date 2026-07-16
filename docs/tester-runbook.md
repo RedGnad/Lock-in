@@ -21,6 +21,13 @@ export CANARY_WALLET_B=0x...
 pnpm canary:preflight
 ```
 
+`CANARY_ALLOWED_WALLETS` must hold those same two addresses in the production environment, and this is the
+control that makes opening the escrow safe at all. Unpausing creation on chain does not open the app:
+admission requires an access attestation, the server only issues one to a wallet on this list, and the
+escrow refuses `createPact`/`joinPact` without it. Without the list, unpausing creation invites the public
+to stake into an unaudited escrow. `canary:preflight` fails until the list is exactly the two canary
+wallets.
+
 `canary:preflight` exits nonzero when an input, balance, deployment invariant or paused production control is missing. It never reads a participant private key and never sends a transaction.
 
 ## Release checks
@@ -40,13 +47,13 @@ Before touching a pause control:
 `pauses` is read-only by default and never requires an owner key. Arguments are, in order, creation, joining and completion.
 
 ```bash
-pnpm pauses -- true true true
+pnpm exec tsx scripts/set-pauses.ts true true true
 ```
 
 The output lists each zero-value call's exact destination, calldata and hash, and the gate refuses to print anything unless the escrow, chain, token, cap, scheme, mission policy, owner and both signers all verify on chain first. Review those fields independently, submit the ordered bundle through `LOCK_IN_OWNER_ADDRESS`, collect the multisig threshold, wait for every receipt, then verify the result without an owner key:
 
 ```bash
-pnpm pauses:verify -- true true true
+pnpm exec tsx scripts/set-pauses.ts --verify true true true
 ```
 
 The script skips unchanged controls and places every closure before any opening. Local `--execute` is development compatibility only: it refuses a contract owner and must not be used for the release escrow.
@@ -77,7 +84,7 @@ The refresh token rotates on every refresh and is stored encrypted with AES-256-
 Start with contract pauses `true / true / true` and Vercel flags all `false`.
 
 1. Set Vercel production to `NEW_PACTS_ENABLED=true`, `JOIN_ENABLED=false`, `CHECK_INS_ENABLED=true`; deploy production. The flags must mirror the on-chain pauses exactly, or `/api/health` fails `flagPauseAlignment` and answers 503.
-2. Generate contract pauses `false / true / false`, inspect and execute the ordered calls through the multisig, then run `pnpm pauses:verify -- false true false`. Completion opens here and does NOT close again until the Lock has settled: see the check-in section.
+2. Generate contract pauses `false / true / false`, inspect and execute the ordered calls through the multisig, then run `pnpm exec tsx scripts/set-pauses.ts --verify false true false`. Completion opens here and does NOT close again until the Lock has settled: see the check-in section.
 3. Wallet A creates one Strava Lock through the production UI at exactly `0.1 USDC` on the three-day template. Review the wallet calldata warning. Record the displayed `LOCK-…` invite code and confirm it resolves deterministically to the created on-chain Lock ID.
 4. Record the pact ID and every approval and create transaction hash.
 5. Immediately close creation and joining: `true / true / false`. Leave completion open.
@@ -86,7 +93,7 @@ Start with contract pauses `true / true / true` and Vercel flags all `false`.
 Only creation is open to a newcomer during this window. No unrelated or already-active Lock may exist during the exception. If `nextPactId` advances unexpectedly, close first and investigate every new Lock.
 
 ```bash
-pnpm canary:status -- --pact 1
+pnpm exec tsx scripts/canary.ts snapshot --pact 1
 CANARY_EXPECTED_PACT_IDS=1 pnpm canary:reconcile
 ```
 
@@ -97,7 +104,7 @@ Replace the example ID with the recorded ID.
 Complete this before the published start. `joinPact` reverts once the start time passes.
 
 1. Set Vercel production to `NEW_PACTS_ENABLED=false`, `JOIN_ENABLED=true`, `CHECK_INS_ENABLED=true`; deploy production.
-2. Generate contract pauses `true / false / false`, execute through the multisig, then run `pnpm pauses:verify -- true false false`.
+2. Generate contract pauses `true / false / false`, execute through the multisig, then run `pnpm exec tsx scripts/set-pauses.ts --verify true false false`.
 3. Wallet B opens the Lock from wallet A's `LOCK-…` invite link and joins through the production UI at exactly `0.1 USDC`. Confirm an altered checksum is rejected, and that a valid code does not bypass admission, capacity, timing or stake requirements.
 4. Record the approval and join transaction hashes.
 5. Close creation and joining first: `true / true / false`.
