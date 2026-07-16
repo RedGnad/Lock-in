@@ -13,7 +13,15 @@ export const monad = defineChain({
 });
 
 export const escrowAddress = process.env.NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS as Address | undefined;
-export const escrowDeploymentBlock = 87_825_780n;
+/**
+ * The block the CURRENT escrow was deployed in, per deployments/monad-mainnet-oauth.json.
+ *
+ * Every log scan starts here. Leaving it on a previous escrow's block does not just waste requests: it
+ * widens the range by hundreds of thousands of blocks, the public RPC answers 413, and the leaderboard
+ * falls back to scanning 10k at a time until the route times out. Redeploying the escrow means changing
+ * this line in the same commit.
+ */
+export const escrowDeploymentBlock = 88_203_155n;
 
 export function lockInPublicClient() {
   return createPublicClient({

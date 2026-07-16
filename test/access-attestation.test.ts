@@ -30,7 +30,20 @@ const configuration = {
   missionType: 1,
 } as const;
 
-test("the mission policy identifier is stable, and an unknown mission is refused", () => {
+test("the mission policy identifier is the one the DEPLOYED escrow returns", () => {
+  // Regression, and the reason createPact was impossible: this derivation used to be
+  // keccak256("LOCK_IN_POLICY_STRAVA_RUN"), a zkTLS-era constant that the escrow never knew about, so the
+  // admission attestation was bound to a config hash the contract could not reproduce and every creation
+  // reverted. The tests on both sides passed, because each checked its own derivation against itself and
+  // nothing checked TypeScript against Solidity.
+  //
+  // This is the value `missionPolicyHash(1)` returns on escrow 0xD37121112F240fE03a18D754B2fdB9dC750034d4,
+  // Monad chain 143, and /api/health publishes it. If this test fails, either the escrow was redeployed or
+  // the derivation drifted again: check the chain before touching the expectation.
+  assert.equal(
+    missionPolicyIdForType(1),
+    "0x99a84a67b7245bd9592d49a5c750096fb5990b373834c02cc0913c99161302bf",
+  );
   assert.equal(missionPolicyIdForType(1), STRAVA_MISSION_POLICY_ID);
   // Strava is the only mission: anything else must be refused rather than silently defaulted.
   for (const unknown of [0, 2, 3, 255]) {
