@@ -26,6 +26,7 @@
     "proof:request": "tsx scripts/create-proof-request.ts",
     "proof:inspect": "tsx scripts/inspect-proof.ts",
     "provider:check": "tsx scripts/check-provider-hashes.ts",
+    "probe:strava": "tsx scripts/probe-strava-response.ts",
     "release:artifact": "tsx scripts/build-release-artifact.ts",
     "production:check": "tsx scripts/check-production.ts"
   },
