@@ -16,8 +16,8 @@ import { privateKeyToAccount } from "viem/accounts";
 import { lockInAbi } from "../src/lock-in-abi.js";
 import { addMonadGasBuffer } from "../src/monad-gas.js";
 
-type PauseName = "creation" | "joining" | "baseline" | "completion";
-type SetterName = "setCreationPaused" | "setJoiningPaused" | "setBaselinePaused" | "setCompletionPaused";
+type PauseName = "creation" | "joining" | "completion";
+type SetterName = "setCreationPaused" | "setJoiningPaused" | "setCompletionPaused";
 type PauseState = Record<PauseName, boolean>;
 type PauseOperation = { name: PauseName; functionName: SetterName; current: boolean; desired: boolean };
 
@@ -56,7 +56,7 @@ function localOwnerPrivateKey(): Hex {
 
 function booleanArgument(value: string | undefined): boolean {
   if (value !== "true" && value !== "false") {
-    throw new Error("Pass exactly: <creation> <joining> <baseline> <completion> as true/false");
+    throw new Error("Pass exactly: <creation> <joining> <completion> as true/false");
   }
   return value === "true";
 }
@@ -78,7 +78,7 @@ if (snapshotOnly ? values.length !== 0 : values.length !== 4) {
 const desired = snapshotOnly
   ? null
   : Object.fromEntries(
-    (["creation", "joining", "baseline", "completion"] as const).map((name, index) => [name, booleanArgument(values[index])]),
+    (["creation", "joining", "completion"] as const).map((name, index) => [name, booleanArgument(values[index])]),
   ) as PauseState;
 
 const escrow = requiredAddress("NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS");
@@ -236,13 +236,12 @@ async function assertReleaseGate(blockNumber: bigint) {
 
 async function readPauses(blockNumber?: bigint): Promise<PauseState> {
   const atBlock = blockNumber === undefined ? {} : { blockNumber };
-  const [creation, joining, baseline, completion] = await Promise.all([
+  const [creation, joining, completion] = await Promise.all([
     publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "creationPaused", ...atBlock }),
     publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "joiningPaused", ...atBlock }),
-    publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "baselinePaused", ...atBlock }),
     publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "completionPaused", ...atBlock }),
   ]);
-  return { creation, joining, baseline, completion };
+  return { creation, joining, completion };
 }
 
 const observedBlock = await publicClient.getBlock({ blockTag: "latest" });
@@ -279,7 +278,7 @@ const openingRequested = (Object.keys(desired) as PauseName[])
 const releaseGate = openingRequested || (verify && Object.values(desired).some((paused) => !paused))
   ? await assertReleaseGate(observedBlock.number)
   : null;
-const confirmation = `SET_PAUSES_${CHAIN_ID}_${escrow}_${desired.creation}_${desired.joining}_${desired.baseline}_${desired.completion}`;
+const confirmation = `SET_PAUSES_${CHAIN_ID}_${escrow}_${desired.creation}_${desired.joining}_${desired.completion}`;
 if (verify) {
   const matches = (Object.keys(desired) as PauseName[]).every((name) => current[name] === desired[name]);
   if (!matches) throw new Error(`Pause verification failed: ${JSON.stringify({ desired, current })}`);
@@ -290,12 +289,11 @@ if (verify) {
 const setters: Record<PauseName, SetterName> = {
   creation: "setCreationPaused",
   joining: "setJoiningPaused",
-  baseline: "setBaselinePaused",
   completion: "setCompletionPaused",
 };
 // Stop new exposure before proof paths. Open proof paths before accepting new exposure.
-const closeOrder: PauseName[] = ["creation", "joining", "baseline", "completion"];
-const openOrder: PauseName[] = ["baseline", "completion", "joining", "creation"];
+const closeOrder: PauseName[] = ["creation", "joining", "completion"];
+const openOrder: PauseName[] = ["completion", "joining", "creation"];
 const operations: PauseOperation[] = [
   ...closeOrder.filter((name) => current[name] !== desired[name] && desired[name]),
   ...openOrder.filter((name) => current[name] !== desired[name] && !desired[name]),
@@ -349,7 +347,7 @@ if (!execute) {
     multisigReview: {
       expectedSignerConfirmations: "Apply the configured multisig threshold to this exact ordered calldata bundle.",
       gas: "Estimate the multisig wrapper/batch in the multisig interface; directCallGasLimit excludes wrapper overhead.",
-      verifyCommand: `pnpm pauses:verify -- ${desired.creation} ${desired.joining} ${desired.baseline} ${desired.completion}`,
+      verifyCommand: `pnpm pauses:verify -- ${desired.creation} ${desired.joining} ${desired.completion}`,
     },
     nextStep: operations.length === 0
       ? "No transaction is required. Run the verify command to record the state."

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { proofSubmissionDeadlineMs } from "../src/pact-server.js";
-import { DUOLINGO_XP_MISSION, STRAVA_RUN_MISSION } from "../src/lock-in-abi.js";
+import { STRAVA_RUN_MISSION } from "../src/lock-in-abi.js";
 
-test("keeps the grace window for Strava uploads but not fresh Duolingo snapshots", () => {
+test("a Strava day stays submittable for a full grace window after it ends", () => {
+  // Strava uploads late: a watch that syncs the next morning must not cost the athlete their day. The
+  // escrow enforces the same SUBMISSION_GRACE_PERIOD on chain.
   const dayEnd = 1_800_000_000_000;
   assert.equal(proofSubmissionDeadlineMs(STRAVA_RUN_MISSION, dayEnd), dayEnd + 24 * 60 * 60 * 1_000);
-  assert.equal(proofSubmissionDeadlineMs(DUOLINGO_XP_MISSION, dayEnd), dayEnd);
 });

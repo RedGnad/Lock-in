@@ -7,18 +7,12 @@ import { formatUnits, parseEventLogs, parseUnits, zeroAddress, type Address, typ
 import { useAccount, useChainId, useConfig, usePublicClient, useReadContract, useSignMessage, useWriteContract } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
-  DUOLINGO_XP_MISSION,
-  emptyBaselineEvidence,
-  emptyDirectProofBundle,
   erc20Abi,
   lockInAbi,
-  type BaselineEvidence,
-  type DirectProofBundle,
 } from "@/src/lock-in-abi";
 import { escrowAddress, monad } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { MISSIONS, PACT_TEMPLATES, pactTemplate, type MissionId } from "@/src/missions";
-import { openReclaimPopup, runReclaimProof } from "@/src/reclaim-client";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 import { requestAccessEvidence } from "@/src/access-client";
 import { ActionDialog } from "@/components/action-dialog";
@@ -72,7 +66,6 @@ export function CreatePact() {
   const [durationDays, setDurationDays] = useState(3);
   const [maxParticipants, setMaxParticipants] = useState(4);
   const [stakeInput, setStakeInput] = useState("0.1");
-  const [duolingoUsername, setDuolingoUsername] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -164,43 +157,19 @@ export function CreatePact() {
     if (!entryAccepted) return setStatus("Accept the Rules to continue.");
     if ((minStake !== undefined && amount < minStake) || (maxStake !== undefined && amount > maxStake)) return setStatus("Choose a stake from 0.1 to 1 USDC.");
     if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this lock.`);
-    if (mission.type === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) {
-      return setStatus("Enter your Duolingo username.");
-    }
 
     setReviewOpen(false);
     setBusy(true);
     busyRef.current = true;
-    let baseline: BaselineEvidence = emptyBaselineEvidence;
-    let directProof: DirectProofBundle = emptyDirectProofBundle;
-    let proofPopup: Window | null = null;
     try {
       if (allowance < amount) {
         setStatus(`Approve ${stakeInput} ${symbol} in your wallet…`);
         await writeWithGas({ address: token, abi: erc20Abi, functionName: "approve", args: [escrowAddress, amount] }, "approval");
         await refetchAllowance();
-        if (mission.type === DUOLINGO_XP_MISSION) {
-          setStatus("USDC approved. Review again to link Duolingo and create the lock.");
-          return;
-        }
       }
 
-      if (mission.type === DUOLINGO_XP_MISSION) proofPopup = openReclaimPopup();
       setStatus("Checking secure wallet access…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
-      if (mission.type === DUOLINGO_XP_MISSION) {
-        const result = await runReclaimProof({
-          walletAddress: address,
-          pactId: "0",
-          phase: "baseline",
-          intent: "create",
-          missionType: mission.type,
-          username: duolingoUsername.trim(),
-        }, setStatus, proofPopup);
-        if (!result.baseline) throw new Error("Duolingo baseline was not returned");
-        baseline = result.baseline;
-        directProof = result.directProof;
-      }
 
       const latestBlock = await publicClient.getBlock({ blockTag: "latest" });
       const startsAt = scheduledStart(latestBlock.timestamp);
@@ -225,7 +194,7 @@ export function CreatePact() {
         address: escrowAddress,
         abi: lockInAbi,
         functionName: "createPact",
-        args: [amount, dailyTarget, template.durationDays, template.requiredCompletions, 2, maxParticipants, startsAt, mission.type, baseline, directProof, access],
+        args: [amount, dailyTarget, template.durationDays, template.requiredCompletions, 2, maxParticipants, startsAt, mission.type, access],
       }, "create");
       const logs = parseEventLogs({ abi: lockInAbi, eventName: "PactCreated", logs: receipt.logs });
       const id = logs[0]?.args.pactId;
@@ -234,9 +203,6 @@ export function CreatePact() {
     } catch (error) {
       setStatus(friendlyError(error));
     } finally {
-      baseline = emptyBaselineEvidence;
-      directProof = emptyDirectProofBundle;
-      if (proofPopup && !proofPopup.closed) proofPopup.close();
       setBusy(false);
       busyRef.current = false;
     }
@@ -257,7 +223,6 @@ export function CreatePact() {
     if (!entryAccepted) return setStatus("Accept the Rules to continue.");
     if ((minStake !== undefined && amount < minStake) || (maxStake !== undefined && amount > maxStake)) return setStatus("Choose a stake from 0.1 to 1 USDC.");
     if (tokenBalance < amount) return setStatus(`You need ${stakeInput} ${symbol} to create this lock.`);
-    if (mission.type === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) return setStatus("Enter your Duolingo username.");
     setStatus("");
     setReviewOpen(true);
   }
@@ -268,7 +233,7 @@ export function CreatePact() {
       <div className="step-track" aria-label={`Step ${step + 1} of 3`}>{[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} disabled={index > step} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`} aria-current={index === step ? "step" : undefined}/>)}</div>
       <div className="form-stage">
         {step === 0 && <fieldset className="form-field"><legend><b>Choose your mission</b><span>Fitness or learning. Each has its own proof.</span></legend><div className="mission-options" role="group" aria-label="Mission">{MISSIONS.map((item) => { const selected = missionChosen && missionId === item.id; return <button type="button" className={selected ? "active" : ""} aria-pressed={selected} onClick={() => chooseMission(item.id)} key={item.id}><strong>{item.name}</strong><span>{item.description}</span></button>; })}</div></fieldset>}
-        {step === 1 && <fieldset className="form-field"><legend><b>Set the pace</b><span>{mission.name} · choose a daily target, duration, and crew.</span></legend><div className="segmented target-options">{mission.targets.map((item) => <button type="button" className={dailyTarget === item.value ? "active" : ""} aria-pressed={dailyTarget === item.value} onClick={() => setDailyTarget(item.value)} key={item.value}>{item.label}</button>)}</div><div className="segmented schedule-options">{PACT_TEMPLATES.map((item) => <button type="button" className={durationDays === item.durationDays ? "active" : ""} aria-pressed={durationDays === item.durationDays} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} WINS</small></button>)}</div><div className="segmented crew-options" aria-label="Maximum crew size">{[2, 4, 8].map((size) => <button type="button" className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size} onClick={() => setMaxParticipants(size)} key={size}>{size}<small>PLAYERS MAX</small></button>)}</div>{mission.type === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="duolingo-username">Duolingo username</label><input id="duolingo-username" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username" autoComplete="off"/><p>Reclaim verifies that the signed-in Duolingo account owns this profile, then records a fresh XP baseline. Your name and game settings stay untouched.</p></div>}</fieldset>}
+        {step === 1 && <fieldset className="form-field"><legend><b>Set the pace</b><span>{mission.name} · choose a daily target, duration, and crew.</span></legend><div className="segmented target-options">{mission.targets.map((item) => <button type="button" className={dailyTarget === item.value ? "active" : ""} aria-pressed={dailyTarget === item.value} onClick={() => setDailyTarget(item.value)} key={item.value}>{item.label}</button>)}</div><div className="segmented schedule-options">{PACT_TEMPLATES.map((item) => <button type="button" className={durationDays === item.durationDays ? "active" : ""} aria-pressed={durationDays === item.durationDays} onClick={() => setDurationDays(item.durationDays)} key={item.id}>{item.durationDays}<small>DAYS · {item.requiredCompletions} WINS</small></button>)}</div><div className="segmented crew-options" aria-label="Maximum crew size">{[2, 4, 8].map((size) => <button type="button" className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size} onClick={() => setMaxParticipants(size)} key={size}>{size}<small>PLAYERS MAX</small></button>)}</div></fieldset>}
         {step === 2 && <fieldset className="form-field"><legend><b>Your stake</b><span>Every player stakes the same amount.</span></legend><div className="segmented stake-options">{["0.1", "0.5", "1"].map((value) => { const option = parseUnits(value, decimals); return <button type="button" className={stakeInput === value ? "active" : ""} aria-pressed={stakeInput === value} disabled={maxStake !== undefined && option > maxStake} onClick={() => setStakeInput(value)} key={value}>{formatUnits(option, decimals)}<small>{symbol}</small></button>; })}</div></fieldset>}
       </div>
       {step > 0 && <div className="pact-summary"><strong>{mission.name} · {template.requiredCompletions}/{durationDays} days</strong><span>{mission.targets.find((item) => item.value === dailyTarget)?.label} · up to {maxParticipants} players · {stakeInput} {symbol} each</span></div>}
@@ -276,10 +241,9 @@ export function CreatePact() {
       {step > 0 && <div className="stage-actions"><button className="secondary-button" type="button" onClick={() => setStep((value) => value - 1)}>BACK</button>{step < 2 ? <button className="lock-button" type="button" onClick={() => setStep((value) => value + 1)}>CONTINUE</button> : <button className="lock-button" type="button" onClick={review} disabled={busy || !escrowAddress || !entryAccepted || !creationEnabled}>REVIEW LOCK</button>}</div>}
       {!creationEnabled && <p className="form-status safety-status" role="status">New locks are temporarily paused for safety.</p>}
       {status && <p className="form-status" aria-live="polite">{status}</p>}
-      <ActionDialog open={reviewOpen} title="Create this lock?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : mission.type === DUOLINGO_XP_MISSION ? "Verify profile & create" : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
+      <ActionDialog open={reviewOpen} title="Create this lock?" eyebrow="Transaction review" confirmLabel={allowance < amount ? `Approve ${stakeInput} ${symbol}` : `Stake ${stakeInput} ${symbol} & create`} busy={busy} onClose={() => setReviewOpen(false)} onConfirm={create}>
         <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {mission.targets.find((item) => item.value === dailyTarget)?.label}</dd></div><div><dt>Schedule</dt><dd>{template.requiredCompletions} of {durationDays} days</dd></div><div><dt>Crew</dt><dd>2 required · {maxParticipants} maximum</dd></div><div><dt>Stake</dt><dd>{stakeInput} {symbol} per player</dd></div></dl>
-        <p>{mission.type === DUOLINGO_XP_MISSION ? "Reclaim checks account ownership and current XP before any stake enters the lock. Only XP earned after that baseline can count." : "Each completion requires a challenge-named GPS run from the same Strava account. Suspicious, manual, trainer, flagged, or implausible runs are rejected."}</p>
-        {mission.type === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> verified Duolingo profile ID, XP, a non-sensitive ownership marker, proof time and standard Reclaim request metadata. Your username, password, cookies, email and privacy-setting values are excluded.</p>}
+        <p>Each day needs a GPS run from your connected Strava account, inside that day of the lock. Manual, treadmill, flagged and implausible runs are rejected, and one run can only ever count once.</p>
         <p>Wallet gas is separate. If fewer than two players join, each participant can reclaim their full stake.</p>
       </ActionDialog>
     </section>

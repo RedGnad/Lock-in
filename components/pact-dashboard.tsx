@@ -6,21 +6,16 @@ import { formatUnits, zeroAddress, type Address, type Hash } from "viem";
 import { useAccount, useChainId, useConfig, usePublicClient, useReadContract, useReadContracts, useSignMessage, useWriteContract } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import {
-  DUOLINGO_XP_MISSION,
   STRAVA_RUN_MISSION,
-  emptyBaselineEvidence,
-  emptyDirectProofBundle,
   erc20Abi,
   lockInAbi,
-  type BaselineEvidence,
-  type DirectProofBundle,
   type PactTuple,
 } from "@/src/lock-in-abi";
 import { escrowAddress, monad } from "@/src/chain";
 import { encodeLockInviteCode } from "@/src/lock-invite";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { formatMissionTarget, missionByType } from "@/src/missions";
-import { openReclaimPopup, runReclaimProof } from "@/src/reclaim-client";
+import { checkInStrava, stravaConnection, startStravaAuthorization } from "@/src/strava-client";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 import { requestAccessEvidence } from "@/src/access-client";
 import { ActionDialog } from "@/components/action-dialog";
@@ -62,10 +57,6 @@ function savePending(pactId: bigint, account: Address, value: PendingAction | nu
   }
 }
 
-function duolingoUsernameKey(pactId: bigint, account: Address) {
-  return `lock-in:duolingo:${pactId}:${account.toLowerCase()}`;
-}
-
 function friendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (/user rejected|user denied|rejected the request/i.test(message)) return "Transaction cancelled.";
@@ -83,7 +74,7 @@ function friendlyError(error: unknown) {
   if (/HighFiveAlreadySent/i.test(message)) return "You already high-fived that check-in.";
   if (/InvalidHighFive/i.test(message)) return "That check-in cannot receive a high five.";
   if (/access|authoriz|wallet authentication/i.test(message) && message.length < 220) return message;
-  if (/Reclaim|verification|Duolingo|Strava|Name|GPS|title|session|profile|proof|XP/i.test(message) && message.length < 220) return message;
+  if (/verification|Strava|GPS|run|session|activity|distance|treadmill/i.test(message) && message.length < 220) return message;
   return "The transaction did not complete. Refresh the lock before retrying.";
 }
 
@@ -104,22 +95,8 @@ export function PactDashboard({ id }: { id: string }) {
   const proofBusyRef = useRef(false);
   const [entryAccepted, setEntryAccepted] = useState(false);
   const [joinReviewOpen, setJoinReviewOpen] = useState(false);
-  const [duolingoUsername, setDuolingoUsername] = useState("");
   const [actions, setActions] = useState<ProductActions>({ join: false, checkIns: false });
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1_000));
-
-  useEffect(() => {
-    if (!address || pactId <= 0n) return;
-    try {
-      const saved = window.localStorage.getItem(duolingoUsernameKey(pactId, address));
-      if (saved && /^[A-Za-z0-9._-]{1,64}$/.test(saved)) setDuolingoUsername(saved);
-    } catch {}
-  }, [address, pactId]);
-
-  useEffect(() => {
-    if (!address || pactId <= 0n || !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername)) return;
-    try { window.localStorage.setItem(duolingoUsernameKey(pactId, address), duolingoUsername); } catch {}
-  }, [address, duolingoUsername, pactId]);
 
   useEffect(() => {
     let alive = true;
@@ -267,40 +244,16 @@ export function PactDashboard({ id }: { id: string }) {
     if (!entryAccepted) return setMessage("Accept the Rules to continue.");
     if (pact[4] >= pact[10]) return setMessage("This lock is full.");
     if (tokenBalance < pact[2]) return setMessage(`You need ${formatUnits(pact[2], decimals)} ${symbol} to join.`);
-    if (pact[11] === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) {
-      return setMessage("Enter your Duolingo username.");
-    }
     setJoinReviewOpen(false);
     proofBusyRef.current = true;
     setBusyAction("proof");
-    let baseline: BaselineEvidence = emptyBaselineEvidence;
-    let directProof: DirectProofBundle = emptyDirectProofBundle;
-    let proofPopup: Window | null = null;
     try {
       if (allowance < pact[2]) {
         setMessage(`Approve ${formatUnits(pact[2], decimals)} ${symbol} in your wallet…`);
         await send({ address: token, abi: erc20Abi, functionName: "approve", args: [escrowAddress, pact[2]] }, "approval");
-        if (pact[11] === DUOLINGO_XP_MISSION) {
-          setMessage("USDC approved. Click join again to verify Duolingo and enter the lock.");
-          return;
-        }
       }
-      if (pact[11] === DUOLINGO_XP_MISSION) proofPopup = openReclaimPopup();
-      setBusyAction("proof");
       setMessage("Checking secure wallet access…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
-      if (pact[11] === DUOLINGO_XP_MISSION) {
-        const result = await runReclaimProof({
-          walletAddress: address,
-          pactId: pactId.toString(),
-          phase: "baseline",
-          intent: "join",
-          username: duolingoUsername.trim(),
-        }, setMessage, proofPopup);
-        if (!result.baseline) throw new Error("Duolingo baseline was not returned");
-        baseline = result.baseline;
-        directProof = result.directProof;
-      }
       setMessage("Authorizing your place in the crew…");
       const access = await requestAccessEvidence({
         walletAddress: address,
@@ -308,14 +261,11 @@ export function PactDashboard({ id }: { id: string }) {
         pactId: pactId.toString(),
       });
       setMessage("Joining the lock…");
-      await send({ address: escrowAddress, abi: lockInAbi, functionName: "joinPact", args: [pactId, baseline, directProof, access] }, "join");
+      await send({ address: escrowAddress, abi: lockInAbi, functionName: "joinPact", args: [pactId, access] }, "join");
       setMessage("You are locked in.");
     } catch (error) {
       setMessage(friendlyError(error));
     } finally {
-      baseline = emptyBaselineEvidence;
-      directProof = emptyDirectProofBundle;
-      if (proofPopup && !proofPopup.closed) proofPopup.close();
       proofBusyRef.current = false;
       if (!busyRef.current) setBusyAction(null);
     }
@@ -327,32 +277,28 @@ export function PactDashboard({ id }: { id: string }) {
     if (!actions.checkIns) return setMessage("Check-ins are paused for safety.");
     proofBusyRef.current = true;
     setBusyAction("proof");
-    let directProof: DirectProofBundle = emptyDirectProofBundle;
-    let proofPopup: Window | null = null;
     try {
-      if (pact?.[11] === DUOLINGO_XP_MISSION && !/^[A-Za-z0-9._-]{1,64}$/.test(duolingoUsername.trim())) {
-        return setMessage("Enter your Duolingo username in Lock details before verifying.");
-      }
-      proofPopup = openReclaimPopup();
       setMessage("Checking secure wallet access…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
-      const result = await runReclaimProof({
+      setMessage("Reading today's run from Strava…");
+      // The server holds the OAuth grant, reads the run and signs the attestation. Nothing to install,
+      // nothing to rename, no second login: that is the whole point of this path.
+      const { evidence, signature, run } = await checkInStrava({
         walletAddress: address,
         pactId: pactId.toString(),
-        phase: "completion",
         dayIndex,
-        username: pact?.[11] === DUOLINGO_XP_MISSION ? duolingoUsername.trim() : undefined,
-      }, setMessage, proofPopup);
-      if (!result.completion) throw new Error("Verified completion was not returned");
-      directProof = result.directProof;
-      setMessage(`Publishing verified day ${dayIndex + 1}…`);
-      await send({ address: escrowAddress, abi: lockInAbi, functionName: "submitCompletion", args: [pactId, dayIndex, result.completion, directProof] }, "verification");
+      });
+      setMessage(`Publishing ${(run.distanceMeters / 1000).toFixed(2)} km for day ${dayIndex + 1}…`);
+      await send({
+        address: escrowAddress,
+        abi: lockInAbi,
+        functionName: "submitCompletion",
+        args: [pactId, dayIndex, { ...evidence, signature }],
+      }, "verification");
       setMessage(`Day ${dayIndex + 1} verified ✓`);
     } catch (error) {
       setMessage(friendlyError(error));
     } finally {
-      directProof = emptyDirectProofBundle;
-      if (proofPopup && !proofPopup.closed) proofPopup.close();
       proofBusyRef.current = false;
       if (!busyRef.current) setBusyAction(null);
     }
@@ -476,12 +422,12 @@ export function PactDashboard({ id }: { id: string }) {
             })}
           </div>
         </div>
-        <details className="pact-details"><summary>LOCK DETAILS <span aria-hidden="true">+</span></summary><div className="details-body"><div><span>MISSION</span><b>{mission.name} · {targetLabel}</b></div>{pact[11] === DUOLINGO_XP_MISSION && isJoined && <div className="duolingo-inline"><span>DUOLINGO USERNAME</span><input aria-label="Duolingo username" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username" autoComplete="off"/><small>Reclaim verifies the signed-in account. No profile edits required.</small></div>}<div><span>STAKE / PLAYER</span><b>{formatUnits(pact[2], decimals)} {symbol}</b></div><div><span>REGISTRATION CLOSES</span><b>{formatDate(startsAt)}</b></div><div><span>PROGRAM ENDS</span><b>{formatDate(endsAt)}</b></div><div><span>CREW</span><b>{minParticipants} minimum · {pact[10]} maximum</b></div><div><span>FINISHERS</span><b>{pact[5]}</b></div></div></details>
+        <details className="pact-details"><summary>LOCK DETAILS <span aria-hidden="true">+</span></summary><div className="details-body"><div><span>MISSION</span><b>{mission.name} · {targetLabel}</b></div><div><span>STAKE / PLAYER</span><b>{formatUnits(pact[2], decimals)} {symbol}</b></div><div><span>REGISTRATION CLOSES</span><b>{formatDate(startsAt)}</b></div><div><span>PROGRAM ENDS</span><b>{formatDate(endsAt)}</b></div><div><span>CREW</span><b>{minParticipants} minimum · {pact[10]} maximum</b></div><div><span>FINISHERS</span><b>{pact[5]}</b></div></div></details>
       </section>
 
       <div className="pact-actions" id="join-pact">
         {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <div className="proof-prep"><div><span>DAY {latestOpenDay + 1}</span><small>Record your GPS run on Strava, then verify here. We read your most recent run, so there is nothing to rename.</small></div></div>}
-        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && !targetReached && actions.checkIns && <p className="proof-disclosure proof-disclosure-inline">{pact[11] === DUOLINGO_XP_MISSION ? "Submitting proof makes the verified Duolingo profile ID, XP, non-sensitive ownership marker, proof time and standard Reclaim request metadata public in Monad calldata. Your username, password, cookies, email and privacy-setting values are excluded." : "Submitting proof makes the verified Strava activity ID, title, time, distance, motion fields and standard Reclaim request metadata public in Monad calldata. Login data and the GPS route are excluded."}</p>}
+        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && !targetReached && actions.checkIns && <p className="proof-disclosure proof-disclosure-inline">Checking in publishes the Strava activity ID, distance, motion fields and start time in Monad calldata. Your route, your login and your other activities are not published.</p>}
         {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
         {!isJoined && registration && !full && <button className="lock-button" disabled={!entryAccepted || !actions.join || Boolean(busyAction)} onClick={() => address ? setJoinReviewOpen(true) : setMessage("Connect your wallet to join.")}>JOIN FOR {formatUnits(pact[2], decimals)} {symbol}</button>}
         {!isJoined && registration && !actions.join && <p>Joining is temporarily paused for safety.</p>}
@@ -496,8 +442,8 @@ export function PactDashboard({ id }: { id: string }) {
 
       <ActionDialog open={joinReviewOpen} title="Join this lock?" eyebrow="Transaction review" confirmLabel={`Join for ${formatUnits(pact[2], decimals)} ${symbol}`} busy={Boolean(busyAction)} onClose={() => setJoinReviewOpen(false)} onConfirm={join}>
         <dl className="review-list"><div><dt>Mission</dt><dd>{mission.name} · {targetLabel}</dd></div><div><dt>Schedule</dt><dd>{requiredCompletions} of {durationDays} days</dd></div><div><dt>Starts</dt><dd>{formatDate(startsAt)}</dd></div><div><dt>Stake</dt><dd>{formatUnits(pact[2], decimals)} {symbol}</dd></div></dl>
-        {pact[11] === DUOLINGO_XP_MISSION && <div className="duolingo-link"><label htmlFor="join-duolingo">Duolingo username</label><input id="join-duolingo" value={duolingoUsername} onChange={(event) => setDuolingoUsername(event.target.value)} placeholder="your_username"/><p>Reclaim verifies that the signed-in Duolingo account owns this profile and records its current XP. Your Duolingo name and game settings stay untouched.</p></div>}
-        {pact[11] === DUOLINGO_XP_MISSION && <p className="proof-disclosure"><strong>Public on Monad:</strong> verified Duolingo profile ID, XP, a non-sensitive ownership marker, proof time and standard Reclaim request metadata. Your username, password, cookies, email and privacy-setting values are excluded.</p>}
+        
+        
         <p>Real USDC and gas are used on Monad mainnet. If the lock stays below two players, your stake is refundable.</p>
         <Link className="dialog-link" href="/rules">Read the rules ↗</Link>
       </ActionDialog>

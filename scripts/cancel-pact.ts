@@ -64,12 +64,11 @@ const ownerAbi = [{ type: "function", name: "owner", stateMutability: "view", in
 
 async function readIncidentSnapshot(blockNumber?: bigint) {
   const atBlock = blockNumber === undefined ? {} : { blockNumber };
-  const [rawOwner, pact, creation, joining, baseline, completion] = await Promise.all([
+  const [rawOwner, pact, creation, joining, completion] = await Promise.all([
     publicClient.readContract({ address: escrow, abi: ownerAbi, functionName: "owner", ...atBlock }),
     publicClient.readContract({ address: escrow, abi: releasePactAbi, functionName: "pacts", args: [pactId], ...atBlock }) as Promise<ReleasePactTuple>,
     publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "creationPaused", ...atBlock }),
     publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "joiningPaused", ...atBlock }),
-    publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "baselinePaused", ...atBlock }),
     publicClient.readContract({ address: escrow, abi: lockInAbi, functionName: "completionPaused", ...atBlock }),
   ]);
   if (pact[0] === zeroAddress) throw new Error(`Pact ${pactId} does not exist`);
@@ -94,7 +93,7 @@ async function readIncidentSnapshot(blockNumber?: bigint) {
       remainingPoolAtomicUnits: pact[14].toString(),
       cancelled: pact[16],
       finalized: pact[15],
-      pauses: { creation, joining, baseline, completion },
+      pauses: { creation, joining, completion },
     },
   };
 }

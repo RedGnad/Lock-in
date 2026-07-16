@@ -1,6 +1,5 @@
 import type { Address, Hash, Hex } from "viem";
 export type { AccessEvidence } from "./access-attestation";
-import type { DirectProofBundle as ReclaimDirectProofBundle, OnchainProof } from "./reclaim-onchain";
 
 export type PactTuple = readonly [
   creator: Address,
@@ -22,19 +21,6 @@ export type PactTuple = readonly [
   cancelled: boolean,
 ];
 
-export type BaselineEvidence = readonly [
-  missionType: number,
-  policyHash: Hash,
-  sessionIdHash: Hash,
-  identityHash: Hash,
-  metric: bigint,
-  proofSetHash: Hash,
-  observedAt: bigint,
-  issuedAt: bigint,
-  expiresAt: bigint,
-  signature: Hex,
-];
-
 export type CompletionEvidence = readonly [
   missionType: number,
   policyHash: Hash,
@@ -54,38 +40,7 @@ export type CompletionEvidence = readonly [
   signature: Hex,
 ];
 
-export type DirectProofBundle = ReclaimDirectProofBundle;
-export type ReclaimProof = OnchainProof;
-export const emptyDirectProofBundle: DirectProofBundle = { sessionId: "", proofs: [] };
-
 export const STRAVA_RUN_MISSION = 1;
-export const DUOLINGO_XP_MISSION = 2;
-export const emptyBaselineEvidence: BaselineEvidence = [
-  0,
-  `0x${"00".repeat(32)}`,
-  `0x${"00".repeat(32)}`,
-  `0x${"00".repeat(32)}`,
-  0n,
-  `0x${"00".repeat(32)}`,
-  0n,
-  0n,
-  0n,
-  "0x",
-];
-
-const baselineComponents = [
-  { name: "missionType", type: "uint8" },
-  { name: "policyHash", type: "bytes32" },
-  { name: "sessionIdHash", type: "bytes32" },
-  { name: "identityHash", type: "bytes32" },
-  { name: "metric", type: "uint64" },
-  { name: "proofSetHash", type: "bytes32" },
-  { name: "observedAt", type: "uint64" },
-  { name: "issuedAt", type: "uint64" },
-  { name: "expiresAt", type: "uint64" },
-  { name: "signature", type: "bytes" },
-] as const;
-
 const completionComponents = [
   { name: "missionType", type: "uint8" },
   { name: "policyHash", type: "bytes32" },
@@ -123,15 +78,6 @@ export const reclaimSignedClaimComponents = [
   { name: "signatures", type: "bytes[]" },
 ] as const;
 
-export const reclaimProofComponents = [
-  { name: "claimInfo", type: "tuple", components: reclaimClaimInfoComponents },
-  { name: "signedClaim", type: "tuple", components: reclaimSignedClaimComponents },
-] as const;
-
-export const directProofBundleComponents = [
-  { name: "sessionId", type: "string" },
-  { name: "proofs", type: "tuple[]", components: reclaimProofComponents },
-] as const;
 
 const accessComponents = [
   { name: "configHash", type: "bytes32" },
@@ -176,8 +122,7 @@ export const lockInAbi = [
   { type: "function", name: "stakeToken", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "evidenceSigner", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "accessSigner", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
-  { type: "function", name: "stravaVerifier", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
-  { type: "function", name: "duolingoVerifier", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "owner", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "CONTRACT_SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { type: "function", name: "MAX_STAKE", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { type: "function", name: "MIN_STAKE", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
@@ -207,7 +152,6 @@ export const lockInAbi = [
   },
   { type: "function", name: "creationPaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
   { type: "function", name: "joiningPaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
-  { type: "function", name: "baselinePaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
   { type: "function", name: "completionPaused", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "bool" }] },
   { type: "function", name: "completionPauseEndedAt", stateMutability: "view", inputs: [{ name: "", type: "uint64" }], outputs: [{ name: "", type: "uint64" }] },
   {
@@ -217,19 +161,17 @@ export const lockInAbi = [
       { name: "durationDays", type: "uint8" }, { name: "requiredCompletions", type: "uint8" },
       { name: "minParticipants", type: "uint8" }, { name: "maxParticipants", type: "uint8" },
       { name: "startsAt", type: "uint64" },
-      { name: "missionType", type: "uint8" }, { name: "baseline", type: "tuple", components: baselineComponents },
-      { name: "directProof", type: "tuple", components: directProofBundleComponents },
+      { name: "missionType", type: "uint8" },
       { name: "access", type: "tuple", components: accessComponents },
     ],
     outputs: [{ name: "pactId", type: "uint256" }],
   },
-  { type: "function", name: "joinPact", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }, { name: "baseline", type: "tuple", components: baselineComponents }, { name: "directProof", type: "tuple", components: directProofBundleComponents }, { name: "access", type: "tuple", components: accessComponents }], outputs: [] },
-  { type: "function", name: "submitCompletion", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }, { name: "dayIndex", type: "uint8" }, { name: "evidence", type: "tuple", components: completionComponents }, { name: "directProof", type: "tuple", components: directProofBundleComponents }], outputs: [] },
+  { type: "function", name: "joinPact", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }, { name: "access", type: "tuple", components: accessComponents }], outputs: [] },
+  { type: "function", name: "submitCompletion", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }, { name: "dayIndex", type: "uint8" }, { name: "evidence", type: "tuple", components: completionComponents }], outputs: [] },
   { type: "function", name: "cancelPact", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }], outputs: [] },
   { type: "function", name: "cancelPactByOwner", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }], outputs: [] },
   { type: "function", name: "finalizePact", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }], outputs: [] },
   { type: "function", name: "claim", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }], outputs: [{ name: "amount", type: "uint256" }] },
-  { type: "function", name: "releaseDuolingoIdentity", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }], outputs: [{ name: "released", type: "bool" }] },
   { type: "function", name: "setPlayerHandle", stateMutability: "nonpayable", inputs: [{ name: "handle", type: "string" }], outputs: [] },
   { type: "function", name: "clearPlayerHandle", stateMutability: "nonpayable", inputs: [], outputs: [] },
   { type: "function", name: "highFive", stateMutability: "nonpayable", inputs: [{ name: "pactId", type: "uint256" }, { name: "to", type: "address" }, { name: "dayIndex", type: "uint8" }], outputs: [] },

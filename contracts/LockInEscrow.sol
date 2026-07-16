@@ -8,7 +8,6 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {ILockInDuolingoVerifier, ILockInStravaVerifier, LockInProofTypes} from "./verifiers/LockInProofTypes.sol";
 
 /// @notice Fixed-stake social pacts settled only when a direct Reclaim proof and a short-lived
 ///         mission-specific backend attestation independently agree on every settlement field.
@@ -16,12 +15,11 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 
     uint8 public constant MISSION_STRAVA_RUN = 1;
-    uint8 public constant MISSION_DUOLINGO_XP = 2;
+    /// @dev The verification scheme behind a Strava completion: the athlete authorises Lock In once over
+    ///      Strava OAuth, and the backend reads the activity from Strava's own API.
+    bytes32 public constant STRAVA_OAUTH_SCHEME = keccak256("STRAVA_OAUTH_V1");
     bytes32 public constant POLICY_TYPEHASH =
         keccak256("MissionPolicy(uint256 chainId,uint8 missionType,address verifier,bytes32 verifierCodeHash)");
-    bytes32 public constant BASELINE_TYPEHASH = keccak256(
-        "Baseline(uint256 pactId,address account,uint8 missionType,bytes32 policyHash,bytes32 sessionIdHash,bytes32 identityHash,uint64 metric,bytes32 proofSetHash,uint64 observedAt,uint64 issuedAt,uint64 expiresAt)"
-    );
     bytes32 public constant COMPLETION_TYPEHASH = keccak256(
         "Completion(uint256 pactId,address account,uint8 dayIndex,uint8 missionType,bytes32 policyHash,bytes32 sessionIdHash,bytes32 identityHash,bytes32 eventNullifier,uint64 metric,bytes32 proofSetHash,uint64 occurredAt,uint32 oldestProofTimestamp,uint32 newestProofTimestamp,uint64 movingTimeSeconds,uint64 elapsedTimeSeconds,uint64 elevationGainMeters,uint64 issuedAt,uint64 expiresAt)"
     );
@@ -39,8 +37,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     /// @dev The Strava provider returns two claims: the athlete marker and the combined activity.
     uint256 private constant STRAVA_PROOF_COUNT = 2;
     uint32 public constant MAX_STRAVA_DISTANCE_METERS = 20_000;
-    uint32 public constant MIN_DUOLINGO_XP = 5;
-    uint32 public constant MAX_DUOLINGO_XP = 200;
     uint256 public constant MIN_STAKE = 100_000;
     uint256 public constant MAX_STAKE = 1_000_000;
     uint256 public constant MAX_ATTESTATION_AGE = 10 minutes;
@@ -72,19 +68,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         bool cancelled;
     }
 
-    struct BaselineEvidence {
-        uint8 missionType;
-        bytes32 policyHash;
-        bytes32 sessionIdHash;
-        bytes32 identityHash;
-        uint64 metric;
-        bytes32 proofSetHash;
-        uint64 observedAt;
-        uint64 issuedAt;
-        uint64 expiresAt;
-        bytes signature;
-    }
-
     struct CompletionEvidence {
         uint8 missionType;
         bytes32 policyHash;
@@ -113,8 +96,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     }
 
     IERC20 public immutable stakeToken;
-    ILockInStravaVerifier public immutable stravaVerifier;
-    ILockInDuolingoVerifier public immutable duolingoVerifier;
     address public evidenceSigner;
     address public accessSigner;
     uint256 public nextPactId = 1;
@@ -122,7 +103,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
 
     bool public creationPaused;
     bool public joiningPaused;
-    bool public baselinePaused;
     bool public completionPaused;
 
     mapping(uint256 => Pact) public pacts;
@@ -133,7 +113,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     mapping(uint256 => mapping(bytes32 => address)) public identityOwner;
     mapping(uint256 => mapping(address => uint64)) public lastMetric;
     mapping(uint256 => mapping(address => bool)) public claimed;
-    mapping(bytes32 => uint64) public consumedDuolingoMetric;
     mapping(bytes32 => bool) public usedEventNullifiers;
     mapping(bytes32 => bool) public usedAccessNonces;
     mapping(address => string) public playerHandle;
@@ -148,9 +127,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     mapping(bytes32 => bool) public usedHighFives;
     mapping(uint64 => uint64) public completionPauseStartedAt;
     mapping(uint64 => uint64) public completionPauseEndedAt;
-    /// @dev `duolingoIdentityLockedUntil` is authoritative; this id remains as the last lock after expiry.
-    mapping(bytes32 => uint256) public activeDuolingoPact;
-    mapping(bytes32 => uint64) public duolingoIdentityLockedUntil;
 
     event PactCreated(
         uint256 indexed pactId,
@@ -167,9 +143,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     );
     event PactJoined(uint256 indexed pactId, address indexed account);
     event IdentityBound(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
-    event BaselineAccepted(
-        uint256 indexed pactId, address indexed account, bytes32 indexed identityHash, uint64 totalMetric
-    );
     event CompletionAccepted(
         uint256 indexed pactId,
         address indexed account,
@@ -188,10 +161,8 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     event AccessSignerUpdated(address indexed previousSigner, address indexed newSigner);
     event CreationPauseUpdated(bool paused);
     event JoiningPauseUpdated(bool paused);
-    event BaselinePauseUpdated(bool paused);
     event CompletionPauseUpdated(bool paused);
     event PactRefundedForCompletionPause(uint256 indexed pactId, uint64 indexed pauseGeneration, uint64 pauseStartedAt);
-    event DuolingoIdentityReleased(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
     event PlayerHandleSet(address indexed account, string handle);
     event PlayerProfileVisibilityUpdated(address indexed account, bool hidden);
     event MissionDayVerified(
@@ -204,7 +175,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     event HighFiveSent(uint256 indexed pactId, address indexed from, address indexed to, uint8 dayIndex);
 
     error InvalidAddress();
-    error LiveSchemaUnconfirmed();
     error InvalidTokenDecimals();
     error InvalidStake();
     error InvalidGoal();
@@ -213,7 +183,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     error PactNotFound();
     error CreationIsPaused();
     error JoiningIsPaused();
-    error BaselineIsPaused();
     error CompletionIsPaused();
     error JoinClosed();
     error AlreadyJoined();
@@ -233,15 +202,11 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     error StaleEvidence();
     error InvalidAttestationWindow();
     error InvalidProofHash();
-    error InvalidProofBundle();
-    error DirectProofMismatch();
     error InvalidMissionPolicy();
     error InvalidMetric();
     error InvalidConfigurationHash();
-    error DuolingoIdentityInActivePact();
     error PactStillActive();
     error UnsupportedStakeToken();
-    error BaselineRequired();
     error IdentityAlreadyUsed();
     error IdentityMismatch();
     error NotCreator();
@@ -260,36 +225,24 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     constructor(
         IERC20 stakeToken_,
         address evidenceSigner_,
-        address accessSigner_,
-        ILockInStravaVerifier stravaVerifier_,
-        ILockInDuolingoVerifier duolingoVerifier_
+        address accessSigner_
     ) EIP712("Lock In", "1") {
         if (
             address(stakeToken_) == address(0) || evidenceSigner_ == address(0) || accessSigner_ == address(0)
-                || address(stravaVerifier_) == address(0) || address(duolingoVerifier_) == address(0)
         ) {
             revert InvalidAddress();
         }
-        if (address(stravaVerifier_).code.length == 0 || address(duolingoVerifier_).code.length == 0) {
-            revert InvalidAddress();
-        }
-        if (!stravaVerifier_.LIVE_SCHEMA_CONFIRMED() || !duolingoVerifier_.LIVE_SCHEMA_CONFIRMED()) {
-            revert LiveSchemaUnconfirmed();
-        }
         if (IERC20Metadata(address(stakeToken_)).decimals() != 6) revert InvalidTokenDecimals();
         stakeToken = stakeToken_;
-        stravaVerifier = stravaVerifier_;
-        duolingoVerifier = duolingoVerifier_;
         evidenceSigner = evidenceSigner_;
         accessSigner = accessSigner_;
         creationPaused = true;
         joiningPaused = true;
-        baselinePaused = true;
         completionPaused = true;
         completionPauseStartedAt[1] = uint64(block.timestamp);
     }
 
-    /// @notice Creates and atomically joins a pact. Duolingo creation requires a fresh XP baseline.
+    /// @notice Creates and atomically joins a pact.
     function createPact(
         uint96 stake,
         uint32 dailyTarget,
@@ -299,8 +252,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint8 maxParticipants,
         uint64 startsAt,
         uint8 missionType,
-        BaselineEvidence calldata baseline,
-        LockInProofTypes.DirectProofBundle calldata directProof,
         AccessEvidence calldata access
     ) external nonReentrant returns (uint256 pactId) {
         if (creationPaused) revert CreationIsPaused();
@@ -343,11 +294,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         pact.completionPauseGenerationAtCreation = completionPauseGeneration;
 
         joined[pactId][msg.sender] = true;
-        if (missionType == MISSION_DUOLINGO_XP) {
-            _acceptBaseline(pactId, 0, msg.sender, baseline, directProof);
-        } else {
-            _requireEmptyDirectProof(directProof);
-        }
         _pullStake(msg.sender, stake);
 
         emit PactCreated(
@@ -366,11 +312,9 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         emit PactJoined(pactId, msg.sender);
     }
 
-    /// @notice Joins before the published start. Duolingo joining and baseline acceptance are atomic.
+    /// @notice Joins before the published start.
     function joinPact(
         uint256 pactId,
-        BaselineEvidence calldata baseline,
-        LockInProofTypes.DirectProofBundle calldata directProof,
         AccessEvidence calldata access
     ) external nonReentrant {
         if (joiningPaused) revert JoiningIsPaused();
@@ -382,11 +326,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
 
         joined[pactId][msg.sender] = true;
         ++pact.participantCount;
-        if (pact.missionType == MISSION_DUOLINGO_XP) {
-            _acceptBaseline(pactId, pactId, msg.sender, baseline, directProof);
-        } else {
-            _requireEmptyDirectProof(directProof);
-        }
         _pullStake(msg.sender, pact.stake);
         emit PactJoined(pactId, msg.sender);
     }
@@ -395,8 +334,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     function submitCompletion(
         uint256 pactId,
         uint8 dayIndex,
-        CompletionEvidence calldata evidence,
-        LockInProofTypes.DirectProofBundle calldata directProof
+        CompletionEvidence calldata evidence
     ) external nonReentrant {
         if (completionPaused) revert CompletionIsPaused();
         Pact storage pact = _pact(pactId);
@@ -419,22 +357,12 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (evidence.proofSetHash == bytes32(0) || evidence.eventNullifier == bytes32(0)) revert InvalidProofHash();
         if (usedEventNullifiers[evidence.eventNullifier]) revert EventAlreadyUsed();
 
-        _verifyDirectCompletion(pactId, msg.sender, dayIndex, pact, evidence, directProof);
+        _verifyCompletionPolicy(pact, evidence);
         _verifyCompletionSignature(pactId, msg.sender, dayIndex, evidence);
         _bindIdentity(pactId, msg.sender, evidence.identityHash);
 
-        if (pact.missionType == MISSION_STRAVA_RUN) {
-            if (evidence.metric < pact.dailyTarget) revert InvalidMetric();
-        } else {
-            uint64 previousMetric = lastMetric[pactId][msg.sender];
-            uint64 globallyConsumed = consumedDuolingoMetric[evidence.identityHash];
-            if (globallyConsumed > previousMetric) previousMetric = globallyConsumed;
-            if (evidence.metric < previousMetric || uint256(evidence.metric) - previousMetric < pact.dailyTarget) {
-                revert InvalidMetric();
-            }
-            lastMetric[pactId][msg.sender] = evidence.metric;
-            consumedDuolingoMetric[evidence.identityHash] = evidence.metric;
-        }
+        if (evidence.metric < pact.dailyTarget) revert InvalidMetric();
+        lastMetric[pactId][msg.sender] = evidence.metric;
 
         usedEventNullifiers[evidence.eventNullifier] = true;
         completionBitmap[pactId][msg.sender] = previousBitmap | dayMask;
@@ -569,25 +497,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         return joined[pactId][account] && completionCount[pactId][account] >= pact.requiredCompletions;
     }
 
-    /// @notice Clears the caller's Duolingo lock once its pact can no longer accept completions.
-    /// @dev A stale pact can never clear a lock that has already moved to a newer pact.
-    function releaseDuolingoIdentity(uint256 pactId) external returns (bool released) {
-        Pact storage pact = _pact(pactId);
-        if (!pact.cancelled && !pact.finalized) revert PactStillActive();
-        if (pact.missionType != MISSION_DUOLINGO_XP || !joined[pactId][msg.sender]) revert NotParticipant();
-
-        bytes32 identityHash = participantIdentity[pactId][msg.sender];
-        if (identityHash == bytes32(0)) revert BaselineRequired();
-        if (activeDuolingoPact[identityHash] != pactId) return false;
-
-        delete activeDuolingoPact[identityHash];
-        delete duolingoIdentityLockedUntil[identityHash];
-        emit DuolingoIdentityReleased(pactId, msg.sender, identityHash);
-        return true;
-    }
-
-    /// @notice Sets an optional Lock In handle. External service names are never changed or reused here.
-    /// @dev Handles are canonical lowercase ASCII so uniqueness is deterministic across every client.
     function setPlayerHandle(string calldata handle) external {
         bytes memory value = bytes(handle);
         if (!_validHandle(value)) revert InvalidHandle();
@@ -659,11 +568,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         emit JoiningPauseUpdated(paused);
     }
 
-    function setBaselinePaused(bool paused) external onlyOwner {
-        baselinePaused = paused;
-        emit BaselinePauseUpdated(paused);
-    }
-
     function setCompletionPaused(bool paused) external onlyOwner {
         if (paused && !completionPaused) {
             ++completionPauseGeneration;
@@ -675,145 +579,14 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         emit CompletionPauseUpdated(paused);
     }
 
-    function _acceptBaseline(
-        uint256 pactId,
-        uint256 signedPactId,
-        address account,
-        BaselineEvidence calldata evidence,
-        LockInProofTypes.DirectProofBundle calldata directProof
-    ) private {
-        if (baselinePaused) revert BaselineIsPaused();
-        Pact storage pact = pacts[pactId];
-        if (directProof.proofs.length != 2 || bytes(directProof.sessionId).length == 0) revert InvalidProofBundle();
-        if (evidence.identityHash == bytes32(0) || evidence.proofSetHash == bytes32(0)) revert InvalidProofHash();
-        if (
-            evidence.missionType != MISSION_DUOLINGO_XP || evidence.policyHash != pact.missionPolicyHash
-                || evidence.policyHash != _missionPolicyHash(MISSION_DUOLINGO_XP)
-                || evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))
-        ) revert InvalidMissionPolicy();
-
-        LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProofs(
-            directProof.proofs, account, signedPactId, true, 0, directProof.sessionId
-        );
-        if (
-            direct.identityHash != evidence.identityHash || direct.totalXp != evidence.metric
-                || direct.proofSetHash != evidence.proofSetHash || direct.proofTimestamp != evidence.observedAt
-        ) revert DirectProofMismatch();
-
-        _validateAttestationWindow(evidence.issuedAt, evidence.expiresAt);
-        if (
-            evidence.observedAt > block.timestamp + MAX_CLOCK_SKEW
-                || uint256(evidence.observedAt) + MAX_ATTESTATION_AGE < block.timestamp
-                || evidence.observedAt >= pacts[pactId].startsAt
-        ) revert StaleEvidence();
-
-        bytes32 structHash = keccak256(
-            abi.encode(
-                BASELINE_TYPEHASH,
-                signedPactId,
-                account,
-                evidence.missionType,
-                evidence.policyHash,
-                evidence.sessionIdHash,
-                evidence.identityHash,
-                evidence.metric,
-                evidence.proofSetHash,
-                evidence.observedAt,
-                evidence.issuedAt,
-                evidence.expiresAt
-            )
-        );
-        if (ECDSA.recover(_hashTypedDataV4(structHash), evidence.signature) != evidenceSigner) {
-            revert InvalidEvidenceSigner();
-        }
-
-        _bindIdentity(pactId, account, evidence.identityHash);
-        _lockDuolingoIdentity(pactId, evidence.identityHash);
-        if (evidence.metric < consumedDuolingoMetric[evidence.identityHash]) revert InvalidMetric();
-        lastMetric[pactId][account] = evidence.metric;
-        consumedDuolingoMetric[evidence.identityHash] = evidence.metric;
-        emit BaselineAccepted(pactId, account, evidence.identityHash, evidence.metric);
-    }
-
-    /// @dev Split out of _verifyDirectCompletion so the Strava comparison does not blow the stack, and so the
-    ///      expected proof count sits next to the policy it belongs to. STRAVA_PROOF_COUNT is 2 since the
-    ///      provider was redesigned from four claims to two.
-    function _verifyStravaDirect(
-        uint256 pactId,
-        address account,
-        uint8 dayIndex,
-        Pact storage pact,
-        CompletionEvidence calldata evidence,
-        LockInProofTypes.DirectProofBundle calldata directProof
-    ) private view {
-        if (directProof.proofs.length != STRAVA_PROOF_COUNT || bytes(directProof.sessionId).length == 0) {
-            revert InvalidProofBundle();
-        }
-        if (evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))) revert InvalidMissionPolicy();
-        uint64 startsAt = uint64(uint256(pact.startsAt) + uint256(dayIndex) * 1 days);
-        LockInProofTypes.StravaEvidence memory direct = stravaVerifier.validateStravaProofs(
-            directProof.proofs,
-            LockInProofTypes.StravaPolicy({
-                account: account,
-                pactId: pactId,
-                dayIndex: dayIndex,
-                expectedSessionId: directProof.sessionId,
-                startsAt: startsAt,
-                endsAt: startsAt + uint64(1 days),
-                minDistanceMeters: pact.dailyTarget
-            })
-        );
-        if (
-            direct.identityHash != evidence.identityHash || direct.nullifier != evidence.eventNullifier
-                || direct.proofSetHash != evidence.proofSetHash || direct.distanceMeters != evidence.metric
-                || direct.startTime != evidence.occurredAt
-                || direct.oldestProofTimestamp != evidence.oldestProofTimestamp
-                || direct.newestProofTimestamp != evidence.newestProofTimestamp
-                || direct.movingTimeSeconds != evidence.movingTimeSeconds
-                || direct.elapsedTimeSeconds != evidence.elapsedTimeSeconds
-                || direct.elevationGainMeters != evidence.elevationGainMeters
-        ) revert DirectProofMismatch();
-    }
-
-    function _verifyDirectCompletion(
-        uint256 pactId,
-        address account,
-        uint8 dayIndex,
-        Pact storage pact,
-        CompletionEvidence calldata evidence,
-        LockInProofTypes.DirectProofBundle calldata directProof
-    ) private view {
+    /// @dev Reading Strava over OAuth leaves no on-chain witness proof to cross-check, so the mission and
+    ///      its pinned policy hash are the whole of the on-chain policy check. Everything the evidence
+    ///      asserts about the run is attested by the backend signer under STRAVA_OAUTH_V1.
+    function _verifyCompletionPolicy(Pact storage pact, CompletionEvidence calldata evidence) private view {
         if (
             evidence.missionType != pact.missionType || evidence.policyHash != pact.missionPolicyHash
                 || evidence.policyHash != _missionPolicyHash(pact.missionType)
         ) revert InvalidMissionPolicy();
-
-        if (pact.missionType == MISSION_STRAVA_RUN) {
-            _verifyStravaDirect(pactId, account, dayIndex, pact, evidence, directProof);
-        } else if (pact.missionType == MISSION_DUOLINGO_XP) {
-            if (directProof.proofs.length != 2 || bytes(directProof.sessionId).length == 0) {
-                revert InvalidProofBundle();
-            }
-            if (evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))) revert InvalidMissionPolicy();
-            LockInProofTypes.DuolingoEvidence memory direct = duolingoVerifier.validateDuolingoProofs(
-                directProof.proofs, account, pactId, false, dayIndex, directProof.sessionId
-            );
-            bytes32 nullifier = keccak256(
-                abi.encode(
-                    keccak256("LOCK_IN_DUOLINGO_COMPLETION"), direct.identityHash, direct.totalXp, direct.proofSetHash
-                )
-            );
-            if (
-                direct.identityHash != evidence.identityHash || nullifier != evidence.eventNullifier
-                    || direct.proofSetHash != evidence.proofSetHash || direct.totalXp != evidence.metric
-                    || direct.proofTimestamp != evidence.occurredAt
-                    || direct.proofTimestamp != evidence.oldestProofTimestamp
-                    || direct.proofTimestamp != evidence.newestProofTimestamp || evidence.movingTimeSeconds != 0
-                    || evidence.elapsedTimeSeconds != 0 || evidence.elevationGainMeters != 0
-            ) revert DirectProofMismatch();
-        } else {
-            revert UnsupportedMission();
-        }
     }
 
     function _verifyCompletionSignature(
@@ -891,10 +664,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         return true;
     }
 
-    function _requireEmptyDirectProof(LockInProofTypes.DirectProofBundle calldata directProof) private pure {
-        if (directProof.proofs.length != 0 || bytes(directProof.sessionId).length != 0) revert InvalidProofBundle();
-    }
-
     function _consumeAccess(
         address account,
         uint8 action,
@@ -935,17 +704,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
             identityOwner[pactId][identityHash] = account;
             emit IdentityBound(pactId, account, identityHash);
         }
-    }
-
-    function _lockDuolingoIdentity(uint256 pactId, bytes32 identityHash) private {
-        // XP totals are global counters. Forbidding overlapping pacts prevents one XP increase
-        // from satisfying multiple stakes; XP above a daily target is deliberately not banked.
-        uint256 lockedPact = activeDuolingoPact[identityHash];
-        if (duolingoIdentityLockedUntil[identityHash] > block.timestamp && lockedPact != pactId) {
-            revert DuolingoIdentityInActivePact();
-        }
-        activeDuolingoPact[identityHash] = pactId;
-        duolingoIdentityLockedUntil[identityHash] = uint64(_submissionDeadline(pacts[pactId]));
     }
 
     function _validateAttestationWindow(uint64 issuedAt, uint64 expiresAt) private view {
@@ -992,19 +750,18 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
             if (dailyTarget < MIN_STRAVA_DISTANCE_METERS || dailyTarget > MAX_STRAVA_DISTANCE_METERS) {
                 revert InvalidGoal();
             }
-        } else if (missionType == MISSION_DUOLINGO_XP) {
-            if (dailyTarget < MIN_DUOLINGO_XP || dailyTarget > MAX_DUOLINGO_XP) revert InvalidGoal();
         } else {
             revert UnsupportedMission();
         }
     }
 
+    /// @dev Names the verification scheme the evidence signer must have applied. It replaces the verifier
+    ///      address and codehash that pinned the zkTLS path: reading Strava over OAuth leaves no on-chain
+    ///      verifier to bind to, so a pact binds to the named scheme instead and can never be completed
+    ///      under a different one.
     function _missionPolicyHash(uint8 missionType) private view returns (bytes32) {
-        address verifier;
-        if (missionType == MISSION_STRAVA_RUN) verifier = address(stravaVerifier);
-        else if (missionType == MISSION_DUOLINGO_XP) verifier = address(duolingoVerifier);
-        else revert UnsupportedMission();
-        return keccak256(abi.encode(POLICY_TYPEHASH, block.chainid, missionType, verifier, verifier.codehash));
+        if (missionType != MISSION_STRAVA_RUN) revert UnsupportedMission();
+        return keccak256(abi.encode(POLICY_TYPEHASH, block.chainid, missionType, STRAVA_OAUTH_SCHEME));
     }
 
     function _hashPactConfiguration(

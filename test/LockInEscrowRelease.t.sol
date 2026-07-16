@@ -2,13 +2,7 @@
 pragma solidity 0.8.30;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {Reclaim} from "@reclaimprotocol/solidity-sdk/contracts/Reclaim.sol";
 import {LockInEscrow} from "../contracts/LockInEscrow.sol";
-import {
-    ILockInDuolingoVerifier,
-    ILockInStravaVerifier,
-    LockInProofTypes
-} from "../contracts/verifiers/LockInProofTypes.sol";
 
 interface VmRelease {
     function addr(uint256 privateKey) external returns (address);
@@ -37,96 +31,6 @@ contract FeeOnTransferUsdcRelease is MockUsdcRelease {
     }
 }
 
-contract MockStravaDirectVerifier is ILockInStravaVerifier {
-    error InvalidMockProof();
-
-    function LIVE_SCHEMA_CONFIRMED() public pure virtual returns (bool) {
-        return true;
-    }
-
-    function validateStravaProofs(Reclaim.Proof[] calldata proofs, LockInProofTypes.StravaPolicy calldata policy)
-        external
-        pure
-        returns (LockInProofTypes.StravaEvidence memory evidence)
-    {
-        if (proofs.length != 2) revert InvalidMockProof();
-        for (uint256 i; i < 2; ++i) {
-            if (
-                proofs[i].signedClaim.claim.owner != policy.account
-                    || keccak256(bytes(proofs[i].claimInfo.provider))
-                        != keccak256(abi.encodePacked("role", bytes1(uint8(48 + i))))
-                    || keccak256(bytes(proofs[i].claimInfo.context)) != keccak256(bytes(policy.expectedSessionId))
-            ) revert InvalidMockProof();
-        }
-        evidence.identityHash = proofs[0].signedClaim.claim.identifier;
-        evidence.nullifier = proofs[1].signedClaim.claim.identifier;
-        evidence.proofSetHash = keccak256(
-            abi.encodePacked(proofs[0].signedClaim.claim.identifier, proofs[1].signedClaim.claim.identifier)
-        );
-        evidence.distanceMeters = proofs[0].signedClaim.claim.epoch;
-        evidence.startTime = proofs[0].signedClaim.claim.timestampS;
-        evidence.movingTimeSeconds = 600;
-        evidence.elapsedTimeSeconds = 700;
-        evidence.elevationGainMeters = 10;
-        evidence.oldestProofTimestamp = proofs[0].signedClaim.claim.timestampS;
-        evidence.newestProofTimestamp = proofs[0].signedClaim.claim.timestampS;
-    }
-}
-
-contract MockDuolingoDirectVerifier is ILockInDuolingoVerifier {
-    error InvalidMockProof();
-
-    function LIVE_SCHEMA_CONFIRMED() public pure virtual returns (bool) {
-        return true;
-    }
-
-    function validateDuolingoProofs(
-        Reclaim.Proof[] calldata proofs,
-        address account,
-        uint256 pactId,
-        bool baseline,
-        uint8 dayIndex,
-        string calldata expectedSessionId
-    ) external pure returns (LockInProofTypes.DuolingoEvidence memory evidence) {
-        if (proofs.length != 2) revert InvalidMockProof();
-        if (
-            proofs[0].signedClaim.claim.owner != account || proofs[1].signedClaim.claim.owner != account
-                || keccak256(bytes(proofs[0].claimInfo.provider)) != keccak256("duo-ownership")
-                || keccak256(bytes(proofs[1].claimInfo.provider)) != keccak256("duo-xp")
-                || keccak256(bytes(proofs[0].claimInfo.context)) != keccak256(bytes(expectedSessionId))
-                || keccak256(bytes(proofs[1].claimInfo.context)) != keccak256(bytes(expectedSessionId))
-        ) revert InvalidMockProof();
-        evidence.identityHash = proofs[1].signedClaim.claim.identifier;
-        evidence.totalXp = proofs[1].signedClaim.claim.epoch;
-        evidence.proofTimestamp = proofs[1].signedClaim.claim.timestampS;
-        evidence.proofSetHash = keccak256(
-            abi.encode(
-                keccak256("MOCK_DUO_PROOF"),
-                account,
-                pactId,
-                baseline,
-                dayIndex,
-                evidence.identityHash,
-                evidence.totalXp,
-                evidence.proofTimestamp,
-                expectedSessionId
-            )
-        );
-    }
-}
-
-contract MockUnconfirmedStravaDirectVerifier is MockStravaDirectVerifier {
-    function LIVE_SCHEMA_CONFIRMED() public pure override returns (bool) {
-        return false;
-    }
-}
-
-contract MockUnconfirmedDuolingoDirectVerifier is MockDuolingoDirectVerifier {
-    function LIVE_SCHEMA_CONFIRMED() public pure override returns (bool) {
-        return false;
-    }
-}
-
 contract LockInEscrowReleaseTest {
     VmRelease private constant VM = VmRelease(address(uint160(uint256(keccak256("hevm cheat code")))));
     uint256 private constant ONE_USDC = 1_000_000;
@@ -142,54 +46,25 @@ contract LockInEscrowReleaseTest {
 
     MockUsdcRelease private token;
     LockInEscrow private escrow;
-    MockStravaDirectVerifier private stravaDirect;
-    MockDuolingoDirectVerifier private duolingoDirect;
 
     function setUp() public {
         VM.warp(START - 1 hours);
         token = new MockUsdcRelease();
-        stravaDirect = new MockStravaDirectVerifier();
-        duolingoDirect = new MockDuolingoDirectVerifier();
-        escrow = new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY), stravaDirect, duolingoDirect);
+        escrow = new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY));
         require(escrow.CONTRACT_SCHEMA_ID() == 1, "unexpected contract schema");
         require(
-            escrow.creationPaused() && escrow.joiningPaused() && escrow.baselinePaused() && escrow.completionPaused(),
+            escrow.creationPaused() && escrow.joiningPaused() && escrow.completionPaused(),
             "constructor not fail closed"
         );
         escrow.setCreationPaused(false);
         escrow.setJoiningPaused(false);
-        escrow.setBaselinePaused(false);
         escrow.setCompletionPaused(false);
         _fund(ALICE);
         _fund(BOB);
         _fund(CAROL);
     }
 
-    function testConstructorRejectsUnconfirmedStravaVerifier() public {
-        MockUnconfirmedStravaDirectVerifier unconfirmed = new MockUnconfirmedStravaDirectVerifier();
-        try new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY), unconfirmed, duolingoDirect) returns (
-            LockInEscrow
-        ) {
-            revert("unconfirmed Strava verifier accepted");
-        } catch (bytes memory reason) {
-            _requireSelector(false, reason, LockInEscrow.LiveSchemaUnconfirmed.selector);
-        }
-    }
-
-    function testConstructorRejectsUnconfirmedDuolingoVerifier() public {
-        MockUnconfirmedDuolingoDirectVerifier unconfirmed = new MockUnconfirmedDuolingoDirectVerifier();
-        try new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY), stravaDirect, unconfirmed) returns (
-            LockInEscrow
-        ) {
-            revert("unconfirmed Duolingo verifier accepted");
-        } catch (bytes memory reason) {
-            _requireSelector(false, reason, LockInEscrow.LiveSchemaUnconfirmed.selector);
-        }
-    }
-
     function testAdmissionIsRequiredBoundAndSingleUse() public {
-        LockInEscrow.BaselineEvidence memory emptyBaseline;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory emptyAccess;
         uint256 beforeBalance = token.balanceOf(ALICE);
         VM.prank(ALICE);
@@ -206,8 +81,6 @@ contract LockInEscrowReleaseTest {
                         4,
                         uint64(START),
                         uint8(1),
-                        emptyBaseline,
-                        emptyDirect,
                         emptyAccess
                     )
                 )
@@ -230,8 +103,6 @@ contract LockInEscrowReleaseTest {
                         4,
                         uint64(START),
                         uint8(1),
-                        emptyBaseline,
-                        emptyDirect,
                         wrongAccount
                     )
                 )
@@ -241,21 +112,19 @@ contract LockInEscrowReleaseTest {
         LockInEscrow.AccessEvidence memory pass =
             _access(ALICE, escrow.ACCESS_CREATE(), 0, keccak256("single-use"), ACCESS_KEY);
         VM.prank(ALICE);
-        escrow.createPact(uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), 1, emptyBaseline, emptyDirect, pass);
+        escrow.createPact(uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), 1, pass);
         VM.prank(ALICE);
         (bool replayed,) = address(escrow)
             .call(
                 abi.encodeCall(
                     escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), emptyBaseline, emptyDirect, pass)
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), pass)
                 )
             );
         require(!replayed, "admission nonce replayed");
     }
 
     function testWrongAccessSignerAndActionAreRejected() public {
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory wrongSigner =
             _access(ALICE, escrow.ACCESS_CREATE(), 0, keccak256("wrong-signer"), WRONG_KEY);
         VM.prank(ALICE);
@@ -263,7 +132,7 @@ contract LockInEscrowReleaseTest {
             .call(
                 abi.encodeCall(
                     escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), empty, emptyDirect, wrongSigner)
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), wrongSigner)
                 )
             );
         require(!signedWrong, "wrong access signer accepted");
@@ -275,7 +144,7 @@ contract LockInEscrowReleaseTest {
             .call(
                 abi.encodeCall(
                     escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), empty, emptyDirect, joinPass)
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), joinPass)
                 )
             );
         require(!wrongAction, "wrong access action accepted");
@@ -284,179 +153,21 @@ contract LockInEscrowReleaseTest {
     function testPactCapacityIsImmutableAndEnforced() public {
         uint256 pactId = _createStrava(2, keccak256("capacity-create"));
         _joinStrava(pactId, BOB, keccak256("capacity-bob"));
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory pass =
             _access(CAROL, escrow.ACCESS_JOIN(), pactId, keccak256("capacity-carol"), ACCESS_KEY);
         uint256 beforeBalance = token.balanceOf(CAROL);
         VM.prank(CAROL);
-        (bool joinedFull,) = address(escrow).call(abi.encodeCall(escrow.joinPact, (pactId, empty, emptyDirect, pass)));
+        (bool joinedFull,) = address(escrow).call(abi.encodeCall(escrow.joinPact, (pactId, pass)));
         require(!joinedFull && token.balanceOf(CAROL) == beforeBalance, "full pact accepted funds");
         LockInEscrow.Pact memory pact = escrow.getPact(pactId);
         require(pact.maxParticipants == 2 && pact.participantCount == 2, "capacity changed");
     }
 
-    function testBaselineAndCompletionHaveIndependentPauses() public {
-        escrow.setBaselinePaused(true);
-        uint256 stravaId = _createStrava(3, keccak256("strava-with-baseline-paused"));
-        require(stravaId != 0, "baseline pause blocked Strava create");
-
-        LockInEscrow.BaselineEvidence memory baseline = _baseline(0, ALICE, ALICE_DUO, 100);
-        LockInProofTypes.DirectProofBundle memory directProof = _duoBundle(ALICE, ALICE_DUO, 100, baseline.observedAt);
-        LockInEscrow.AccessEvidence memory access = _accessWithConfig(
-            ALICE,
-            escrow.ACCESS_CREATE(),
-            0,
-            keccak256("duo-baseline-paused"),
-            ACCESS_KEY,
-            escrow.hashPactConfiguration(uint96(ONE_USDC), 20, 3, 2, 2, 3, uint64(START), 2)
-        );
-        VM.prank(ALICE);
-        (bool duoCreated,) = address(escrow)
-            .call(
-                abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 20, 3, 2, 2, 3, uint64(START), uint8(2), baseline, directProof, access)
-                )
-            );
-        require(!duoCreated, "baseline pause bypassed");
-
-        escrow.setBaselinePaused(false);
-        uint256 duoId = _createDuolingo(ALICE, ALICE_DUO, 100, keccak256("duo-open"));
-        _joinDuolingo(duoId, BOB, BOB_DUO, 50, keccak256("duo-join"));
-        escrow.setCompletionPaused(true);
-        VM.warp(START + 1 hours);
-        (bool completed,) =
-            _trySubmit(ALICE, duoId, 0, 2, ALICE_DUO, keccak256("paused-completion"), 120, START + 1 hours);
-        require(!completed, "completion pause bypassed");
-    }
-
-    function testDuolingoBaselineRequiresBothDirectProofAndBackendSignature() public {
-        LockInEscrow.BaselineEvidence memory baseline = _baseline(0, ALICE, ALICE_DUO, 100);
-        LockInProofTypes.DirectProofBundle memory directProof = _duoBundle(ALICE, ALICE_DUO, 100, baseline.observedAt);
-        LockInProofTypes.DirectProofBundle memory missingDirect;
-        LockInEscrow.AccessEvidence memory access = _accessWithConfig(
-            ALICE,
-            escrow.ACCESS_CREATE(),
-            0,
-            keccak256("hybrid-baseline"),
-            ACCESS_KEY,
-            escrow.hashPactConfiguration(uint96(ONE_USDC), 20, 3, 2, 2, 4, uint64(START), 2)
-        );
-
-        VM.prank(ALICE);
-        (bool signerOnly, bytes memory signerOnlyData) = address(escrow)
-            .call(
-                abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 20, 3, 2, 2, 4, uint64(START), uint8(2), baseline, missingDirect, access)
-                )
-            );
-        _requireSelector(signerOnly, signerOnlyData, LockInEscrow.InvalidProofBundle.selector);
-
-        baseline.signature = "";
-        VM.prank(ALICE);
-        (bool proofOnly,) = address(escrow)
-            .call(
-                abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 20, 3, 2, 2, 4, uint64(START), uint8(2), baseline, directProof, access)
-                )
-            );
-        require(!proofOnly, "direct baseline bypassed backend signature");
-        require(token.balanceOf(address(escrow)) == 0 && escrow.nextPactId() == 1, "failed hybrid baseline moved funds");
-    }
-
-    function testCompletionRequiresBothDirectProofAndBackendSignature() public {
-        uint256 pactId = _createStrava(2, keccak256("hybrid-completion-create"));
-        _joinStrava(pactId, BOB, keccak256("hybrid-completion-join"));
-        VM.warp(START + 1 hours);
-        (LockInEscrow.CompletionEvidence memory evidence, LockInProofTypes.DirectProofBundle memory directProof) = _completionEvidence(
-            escrow,
-            pactId,
-            ALICE,
-            0,
-            1,
-            keccak256("strava:alice"),
-            keccak256("hybrid-completion"),
-            1_200,
-            uint64(START + 1 hours),
-            uint64(START + 1 hours),
-            uint64(START + 1 hours + 5 minutes),
-            EVIDENCE_KEY
-        );
-
-        LockInProofTypes.DirectProofBundle memory missingDirect;
-        VM.prank(ALICE);
-        (bool signerOnly, bytes memory signerOnlyData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, evidence, missingDirect)));
-        _requireSelector(signerOnly, signerOnlyData, LockInEscrow.InvalidProofBundle.selector);
-
-        evidence.signature = "";
-        VM.prank(ALICE);
-        (bool proofOnly,) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, evidence, directProof)));
-        require(!proofOnly, "direct completion bypassed backend signature");
-        require(escrow.completionCount(pactId, ALICE) == 0, "failed hybrid completion changed state");
-    }
-
-    function testCompletionRejectsMismatchSessionPolicyAndProofOrder() public {
-        uint256 pactId = _createStrava(2, keccak256("hybrid-mismatch-create"));
-        _joinStrava(pactId, BOB, keccak256("hybrid-mismatch-join"));
-        VM.warp(START + 1 hours);
-        (LockInEscrow.CompletionEvidence memory evidence, LockInProofTypes.DirectProofBundle memory directProof) = _completionEvidence(
-            escrow,
-            pactId,
-            ALICE,
-            0,
-            1,
-            keccak256("strava:alice"),
-            keccak256("hybrid-mismatch"),
-            1_200,
-            uint64(START + 1 hours),
-            uint64(START + 1 hours),
-            uint64(START + 1 hours + 5 minutes),
-            EVIDENCE_KEY
-        );
-
-        LockInEscrow.CompletionEvidence memory mismatched = evidence;
-        mismatched.metric = 1_201;
-        VM.prank(ALICE);
-        (bool mismatchOk, bytes memory mismatchData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, mismatched, directProof)));
-        _requireSelector(mismatchOk, mismatchData, LockInEscrow.DirectProofMismatch.selector);
-        evidence.metric = 1_200;
-
-        LockInProofTypes.DirectProofBundle memory wrongSession = directProof;
-        wrongSession.sessionId = "attacker-session";
-        VM.prank(ALICE);
-        (bool sessionOk, bytes memory sessionData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, evidence, wrongSession)));
-        _requireSelector(sessionOk, sessionData, LockInEscrow.InvalidMissionPolicy.selector);
-        directProof.sessionId = "strava-session";
-
-        LockInEscrow.CompletionEvidence memory wrongPolicy = evidence;
-        wrongPolicy.policyHash = keccak256("attacker-policy");
-        VM.prank(ALICE);
-        (bool policyOk, bytes memory policyData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, wrongPolicy, directProof)));
-        _requireSelector(policyOk, policyData, LockInEscrow.InvalidMissionPolicy.selector);
-        evidence.policyHash = escrow.missionPolicyHash(1);
-
-        Reclaim.Proof memory swapped = directProof.proofs[0];
-        directProof.proofs[0] = directProof.proofs[1];
-        directProof.proofs[1] = swapped;
-        VM.prank(ALICE);
-        (bool orderOk, bytes memory orderData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, evidence, directProof)));
-        _requireSelector(orderOk, orderData, MockStravaDirectVerifier.InvalidMockProof.selector);
-    }
-
-    function testHybridCompletionSucceedsAndGlobalNullifierCannotReplay() public {
+    function testCompletionSucceedsAndGlobalNullifierCannotReplay() public {
         uint256 pactId = _createStrava(2, keccak256("hybrid-success-create"));
         _joinStrava(pactId, BOB, keccak256("hybrid-success-join"));
         VM.warp(START + 1 hours);
-        (LockInEscrow.CompletionEvidence memory evidence, LockInProofTypes.DirectProofBundle memory directProof) = _completionEvidence(
+        LockInEscrow.CompletionEvidence memory evidence = _completionEvidence(
             escrow,
             pactId,
             ALICE,
@@ -471,36 +182,46 @@ contract LockInEscrowReleaseTest {
             EVIDENCE_KEY
         );
         VM.prank(ALICE);
-        escrow.submitCompletion(pactId, 0, evidence, directProof);
-        require(escrow.completionCount(pactId, ALICE) == 1, "hybrid completion was not accepted");
+        escrow.submitCompletion(pactId, 0, evidence);
+        require(escrow.completionCount(pactId, ALICE) == 1, "completion was not accepted");
 
         VM.prank(BOB);
         (bool replayOk, bytes memory replayData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, evidence, directProof)));
+            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, evidence)));
         _requireSelector(replayOk, replayData, LockInEscrow.EventAlreadyUsed.selector);
     }
 
-    function testLockScoreCountsOneOverallDayAndOneDayPerMission() public {
-        uint256 firstStrava = _createStrava(2, keccak256("score-first-create"));
-        uint256 secondStrava = _createStrava(2, keccak256("score-second-create"));
-        uint256 duolingo = _createDuolingo(ALICE, ALICE_DUO, 1_000, keccak256("score-duo-create"));
-        _joinStrava(firstStrava, BOB, keccak256("score-first-join"));
-        _joinStrava(secondStrava, BOB, keccak256("score-second-join"));
-        _joinDuolingo(duolingo, BOB, BOB_DUO, 500, keccak256("score-duo-join"));
-
+    /// @dev Documents the trust model this contract actually has, so nobody has to infer it from an absence.
+    ///      Under STRAVA_OAUTH_V1 the backend reads the run from Strava's API and attests it: there is no
+    ///      second, independent on-chain witness. The evidence signer's signature is therefore SUFFICIENT to
+    ///      complete a day, and a compromised evidence key can mint completions. The zkTLS path this
+    ///      replaced required both a witness proof and this signature, so neither alone was enough. That
+    ///      property is gone, deliberately, and these assertions are what keeps the change visible.
+    function testCompletionRestsOnTheBackendSignatureAlone() public {
+        uint256 pactId = _createStrava(2, keccak256("signature-alone-create"));
+        _joinStrava(pactId, BOB, keccak256("signature-alone-join"));
         VM.warp(START + 1 hours);
-        _submit(
-            ALICE, firstStrava, 0, 1, keccak256("strava:alice"), keccak256("score-first-run"), 1_200, START + 1 hours
-        );
-        _submit(
-            ALICE, secondStrava, 0, 1, keccak256("strava:alice"), keccak256("score-second-run"), 1_900, START + 1 hours
-        );
-        _submit(ALICE, duolingo, 0, 2, ALICE_DUO, keccak256("ignored-duo-nullifier"), 1_020, START + 1 hours);
 
-        require(escrow.lockScore(ALICE) == 10, "multiple locks farmed overall score");
-        require(escrow.verifiedDays(ALICE) == 1, "overall day counted more than once");
-        require(escrow.missionVerifiedDays(ALICE, 1) == 1, "running day counted more than once");
-        require(escrow.missionVerifiedDays(ALICE, 2) == 1, "learning day was not counted");
+        // Nothing but a signed attestation: no proof bundle exists to accompany it any more.
+        LockInEscrow.CompletionEvidence memory signed = _completionEvidence(
+            escrow, pactId, ALICE, 0, 1, keccak256("strava:alice"), keccak256("signature-alone"), 1_200,
+            uint64(START + 1 hours), uint64(START + 1 hours), uint64(START + 1 hours + 5 minutes), EVIDENCE_KEY
+        );
+        VM.prank(ALICE);
+        escrow.submitCompletion(pactId, 0, signed);
+        require(escrow.completionCount(pactId, ALICE) == 1, "a signed attestation alone must complete the day");
+
+        // The signature is the ONLY thing standing between an attacker and a completion, so the contract
+        // must reject anything not signed by the configured evidence signer.
+        LockInEscrow.CompletionEvidence memory forged = _completionEvidence(
+            escrow, pactId, BOB, 0, 1, keccak256("strava:bob"), keccak256("signature-alone-forged"), 1_200,
+            uint64(START + 1 hours), uint64(START + 1 hours), uint64(START + 1 hours + 5 minutes), ACCESS_KEY
+        );
+        VM.prank(BOB);
+        (bool ok, bytes memory data) =
+            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, forged)));
+        _requireSelector(ok, data, LockInEscrow.InvalidEvidenceSigner.selector);
+        require(escrow.completionCount(pactId, BOB) == 0, "an unsigned attestation completed a day");
     }
 
     function testSharedStravaIdentitySettlesBothLocksButScoresOnlyFirstWallet() public {
@@ -635,24 +356,10 @@ contract LockInEscrowReleaseTest {
         require(!quitterClaimed, "quitter claimed");
     }
 
-    function testDuolingoCountsOnlyNewXpAndCannotReuseProgress() public {
-        uint256 pactId = _createDuolingo(ALICE, ALICE_DUO, 1_000, keccak256("duo-create"));
-        _joinDuolingo(pactId, BOB, BOB_DUO, 500, keccak256("duo-bob"));
-        VM.warp(START + 1 hours);
-        _submit(ALICE, pactId, 0, 2, ALICE_DUO, keccak256("duo-1020"), 1_020, START + 1 hours);
-        VM.warp(START + 1 days + 1 hours);
-        (bool reused,) =
-            _trySubmit(ALICE, pactId, 1, 2, ALICE_DUO, keccak256("duo-same-xp"), 1_020, START + 1 days + 1 hours);
-        require(!reused, "unchanged XP reused");
-        _submit(ALICE, pactId, 1, 2, ALICE_DUO, keccak256("duo-1040"), 1_040, START + 1 days + 1 hours);
-        require(escrow.consumedDuolingoMetric(ALICE_DUO) == 1_040, "global XP cursor wrong");
-    }
-
     function testUnderfilledPactRefundsAndPausesNeverBlockExit() public {
         uint256 pactId = _createStrava(2, keccak256("underfilled"));
         escrow.setCreationPaused(true);
         escrow.setJoiningPaused(true);
-        escrow.setBaselinePaused(true);
         escrow.setCompletionPaused(true);
         VM.warp(START);
         escrow.finalizePact(pactId);
@@ -661,8 +368,6 @@ contract LockInEscrowReleaseTest {
     }
 
     function testAccessPassCommitsToEveryPactConfigurationField() public {
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory access =
             _access(ALICE, escrow.ACCESS_CREATE(), 0, keccak256("bound-config"), ACCESS_KEY);
         uint256 balanceBefore = token.balanceOf(ALICE);
@@ -672,7 +377,7 @@ contract LockInEscrowReleaseTest {
             .call(
                 abi.encodeCall(
                     escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 5, uint64(START), uint8(1), empty, emptyDirect, access)
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 5, uint64(START), uint8(1), access)
                 )
             );
         _requireSelector(ok, data, LockInEscrow.InvalidConfigurationHash.selector);
@@ -706,8 +411,6 @@ contract LockInEscrowReleaseTest {
     }
 
     function testAttestationsHaveHardIssuanceAgeAndExpiryBounds() public {
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         bytes32 configHash = escrow.hashPactConfiguration(uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), 1);
         LockInEscrow.AccessEvidence memory staleAccess = _accessAt(
             escrow,
@@ -725,7 +428,7 @@ contract LockInEscrowReleaseTest {
             .call(
                 abi.encodeCall(
                     escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), empty, emptyDirect, staleAccess)
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), staleAccess)
                 )
             );
         _requireSelector(staleOk, staleData, LockInEscrow.InvalidAttestationWindow.selector);
@@ -733,7 +436,7 @@ contract LockInEscrowReleaseTest {
         uint256 pactId = _createStrava(2, keccak256("fresh-create"));
         _joinStrava(pactId, BOB, keccak256("fresh-join"));
         VM.warp(START + 1 hours);
-        (LockInEscrow.CompletionEvidence memory expired, LockInProofTypes.DirectProofBundle memory expiredDirect) = _completionEvidence(
+        LockInEscrow.CompletionEvidence memory expired = _completionEvidence(
             escrow,
             pactId,
             ALICE,
@@ -749,7 +452,7 @@ contract LockInEscrowReleaseTest {
         );
         VM.prank(ALICE);
         (bool expiredOk, bytes memory expiredData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, expired, expiredDirect)));
+            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, expired)));
         _requireSelector(expiredOk, expiredData, LockInEscrow.AttestationExpired.selector);
     }
 
@@ -819,50 +522,6 @@ contract LockInEscrowReleaseTest {
         require(escrow.claim(pactId) == 2 * ONE_USDC, "valid winner lost pool");
     }
 
-    function testDuolingoIdentityCannotEnterSimultaneousPacts() public {
-        _createDuolingo(ALICE, ALICE_DUO, 1_000, keccak256("duo-lock-one"));
-        LockInEscrow.BaselineEvidence memory baseline = _baseline(0, ALICE, ALICE_DUO, 1_000);
-        LockInProofTypes.DirectProofBundle memory directProof = _duoBundle(ALICE, ALICE_DUO, 1_000, baseline.observedAt);
-        LockInEscrow.AccessEvidence memory access = _accessWithConfig(
-            ALICE,
-            escrow.ACCESS_CREATE(),
-            0,
-            keccak256("duo-lock-two"),
-            ACCESS_KEY,
-            escrow.hashPactConfiguration(uint96(ONE_USDC), 20, 3, 2, 2, 4, uint64(START), 2)
-        );
-        VM.prank(ALICE);
-        (bool ok, bytes memory data) = address(escrow)
-            .call(
-                abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 20, 3, 2, 2, 4, uint64(START), uint8(2), baseline, directProof, access)
-                )
-            );
-        _requireSelector(ok, data, LockInEscrow.DuolingoIdentityInActivePact.selector);
-    }
-
-    function testDuolingoIdentityCanBeReleasedOnlyAfterPactCloses() public {
-        uint256 firstPact = _createDuolingo(ALICE, ALICE_DUO, 1_000, keccak256("duo-release-one"));
-        VM.prank(ALICE);
-        (bool activeOk, bytes memory activeData) =
-            address(escrow).call(abi.encodeCall(escrow.releaseDuolingoIdentity, (firstPact)));
-        _requireSelector(activeOk, activeData, LockInEscrow.PactStillActive.selector);
-
-        VM.prank(ALICE);
-        escrow.cancelPact(firstPact);
-        VM.prank(ALICE);
-        require(escrow.releaseDuolingoIdentity(firstPact), "closed pact did not release identity");
-        require(escrow.activeDuolingoPact(ALICE_DUO) == 0, "active pact pointer remained");
-        require(escrow.duolingoIdentityLockedUntil(ALICE_DUO) == 0, "identity deadline remained");
-
-        uint256 secondPact = _createDuolingo(ALICE, ALICE_DUO, 1_000, keccak256("duo-release-two"));
-        require(escrow.activeDuolingoPact(ALICE_DUO) == secondPact, "identity was not reusable");
-        VM.prank(ALICE);
-        require(!escrow.releaseDuolingoIdentity(firstPact), "stale pact cleared a newer lock");
-        require(escrow.activeDuolingoPact(ALICE_DUO) == secondPact, "newer identity lock was cleared");
-    }
-
     function testMultiWinnerRoundingConservesEveryTokenUnit() public {
         uint96 oddStake = 100_001;
         uint256 pactId = _createStravaTerms(oddStake, 3, 2, 2, 3, uint64(START), keccak256("round-create"));
@@ -889,20 +548,18 @@ contract LockInEscrowReleaseTest {
     function testCrossPactAndCrossDomainReplaysFail() public {
         uint256 firstPact = _createStrava(4, keccak256("replay-first"));
         uint256 secondPact = _createStrava(4, keccak256("replay-second"));
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory firstJoin =
             _access(BOB, escrow.ACCESS_JOIN(), firstPact, keccak256("cross-pact-join"), ACCESS_KEY);
         VM.prank(BOB);
         (bool joinOk, bytes memory joinData) =
-            address(escrow).call(abi.encodeCall(escrow.joinPact, (secondPact, empty, emptyDirect, firstJoin)));
+            address(escrow).call(abi.encodeCall(escrow.joinPact, (secondPact, firstJoin)));
         _requireSelector(joinOk, joinData, LockInEscrow.InvalidAccessSigner.selector);
         VM.prank(BOB);
-        escrow.joinPact(firstPact, empty, emptyDirect, firstJoin);
+        escrow.joinPact(firstPact, firstJoin);
         _joinStrava(secondPact, BOB, keccak256("second-join"));
 
         VM.warp(START + 1 hours);
-        (LockInEscrow.CompletionEvidence memory firstProof, LockInProofTypes.DirectProofBundle memory firstDirect) = _completionEvidence(
+        LockInEscrow.CompletionEvidence memory firstProof = _completionEvidence(
             escrow,
             firstPact,
             ALICE,
@@ -918,11 +575,11 @@ contract LockInEscrowReleaseTest {
         );
         VM.prank(ALICE);
         (bool proofOk, bytes memory proofData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (secondPact, 0, firstProof, firstDirect)));
+            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (secondPact, 0, firstProof)));
         _requireSelector(proofOk, proofData, LockInEscrow.InvalidEvidenceSigner.selector);
 
         LockInEscrow other =
-            new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY), stravaDirect, duolingoDirect);
+            new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY));
         other.setCreationPaused(false);
         bytes32 configHash =
             other.hashPactConfiguration(uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START + 2 hours), 1);
@@ -953,8 +610,6 @@ contract LockInEscrowReleaseTest {
                         4,
                         uint64(START + 2 hours),
                         uint8(1),
-                        empty,
-                        emptyDirect,
                         wrongDomain
                     )
                 )
@@ -963,8 +618,6 @@ contract LockInEscrowReleaseTest {
     }
 
     function testSignerRotationsInvalidateOutstandingAttestations() public {
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory access =
             _access(ALICE, escrow.ACCESS_CREATE(), 0, keccak256("rotate-access"), ACCESS_KEY);
         escrow.setAccessSigner(VM.addr(WRONG_KEY));
@@ -973,7 +626,7 @@ contract LockInEscrowReleaseTest {
             .call(
                 abi.encodeCall(
                     escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), empty, emptyDirect, access)
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), access)
                 )
             );
         _requireSelector(accessOk, accessData, LockInEscrow.InvalidAccessSigner.selector);
@@ -982,7 +635,7 @@ contract LockInEscrowReleaseTest {
         uint256 pactId = _createStrava(2, keccak256("rotate-proof-create"));
         _joinStrava(pactId, BOB, keccak256("rotate-proof-join"));
         VM.warp(START + 1 hours);
-        (LockInEscrow.CompletionEvidence memory proof, LockInProofTypes.DirectProofBundle memory proofDirect) = _completionEvidence(
+        LockInEscrow.CompletionEvidence memory proof = _completionEvidence(
             escrow,
             pactId,
             ALICE,
@@ -999,20 +652,18 @@ contract LockInEscrowReleaseTest {
         escrow.setEvidenceSigner(VM.addr(WRONG_KEY));
         VM.prank(ALICE);
         (bool proofOk, bytes memory proofData) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, proof, proofDirect)));
+            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, 0, proof)));
         _requireSelector(proofOk, proofData, LockInEscrow.InvalidEvidenceSigner.selector);
     }
 
     function testFeeOnTransferStakeIsRejectedAtomically() public {
         FeeOnTransferUsdcRelease feeToken = new FeeOnTransferUsdcRelease();
         LockInEscrow feeEscrow =
-            new LockInEscrow(feeToken, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY), stravaDirect, duolingoDirect);
+            new LockInEscrow(feeToken, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY));
         feeEscrow.setCreationPaused(false);
         feeToken.mint(ALICE, 2 * ONE_USDC);
         VM.prank(ALICE);
         feeToken.approve(address(feeEscrow), type(uint256).max);
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         bytes32 configHash = feeEscrow.hashPactConfiguration(uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), 1);
         LockInEscrow.AccessEvidence memory access = _accessAt(
             feeEscrow,
@@ -1030,7 +681,7 @@ contract LockInEscrowReleaseTest {
             .call(
                 abi.encodeCall(
                     feeEscrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), empty, emptyDirect, access)
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), access)
                 )
             );
         _requireSelector(ok, data, LockInEscrow.UnsupportedStakeToken.selector);
@@ -1051,8 +702,6 @@ contract LockInEscrowReleaseTest {
         uint64 startsAt,
         bytes32 nonce
     ) private returns (uint256 pactId) {
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory access = _accessWithConfig(
             ALICE,
             escrow.ACCESS_CREATE(),
@@ -1073,44 +722,14 @@ contract LockInEscrowReleaseTest {
             maxParticipants,
             startsAt,
             1,
-            empty,
-            emptyDirect,
             access
         );
     }
 
     function _joinStrava(uint256 pactId, address account, bytes32 nonce) private {
-        LockInEscrow.BaselineEvidence memory empty;
-        LockInProofTypes.DirectProofBundle memory emptyDirect;
         LockInEscrow.AccessEvidence memory access = _access(account, escrow.ACCESS_JOIN(), pactId, nonce, ACCESS_KEY);
         VM.prank(account);
-        escrow.joinPact(pactId, empty, emptyDirect, access);
-    }
-
-    function _createDuolingo(address account, bytes32 identity, uint64 xp, bytes32 nonce)
-        private
-        returns (uint256 pactId)
-    {
-        LockInEscrow.BaselineEvidence memory baseline = _baseline(0, account, identity, xp);
-        LockInProofTypes.DirectProofBundle memory directProof = _duoBundle(account, identity, xp, baseline.observedAt);
-        LockInEscrow.AccessEvidence memory access = _accessWithConfig(
-            account,
-            escrow.ACCESS_CREATE(),
-            0,
-            nonce,
-            ACCESS_KEY,
-            escrow.hashPactConfiguration(uint96(ONE_USDC), 20, 3, 2, 2, 4, uint64(START), 2)
-        );
-        VM.prank(account);
-        pactId = escrow.createPact(uint96(ONE_USDC), 20, 3, 2, 2, 4, uint64(START), 2, baseline, directProof, access);
-    }
-
-    function _joinDuolingo(uint256 pactId, address account, bytes32 identity, uint64 xp, bytes32 nonce) private {
-        LockInEscrow.BaselineEvidence memory baseline = _baseline(pactId, account, identity, xp);
-        LockInProofTypes.DirectProofBundle memory directProof = _duoBundle(account, identity, xp, baseline.observedAt);
-        LockInEscrow.AccessEvidence memory access = _access(account, escrow.ACCESS_JOIN(), pactId, nonce, ACCESS_KEY);
-        VM.prank(account);
-        escrow.joinPact(pactId, baseline, directProof, access);
+        escrow.joinPact(pactId, access);
     }
 
     function _access(address account, uint8 action, uint256 pactId, bytes32 nonce, uint256 signerKey)
@@ -1174,86 +793,6 @@ contract LockInEscrowReleaseTest {
         access.signature = _signFor(target, signerKey, structHash);
     }
 
-    function _baseline(uint256 pactId, address account, bytes32 identity, uint64 xp)
-        private
-        returns (LockInEscrow.BaselineEvidence memory baseline)
-    {
-        string memory session = "duo-session";
-        uint64 observedAt = uint64(block.timestamp);
-        bytes32 proofSetHash = _duoProofSetHash(account, pactId, true, 0, identity, xp, observedAt, session);
-        baseline.missionType = 2;
-        baseline.policyHash = escrow.missionPolicyHash(2);
-        baseline.sessionIdHash = keccak256(bytes(session));
-        baseline.identityHash = identity;
-        baseline.metric = xp;
-        baseline.proofSetHash = proofSetHash;
-        baseline.observedAt = observedAt;
-        baseline.issuedAt = uint64(block.timestamp);
-        baseline.expiresAt = uint64(block.timestamp + 5 minutes);
-        bytes32 structHash = keccak256(
-            abi.encode(
-                escrow.BASELINE_TYPEHASH(),
-                pactId,
-                account,
-                baseline.missionType,
-                baseline.policyHash,
-                baseline.sessionIdHash,
-                identity,
-                xp,
-                baseline.proofSetHash,
-                baseline.observedAt,
-                baseline.issuedAt,
-                baseline.expiresAt
-            )
-        );
-        baseline.signature = _sign(EVIDENCE_KEY, structHash);
-    }
-
-    function _duoBundle(address account, bytes32 identity, uint64 xp, uint64 observedAt)
-        private
-        pure
-        returns (LockInProofTypes.DirectProofBundle memory directProof)
-    {
-        directProof.sessionId = "duo-session";
-        directProof.proofs = new Reclaim.Proof[](2);
-        directProof.proofs[0].claimInfo.provider = "duo-ownership";
-        directProof.proofs[0].claimInfo.context = directProof.sessionId;
-        directProof.proofs[0].signedClaim.claim.owner = account;
-        directProof.proofs[0].signedClaim.claim.identifier = keccak256("MOCK_DUO_OWNERSHIP");
-        directProof.proofs[0].signedClaim.claim.timestampS = uint32(observedAt);
-        directProof.proofs[1].claimInfo.provider = "duo-xp";
-        directProof.proofs[1].claimInfo.context = directProof.sessionId;
-        directProof.proofs[1].signedClaim.claim.owner = account;
-        directProof.proofs[1].signedClaim.claim.identifier = identity;
-        directProof.proofs[1].signedClaim.claim.epoch = uint32(xp);
-        directProof.proofs[1].signedClaim.claim.timestampS = uint32(observedAt);
-    }
-
-    function _duoProofSetHash(
-        address account,
-        uint256 pactId,
-        bool baseline,
-        uint8 dayIndex,
-        bytes32 identity,
-        uint64 xp,
-        uint64 observedAt,
-        string memory session
-    ) private pure returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                keccak256("MOCK_DUO_PROOF"),
-                account,
-                pactId,
-                baseline,
-                dayIndex,
-                identity,
-                xp,
-                uint32(observedAt),
-                session
-            )
-        );
-    }
-
     function _submit(
         address account,
         uint256 pactId,
@@ -1280,7 +819,7 @@ contract LockInEscrowReleaseTest {
         uint256 occurredAt
     ) private returns (bool ok, bytes memory data) {
         uint64 issuedAt = uint64(VM.getBlockTimestamp());
-        (LockInEscrow.CompletionEvidence memory evidence, LockInProofTypes.DirectProofBundle memory directProof) = _completionEvidence(
+        LockInEscrow.CompletionEvidence memory evidence = _completionEvidence(
             escrow,
             pactId,
             account,
@@ -1296,7 +835,7 @@ contract LockInEscrowReleaseTest {
         );
         VM.prank(account);
         (ok, data) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, dayIndex, evidence, directProof)));
+            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, dayIndex, evidence)));
     }
 
     function _completionEvidence(
@@ -1314,7 +853,7 @@ contract LockInEscrowReleaseTest {
         uint256 signerKey
     )
         private
-        returns (LockInEscrow.CompletionEvidence memory evidence, LockInProofTypes.DirectProofBundle memory directProof)
+        returns (LockInEscrow.CompletionEvidence memory evidence)
     {
         evidence.missionType = missionType;
         evidence.policyHash = target.missionPolicyHash(missionType);
@@ -1326,35 +865,15 @@ contract LockInEscrowReleaseTest {
         evidence.issuedAt = issuedAt;
         evidence.expiresAt = expiresAt;
 
-        if (missionType == 1) {
-            directProof.sessionId = "strava-session";
-            evidence.eventNullifier = nullifier;
-            evidence.proofSetHash = keccak256(abi.encode("strava-proof", pactId, account, nullifier, metric));
-            evidence.movingTimeSeconds = 600;
-            evidence.elapsedTimeSeconds = 700;
-            evidence.elevationGainMeters = 10;
-            directProof.proofs = new Reclaim.Proof[](2);
-            for (uint256 i; i < 2; ++i) {
-                directProof.proofs[i].claimInfo.provider = string(abi.encodePacked("role", bytes1(uint8(48 + i))));
-                directProof.proofs[i].claimInfo.context = directProof.sessionId;
-                directProof.proofs[i].signedClaim.claim.owner = account;
-                directProof.proofs[i].signedClaim.claim.timestampS = uint32(occurredAt);
-            }
-            directProof.proofs[0].signedClaim.claim.identifier = identity;
-            directProof.proofs[0].signedClaim.claim.epoch = uint32(metric);
-            directProof.proofs[1].signedClaim.claim.identifier = evidence.eventNullifier;
-            evidence.proofSetHash = keccak256(
-                abi.encodePacked(identity, evidence.eventNullifier)
-            );
-        } else {
-            directProof = _duoBundle(account, identity, metric, occurredAt);
-            evidence.proofSetHash =
-                _duoProofSetHash(account, pactId, false, dayIndex, identity, metric, occurredAt, directProof.sessionId);
-            evidence.eventNullifier = keccak256(
-                abi.encode(keccak256("LOCK_IN_DUOLINGO_COMPLETION"), identity, metric, evidence.proofSetHash)
-            );
-        }
-        evidence.sessionIdHash = keccak256(bytes(directProof.sessionId));
+        // Under STRAVA_OAUTH_V1 the backend reads the run from Strava's API and attests it. There is no
+        // on-chain proof bundle to cross-check any more, so the evidence stands on its signature alone.
+        string memory session = "strava-oauth-session";
+        evidence.eventNullifier = nullifier;
+        evidence.proofSetHash = keccak256(abi.encode("strava-activity", pactId, account, nullifier, metric));
+        evidence.movingTimeSeconds = 600;
+        evidence.elapsedTimeSeconds = 700;
+        evidence.elevationGainMeters = 10;
+        evidence.sessionIdHash = keccak256(bytes(session));
         bytes32 structHash = keccak256(
             abi.encode(
                 target.COMPLETION_TYPEHASH(),

@@ -18,19 +18,12 @@ import { releaseMetadataAbi, releasePactAbi, type ReleasePactTuple } from "./rel
 
 const CHAIN_ID = 143;
 const EXPECTED_USDC = getAddress("0x754704Bc059F8C67012fEd69BC8A327a5aafb603");
-const EXPECTED_RECLAIM_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e5443a9072");
-const EXPECTED_STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-const EXPECTED_STRAVA_PROVIDER_VERSION = "6.0.0";
-const EXPECTED_DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
-const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.8";
-const EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH = "0xea3ca9aeaa60e89d8f4a9134f5b314a78295e7e164f75eddb6d89f911a83766e";
-const EXPECTED_DUOLINGO_XP_REQUEST_HASH = "0x92d80894f1f9e2f3574b840e846e41a49ae7491b587da9bd96cbcccbe001c8ed";
 const CANARY_STAKE = 100_000n;
 const REQUIRED_USDC_PER_WALLET = 200_000n;
 const DEFAULT_APP_URL = "https://lock-in-liart-theta.vercel.app";
 
 type CheckValue = boolean | null;
-type PauseState = { creation: boolean; joining: boolean; baseline: boolean; completion: boolean };
+type PauseState = { creation: boolean; joining: boolean; completion: boolean };
 
 type HealthSummary = {
   reachable: boolean;
@@ -153,18 +146,6 @@ const chain = defineChain({
   rpcUrls: { default: { http: [rpcUrl] } },
 });
 const client = createPublicClient({ chain, transport: http(rpcUrl) });
-const verifierAbi = [
-  { type: "function", name: "WITNESS", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "LIVE_SCHEMA_CONFIRMED", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
-  { type: "function", name: "STRAVA_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "STRAVA_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_ID", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_PROVIDER_VERSION", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_OWNERSHIP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "DUOLINGO_XP_REQUEST_HASH", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
-  { type: "function", name: "PARSER", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
-  { type: "function", name: "SCHEMA_ID", stateMutability: "view", inputs: [], outputs: [{ type: "bytes32" }] },
-] as const;
 
 async function contractIdentity(blockNumber?: bigint) {
   const block = blockNumber === undefined ? {} : { blockNumber };
@@ -179,11 +160,8 @@ async function contractIdentity(blockNumber?: bigint) {
     owner,
     evidenceSigner,
     accessSigner,
-    stravaVerifier,
-    duolingoVerifier,
     creation,
     joining,
-    baseline,
     completion,
   ] = await Promise.all([
     client.getChainId(),
@@ -196,54 +174,13 @@ async function contractIdentity(blockNumber?: bigint) {
     client.readContract({ address: escrow, abi: releaseMetadataAbi, functionName: "owner", ...block }),
     client.readContract({ address: escrow, abi: lockInAbi, functionName: "evidenceSigner", ...block }),
     client.readContract({ address: escrow, abi: lockInAbi, functionName: "accessSigner", ...block }),
-    client.readContract({ address: escrow, abi: lockInAbi, functionName: "stravaVerifier", ...block }),
-    client.readContract({ address: escrow, abi: lockInAbi, functionName: "duolingoVerifier", ...block }),
+
     client.readContract({ address: escrow, abi: lockInAbi, functionName: "creationPaused", ...block }),
     client.readContract({ address: escrow, abi: lockInAbi, functionName: "joiningPaused", ...block }),
-    client.readContract({ address: escrow, abi: lockInAbi, functionName: "baselinePaused", ...block }),
     client.readContract({ address: escrow, abi: lockInAbi, functionName: "completionPaused", ...block }),
   ]);
   const canonicalOwner = getAddress(owner);
   const ownerCode = await client.getCode({ address: canonicalOwner, ...block });
-  const canonicalStravaVerifier = getAddress(stravaVerifier);
-  const canonicalDuolingoVerifier = getAddress(duolingoVerifier);
-  const [
-    stravaCode,
-    duolingoCode,
-    stravaLive,
-    duolingoLive,
-    stravaWitness,
-    duolingoWitness,
-    stravaProviderId,
-    stravaProviderVersion,
-    duolingoProviderId,
-    duolingoProviderVersion,
-    duolingoOwnershipRequestHash,
-    duolingoXpRequestHash,
-    stravaParserRaw,
-  ] = await Promise.all([
-    client.getCode({ address: canonicalStravaVerifier, ...block }),
-    client.getCode({ address: canonicalDuolingoVerifier, ...block }),
-    client.readContract({ address: canonicalStravaVerifier, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", ...block }),
-    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", ...block }),
-    client.readContract({ address: canonicalStravaVerifier, abi: verifierAbi, functionName: "WITNESS", ...block }),
-    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "WITNESS", ...block }),
-    client.readContract({ address: canonicalStravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_ID", ...block }),
-    client.readContract({ address: canonicalStravaVerifier, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", ...block }),
-    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_ID", ...block }),
-    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_PROVIDER_VERSION", ...block }),
-    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_OWNERSHIP_REQUEST_HASH", ...block }),
-    client.readContract({ address: canonicalDuolingoVerifier, abi: verifierAbi, functionName: "DUOLINGO_XP_REQUEST_HASH", ...block }),
-    client.readContract({ address: canonicalStravaVerifier, abi: verifierAbi, functionName: "PARSER", ...block }),
-  ]);
-  const canonicalStravaParser = getAddress(stravaParserRaw);
-  const [parserCode, parserLive, parserSchemaId, parserProviderId, parserProviderVersion] = await Promise.all([
-    client.getCode({ address: canonicalStravaParser, ...block }),
-    client.readContract({ address: canonicalStravaParser, abi: verifierAbi, functionName: "LIVE_SCHEMA_CONFIRMED", ...block }),
-    client.readContract({ address: canonicalStravaParser, abi: verifierAbi, functionName: "SCHEMA_ID", ...block }),
-    client.readContract({ address: canonicalStravaParser, abi: verifierAbi, functionName: "STRAVA_PROVIDER_ID", ...block }),
-    client.readContract({ address: canonicalStravaParser, abi: verifierAbi, functionName: "STRAVA_PROVIDER_VERSION", ...block }),
-  ]);
   return {
     chainId,
     codePresent: Boolean(code && code !== "0x"),
@@ -257,33 +194,7 @@ async function contractIdentity(blockNumber?: bigint) {
     ownerCodePresent: Boolean(ownerCode && ownerCode !== "0x"),
     evidenceSigner: getAddress(evidenceSigner),
     accessSigner: getAddress(accessSigner),
-    directVerifiers: {
-      strava: canonicalStravaVerifier,
-      duolingo: canonicalDuolingoVerifier,
-      stravaParser: canonicalStravaParser,
-      codePresent: Boolean(stravaCode && stravaCode !== "0x" && duolingoCode && duolingoCode !== "0x"),
-      stravaCodeHash: stravaCode && stravaCode !== "0x" ? keccak256(stravaCode) : null,
-      duolingoCodeHash: duolingoCode && duolingoCode !== "0x" ? keccak256(duolingoCode) : null,
-      parserCodeHash: parserCode && parserCode !== "0x" ? keccak256(parserCode) : null,
-      liveSchemas: stravaLive && duolingoLive,
-      witnessesPinned:
-        getAddress(stravaWitness) === EXPECTED_RECLAIM_WITNESS
-        && getAddress(duolingoWitness) === EXPECTED_RECLAIM_WITNESS,
-      providersPinned:
-        stravaProviderId === EXPECTED_STRAVA_PROVIDER_ID
-        && stravaProviderVersion === EXPECTED_STRAVA_PROVIDER_VERSION
-        && duolingoProviderId === EXPECTED_DUOLINGO_PROVIDER_ID
-        && duolingoProviderVersion === EXPECTED_DUOLINGO_PROVIDER_VERSION
-        && duolingoOwnershipRequestHash === EXPECTED_DUOLINGO_OWNERSHIP_REQUEST_HASH
-        && duolingoXpRequestHash === EXPECTED_DUOLINGO_XP_REQUEST_HASH,
-      parserPinned:
-        Boolean(parserCode && parserCode !== "0x")
-        && parserLive
-        && parserSchemaId !== `0x${"00".repeat(32)}`
-        && parserProviderId === EXPECTED_STRAVA_PROVIDER_ID
-        && parserProviderVersion === EXPECTED_STRAVA_PROVIDER_VERSION,
-    },
-    pauses: { creation, joining, baseline, completion },
+    pauses: { creation, joining, completion },
   };
 }
 
@@ -316,7 +227,6 @@ async function productionHealth(): Promise<HealthSummary> {
       pauses: pauses ? {
         creation: pauses.creation === true,
         joining: pauses.joining === true,
-        baseline: pauses.baseline === true,
         completion: pauses.completion === true,
       } : null,
     };
@@ -350,12 +260,6 @@ async function preflight(): Promise<void> {
   const expectedAccessSigner = optionalSigner("ACCESS_SIGNER_PRIVATE_KEY");
   const expectedEscrowCodeHash = optionalConfiguredHash("LOCK_IN_ESCROW_CODE_HASH");
   const expectedOwner = optionalConfiguredAddress("LOCK_IN_OWNER_ADDRESS");
-  const expectedStravaParser = optionalConfiguredAddress("LOCK_IN_STRAVA_PARSER_ADDRESS");
-  const expectedStravaVerifier = optionalConfiguredAddress("LOCK_IN_STRAVA_VERIFIER_ADDRESS");
-  const expectedDuolingoVerifier = optionalConfiguredAddress("LOCK_IN_DUOLINGO_VERIFIER_ADDRESS");
-  const expectedStravaParserCodeHash = optionalConfiguredHash("LOCK_IN_STRAVA_PARSER_CODE_HASH");
-  const expectedStravaVerifierCodeHash = optionalConfiguredHash("LOCK_IN_STRAVA_VERIFIER_CODE_HASH");
-  const expectedDuolingoVerifierCodeHash = optionalConfiguredHash("LOCK_IN_DUOLINGO_VERIFIER_CODE_HASH");
   const allowedWallets = configuredCanaryAllowlist();
   const missingInputs = [
     ...(!walletA ? ["CANARY_WALLET_A"] : []),
@@ -364,12 +268,6 @@ async function preflight(): Promise<void> {
     ...(!expectedAccessSigner ? ["ACCESS_SIGNER_PRIVATE_KEY"] : []),
     ...(!expectedEscrowCodeHash ? ["LOCK_IN_ESCROW_CODE_HASH"] : []),
     ...(!expectedOwner ? ["LOCK_IN_OWNER_ADDRESS"] : []),
-    ...(!expectedStravaParser ? ["LOCK_IN_STRAVA_PARSER_ADDRESS"] : []),
-    ...(!expectedStravaVerifier ? ["LOCK_IN_STRAVA_VERIFIER_ADDRESS"] : []),
-    ...(!expectedDuolingoVerifier ? ["LOCK_IN_DUOLINGO_VERIFIER_ADDRESS"] : []),
-    ...(!expectedStravaParserCodeHash ? ["LOCK_IN_STRAVA_PARSER_CODE_HASH"] : []),
-    ...(!expectedStravaVerifierCodeHash ? ["LOCK_IN_STRAVA_VERIFIER_CODE_HASH"] : []),
-    ...(!expectedDuolingoVerifierCodeHash ? ["LOCK_IN_DUOLINGO_VERIFIER_CODE_HASH"] : []),
     ...(!allowedWallets ? ["CANARY_ALLOWED_WALLETS"] : []),
   ];
   const [identity, health, nextPactId, escrowBalance, walletASnapshot, walletBSnapshot] = await Promise.all([
@@ -399,20 +297,6 @@ async function preflight(): Promise<void> {
     evidenceSignerMatches: expectedEvidenceSigner ? identity.evidenceSigner === expectedEvidenceSigner : false,
     accessSignerMatches: expectedAccessSigner ? identity.accessSigner === expectedAccessSigner : false,
     signersSeparated: identity.evidenceSigner !== identity.accessSigner,
-    directVerifierAddressesDistinct: identity.directVerifiers.strava !== identity.directVerifiers.duolingo,
-    directVerifierBindings:
-      expectedStravaParser === identity.directVerifiers.stravaParser
-      && expectedStravaVerifier === identity.directVerifiers.strava
-      && expectedDuolingoVerifier === identity.directVerifiers.duolingo,
-    directVerifierCode: identity.directVerifiers.codePresent,
-    directVerifierCodeHashes:
-      expectedStravaParserCodeHash === identity.directVerifiers.parserCodeHash
-      && expectedStravaVerifierCodeHash === identity.directVerifiers.stravaCodeHash
-      && expectedDuolingoVerifierCodeHash === identity.directVerifiers.duolingoCodeHash,
-    directVerifierLiveSchemas: identity.directVerifiers.liveSchemas,
-    directVerifierWitnesses: identity.directVerifiers.witnessesPinned,
-    directVerifierProviders: identity.directVerifiers.providersPinned,
-    directParser: identity.directVerifiers.parserPinned,
     ownerConfigured: expectedOwner === identity.owner,
     ownerContract: identity.ownerCodePresent,
     ownerSeparated: identity.owner !== identity.evidenceSigner && identity.owner !== identity.accessSigner,

@@ -1,10 +1,10 @@
-import { DUOLINGO_XP_MISSION, STRAVA_RUN_MISSION } from "./lock-in-abi";
+import { STRAVA_RUN_MISSION } from "./lock-in-abi";
 
-export type MissionId = "strava" | "duolingo";
+export type MissionId = "strava";
 
 export type Mission = {
   id: MissionId;
-  type: typeof STRAVA_RUN_MISSION | typeof DUOLINGO_XP_MISSION;
+  type: typeof STRAVA_RUN_MISSION;
   name: string;
   verb: string;
   unit: string;
@@ -28,21 +28,6 @@ export const MISSIONS: readonly Mission[] = [
     ],
     defaultTarget: 3_000,
     description: "A GPS run recorded by Strava.",
-  },
-  {
-    id: "duolingo",
-    type: DUOLINGO_XP_MISSION,
-    name: "Duolingo XP",
-    verb: "learning days",
-    unit: "XP",
-    targets: [
-      { value: 10, label: "10 XP" },
-      { value: 20, label: "20 XP" },
-      { value: 30, label: "30 XP" },
-      { value: 50, label: "50 XP" },
-    ],
-    defaultTarget: 20,
-    description: "New XP earned after joining, from your linked profile.",
   },
 ] as const;
 
