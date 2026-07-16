@@ -126,3 +126,14 @@ Remaining for Duolingo to be production-real: deploy the (fixed) verifier + pars
 ## 8. The one-sentence ask
 
 Strava zkTLS **proof generation works**; the block is **Reclaim's hosted-flow finalization** (`BROWSER_CONNECTION_FAILED` + `notify-callback` 502, `ERROR_SUBMISSION_FAILED`), reproduced ~7x including a manual non-automated run. We need either (a) a way to make the hosted flow reliably submit, (b) a client-side/`useProxy:false` path that avoids the remote browser, or (c) a viable alternative — without shipping a heavy desktop extension.
+
+---
+
+## Update (2026-07-16): two-claim provider works AND the capture passes verifyProof
+
+- **Two-claim provider (v6.0.0) unblocks the hosted flow.** A real Strava proof was captured via the hosted (no-install) web flow: `sessions/strava-6.0.0-capture-fa8968844e.json`, 2 proofs, values matching the real run (name, has_latlng=true, trainer=false, distance 209 m). The advisor's diagnosis was correct: the 4-claim set was too heavy for the hosted browser lifecycle; 2 claims reach submission.
+- **The captured proof PASSES the production barrier `verifyProof(providerVersion "6.0.0", allowedTags: [], teeAttestation: { appSecret })`: `isVerified=true`, `isTeeAttestationVerified=true`, no error.** This contradicts the prediction that the capture would be a degenerate AI-portal proof that verifyProof rejects.
+- The proof is NOT the empty-parameter form: `claimData.parameters` is populated (704 and 2614 chars) with the real HTTP request grammar (url, method, headers incl. `X-Requested-With: XMLHttpRequest`, responseMatches, responseRedactions). A real `teeAttestation` object is present (`proof_version, tee_provider, tee_technology, nonce, timestamp, workload, verifier, attestation`). Witness is `0x2448...`.
+- Remaining oddities to reconcile: `context.isAiProof=true`, `context.isPortalProof=true`, and `context.providerHash` is undefined. `claimData.owner` is the legacy placeholder `0x1234...7890` (per Reclaim docs, ignore owner; bind via contextAddress/contextMessage/reclaimSessionId, which the off-chain policy already does).
+- **Open question for the advisor, given the new data:** since verifyProof (SDK + TEE) passes and the full HTTP grammar is present, is `isAiProof=true` here disqualifying, or a benign portal flag? The deterministic-trust question narrows to: does the on-chain verifier pin the request via `context.providerHash` (undefined here) or recompute it from `claimData.parameters` (present here)? Confirm the live 6.0.0 `verificationType` and whether `resolvedProviderVersion` is `6.0.0` (not `6.0.0-ai.*`).
+- Plan unchanged in spirit: keep `LIVE_SCHEMA_CONFIRMED=false`, do the 4→2 verifier/policy refactor (bind via context not owner), and only freeze the verifier against a capture that fully satisfies the positive-fixture conditions.

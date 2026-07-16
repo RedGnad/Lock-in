@@ -4,23 +4,42 @@ import { verifyProof, type Proof } from "@reclaimprotocol/js-sdk";
 import { STRAVA_PROVIDER_ID, STRAVA_PROVIDER_VERSION } from "../src/strava-proof-policy.js";
 import { DUOLINGO_PROVIDER_VERSION, duolingoProviderId } from "../src/duolingo-proof-policy.js";
 
-// Mirrors app/api/reclaim/verify/route.ts SDK + TEE attestation step against a
-// captured proof file, to confirm a live proof set verifies. Diagnostic only.
+// Runs the REAL production barrier verifyProof (SDK + TEE attestation) on a captured
+// proof file and dumps the fields that separate a deterministic WITNESS proof from an
+// AI-portal proof. Diagnostic only.
 
 const path = process.argv[2];
 const kind = (process.argv[3] || "").trim();
+const versionOverride = (process.argv[4] || "").trim();
 if (!path || (kind !== "duolingo" && kind !== "strava")) {
-  throw new Error("Usage: pnpm tsx scripts/validate-capture.ts <proofs.json> <duolingo|strava>");
+  throw new Error("Usage: pnpm tsx scripts/validate-capture.ts <proofs.json> <duolingo|strava> [version]");
 }
 const appSecret: string = process.env.SECRET?.trim() || "";
 if (!appSecret) throw new Error("SECRET is not configured");
 
 const proofs = JSON.parse(fs.readFileSync(path, "utf8")) as Proof[];
 const providerId = kind === "duolingo" ? duolingoProviderId() : STRAVA_PROVIDER_ID;
-const providerVersion = kind === "duolingo" ? DUOLINGO_PROVIDER_VERSION : STRAVA_PROVIDER_VERSION;
+const providerVersion = versionOverride || (kind === "duolingo" ? DUOLINGO_PROVIDER_VERSION : STRAVA_PROVIDER_VERSION);
+
+function dumpFields(p: Proof, i: number) {
+  let ctx: Record<string, unknown> = {};
+  try { ctx = JSON.parse(p.claimData?.context || "{}"); } catch {}
+  const params = p.claimData?.parameters || "";
+  console.log(`--- proof[${i}] ---`);
+  console.log("  parameters.length:", params.length);
+  console.log("  isAiProof:", ctx.isAiProof, "isPortalProof:", ctx.isPortalProof);
+  console.log("  providerHash:", ctx.providerHash);
+  console.log("  contextAddress:", ctx.contextAddress, "contextMessage:", ctx.contextMessage, "sessionId:", ctx.reclaimSessionId);
+  console.log("  owner:", p.claimData?.owner);
+  const w = (p as unknown as { witnesses?: { id?: string }[] }).witnesses;
+  console.log("  witnesses:", Array.isArray(w) ? w.map((x) => x.id).join(",") : "none");
+  console.log("  has top-level teeAttestation:", "teeAttestation" in (p as object));
+}
 
 async function main() {
-  console.log(`Validating ${proofs.length} ${kind} proof(s) against ${providerId}@${providerVersion}`);
+  console.log(`Validating ${proofs.length} ${kind} proof(s) against ${providerId}@${providerVersion}\n`);
+  proofs.forEach(dumpFields);
+  console.log("\nRunning production barrier verifyProof(allowedTags: [], teeAttestation)...");
   const verified = await verifyProof(proofs, {
     providerId,
     providerVersion,
@@ -29,10 +48,7 @@ async function main() {
   });
   console.log("isVerified:", verified.isVerified);
   console.log("isTeeAttestationVerified:", verified.isTeeAttestationVerified);
-  console.log("data length:", Array.isArray(verified.data) ? verified.data.length : typeof verified.data);
-  if (Array.isArray(verified.data)) {
-    verified.data.forEach((d, i) => console.log(`trustedData[${i}]:`, JSON.stringify(d)));
-  }
+  console.log("error:", (verified as { error?: unknown }).error);
 }
 
 main().catch((error) => {
