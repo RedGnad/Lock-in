@@ -57,8 +57,21 @@ async function main() {
   }
 
   console.log("Waiting for the proof...");
+
+  // A proof is only usable once its TEE attestation is attached. The status endpoint publishes the
+  // proofs array FIRST and fills in teeAttestation shortly after, so saving on the array alone is a race:
+  // it silently produces a capture that can never pass the release gate, and the run is wasted. Wait for
+  // the terminal state, both proofs, and a token on each, and keep polling for a while after
+  // PROOF_SUBMITTED before concluding the attestation is genuinely absent.
+  const hasTeeToken = (proof: Proof): boolean =>
+    typeof (proof.teeAttestation as { attestation?: { token?: unknown } } | undefined)?.attestation?.token
+      === "string";
+  const complete = (list: Proof[]): boolean => list.length === 2 && list.every(hasTeeToken);
+
   const deadline = Date.now() + 12 * 60 * 1_000;
+  const attestationGraceMs = 60 * 1_000;
   let proofs: Proof[] | undefined;
+  let submittedAt: number | undefined;
   let lastStatus = "";
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 3_000));
@@ -67,19 +80,35 @@ async function main() {
     const raw = String(status.session?.statusV2 || status.message || "");
     if (raw && raw !== lastStatus) { console.log(`\nstatus: ${raw}`); lastStatus = raw; }
     if (/fail|error|cancel|reject|expired/i.test(raw)) throw new Error(`Reclaim session ${raw}`);
+    if (raw === "PROOF_SUBMITTED" && submittedAt === undefined) submittedAt = Date.now();
+
     const ready = status.session?.proofs as Proof[] | Proof | undefined;
     const list = Array.isArray(ready) ? ready : ready ? [ready] : [];
-    if (list.length > 0) { proofs = list; break; }
+    if (complete(list)) { proofs = list; break; }
+
+    if (list.length > 0 && submittedAt !== undefined) {
+      const waited = Date.now() - submittedAt;
+      if (waited > attestationGraceMs) {
+        const missing = list.filter((proof) => !hasTeeToken(proof)).length;
+        throw new Error(
+          `Reclaim returned ${list.length} proof(s) but ${missing} still carry no teeAttestation token `
+          + `${Math.round(waited / 1_000)}s after PROOF_SUBMITTED. The status endpoint is not delivering the `
+          + "attestation for this session; try the app callback path before spending another run.",
+        );
+      }
+      process.stdout.write("T");
+      continue;
+    }
     process.stdout.write(".");
   }
   process.stdout.write("\n");
-  if (!proofs || proofs.length === 0) throw new Error("Timed out before a proof was returned");
+  if (!proofs) throw new Error("Timed out before a complete, TEE-attested proof set was returned");
 
   const outDir = resolve("sessions");
   await mkdir(outDir, { recursive: true });
   const outPath = resolve(outDir, `strava-${providerVersion}-capture-${sessionId}.json`);
   await writeFile(outPath, JSON.stringify(proofs, null, 2));
-  console.log(`\nCaptured ${proofs.length} proof(s) -> ${outPath}\n`);
+  console.log(`\nCaptured ${proofs.length} TEE-attested proof(s) -> ${outPath}\n`);
   proofs.forEach((p, i) => {
     let ctx: Record<string, unknown> = {};
     try { ctx = JSON.parse(p.claimData?.context || "{}"); } catch {}

@@ -36,17 +36,23 @@ export function resolveReclaimChannel(value = process.env.RECLAIM_VERIFICATION_M
 }
 
 /**
- * Init options for the channel. App mode asks for the App Clip on iOS and the deferred deep link, so a
- * user without the Verifier installed still lands in the flow instead of a dead end.
+ * Init options for the channel. `useAppClip` belongs to ProofRequestOptions; the deferred deep link does
+ * NOT, it lives in the launch options below.
  */
-export function reclaimChannelInitOptions(channel: ReclaimChannel): {
-  useAppClip?: boolean;
-  canUseDeferredDeepLinksFlow?: boolean;
-} {
-  return channel === "app" ? { useAppClip: true, canUseDeferredDeepLinksFlow: true } : {};
+export function reclaimChannelInitOptions(channel: ReclaimChannel): { useAppClip?: boolean } {
+  return channel === "app" ? { useAppClip: true } : {};
 }
 
-/** Launch options for `getRequestUrl`. */
-export function reclaimChannelLaunchOptions(channel: ReclaimChannel): { verificationMode: ReclaimChannel } {
-  return { verificationMode: channel };
+/**
+ * Launch options for `getRequestUrl`, typed as the SDK's ReclaimFlowInitOptions. In app mode the deferred
+ * deep link means a user without the Verifier installed still lands back in the flow after installing,
+ * instead of hitting a dead end.
+ */
+export function reclaimChannelLaunchOptions(channel: ReclaimChannel): {
+  verificationMode: ReclaimChannel;
+  canUseDeferredDeepLinksFlow?: boolean;
+} {
+  return channel === "app"
+    ? { verificationMode: "app", canUseDeferredDeepLinksFlow: true }
+    : { verificationMode: "portal" };
 }
