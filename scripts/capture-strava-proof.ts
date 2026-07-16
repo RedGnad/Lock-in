@@ -3,6 +3,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { ReclaimProofRequest, fetchStatusUrl, type Proof } from "@reclaimprotocol/js-sdk";
 import { getAddress, isAddress } from "viem";
+import {
+  reclaimChannelInitOptions,
+  reclaimChannelLaunchOptions,
+  resolveReclaimChannel,
+} from "../src/reclaim-channel.js";
 
 // Strava proof capture. Mirrors the app request: context = wallet + "pactId:dayIndex", and no
 // parameter at all: 7.0.0 reads the athlete's most recent run rather than a titled one.
@@ -20,6 +25,9 @@ const rawWallet = process.env.WALLET_ADDRESS?.trim() || "0x000000000000000000000
 if (!isAddress(rawWallet)) throw new Error("WALLET_ADDRESS is invalid");
 const wallet = getAddress(rawWallet).toLowerCase();
 const openCdp = !process.argv.includes("--no-cdp");
+// Same channel resolution as the production session route: --app is a shorthand for the setting, so a
+// capture always represents a channel the app can actually serve.
+const channel = process.argv.includes("--app") ? "app" as const : resolveReclaimChannel();
 
 async function main() {
   const request = await ReclaimProofRequest.init(required("ID"), required("SECRET"), providerId, {
@@ -30,15 +38,13 @@ async function main() {
     acceptAiProviders: false,
     canAutoSubmit: true,
     preferredLocale: "en",
+    ...reclaimChannelInitOptions(channel),
   });
   request.setContext(wallet, "0:0");
 
   const sessionId = request.getSessionId();
-  const appMode = process.argv.includes("--app");
-  const requestUrl = appMode
-    ? await request.getRequestUrl({ verificationMode: "app" } as never)
-    : await request.getRequestUrl();
-  console.log(JSON.stringify({ sessionId, provider: `${providerId}@${providerVersion}`, mode: appMode ? "app" : "portal", contextAddress: wallet }, null, 2));
+  const requestUrl = await request.getRequestUrl(reclaimChannelLaunchOptions(channel));
+  console.log(JSON.stringify({ sessionId, provider: `${providerId}@${providerVersion}`, channel, contextAddress: wallet }, null, 2));
   console.log("REQUEST_URL:", requestUrl);
 
   if (openCdp) {

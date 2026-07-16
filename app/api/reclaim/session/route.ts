@@ -10,6 +10,11 @@ import { DUOLINGO_XP_MISSION } from "@/src/lock-in-abi";
 import { resolvePublicDuolingoProfile } from "@/src/duolingo-profile";
 import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
 import {
+  reclaimChannelInitOptions,
+  reclaimChannelLaunchOptions,
+  resolveReclaimChannel,
+} from "@/src/reclaim-channel";
+import {
   requireWalletAuthSession,
   walletAuthErrorStatus,
   walletAuthPublicMessage,
@@ -57,6 +62,7 @@ export async function POST(request: Request) {
     const isDuolingo = policy.missionType === DUOLINGO_XP_MISSION;
     const providerId = isDuolingo ? duolingoProviderId() : STRAVA_PROVIDER_ID;
     const providerVersion = isDuolingo ? DUOLINGO_PROVIDER_VERSION : STRAVA_PROVIDER_VERSION;
+    const channel = resolveReclaimChannel();
     const proofRequest = await ReclaimProofRequest.init(required("ID"), required("SECRET"), providerId, {
       providerVersion,
       acceptTeeAttestation: true,
@@ -65,6 +71,7 @@ export async function POST(request: Request) {
       acceptAiProviders: false,
       canAutoSubmit: true,
       preferredLocale: "en",
+      ...reclaimChannelInitOptions(channel),
     });
     const contextMessage = phase === "baseline" ? `${policy.pactId}:baseline` : `${policy.pactId}:${policy.dayIndex}`;
     proofRequest.setContext(policy.walletAddress.toLowerCase(), contextMessage);
@@ -96,10 +103,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
-      requestUrl: await proofRequest.getRequestUrl(),
+      requestUrl: await proofRequest.getRequestUrl(reclaimChannelLaunchOptions(channel)),
       sessionId,
       token,
       providerVersion,
+      channel,
       instruction: isDuolingo
         ? "Sign in to Duolingo if asked, then continue. Your profile name will not be changed."
         : "Record your GPS run on Strava first, then sign in here. We read your most recent run: nothing to rename.",

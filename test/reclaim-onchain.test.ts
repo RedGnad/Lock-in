@@ -3,6 +3,11 @@ import test from "node:test";
 import { encodeAbiParameters, keccak256, parseAbiParameters, stringToHex } from "viem";
 import { getIdentifierFromClaimInfo, type Proof } from "@reclaimprotocol/js-sdk";
 import {
+  reclaimChannelInitOptions,
+  reclaimChannelLaunchOptions,
+  resolveReclaimChannel,
+} from "../src/reclaim-channel.js";
+import {
   assertDirectStravaInput,
   assertReclaimSessionProvenance,
   assertSdkProofSet,
@@ -285,4 +290,23 @@ test("guards the direct Strava verifier call with the live provider proof count"
     () => assertDirectStravaInput({ hasEscrow: true, proofCount: 2, dayIndex: undefined }),
     /bound to a day index/,
   );
+});
+
+test("resolves the Reclaim delivery channel from configuration, failing closed", () => {
+  // The channel decides whether a user re-authenticates inside a remote browser on every check-in, so a
+  // typo must not silently fall back to the remote one.
+  assert.equal(resolveReclaimChannel(undefined), "portal");
+  assert.equal(resolveReclaimChannel(""), "portal");
+  assert.equal(resolveReclaimChannel("portal"), "portal");
+  assert.equal(resolveReclaimChannel("app"), "app");
+  assert.equal(resolveReclaimChannel(" APP "), "app");
+  assert.throws(() => resolveReclaimChannel("mobile"), /must be "portal" or "app"/);
+  assert.throws(() => resolveReclaimChannel("extension"), /must be "portal" or "app"/);
+});
+
+test("app mode asks for the App Clip and the deferred deep link, portal asks for neither", () => {
+  assert.deepEqual(reclaimChannelInitOptions("app"), { useAppClip: true, canUseDeferredDeepLinksFlow: true });
+  assert.deepEqual(reclaimChannelInitOptions("portal"), {});
+  assert.deepEqual(reclaimChannelLaunchOptions("app"), { verificationMode: "app" });
+  assert.deepEqual(reclaimChannelLaunchOptions("portal"), { verificationMode: "portal" });
 });
