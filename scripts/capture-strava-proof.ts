@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { ReclaimProofRequest, fetchStatusUrl, type Proof } from "@reclaimprotocol/js-sdk";
 import { getAddress, isAddress } from "viem";
 
-// Flexible Strava proof capture used to compare provider versions (1.0.3 vs 1.0.4).
+// Flexible Strava proof capture used to compare provider versions.
 // Mirrors the app Strava request: context = wallet + "pactId:dayIndex", param
 // context_challenge = the daily proof code that must equal the activity title.
 // Diagnostic only: no stake, no deploy, no gate flip.
@@ -16,7 +16,7 @@ function required(name: string): string {
 }
 
 const providerId = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-const providerVersion = (process.argv[2] || process.env.STRAVA_VERSION || "1.0.3").trim();
+const providerVersion = (process.argv[2] || process.env.STRAVA_VERSION || "6.0.0").trim();
 const proofCode = (process.argv[3] || process.env.STRAVA_PROOF_CODE || "").trim();
 if (!/^LI-[A-Z0-9]{16,28}D(?:0[1-9]|[12][0-9]|30)$/.test(proofCode)) {
   throw new Error("Usage: pnpm tsx scripts/capture-strava-proof.ts <version> <LI-...D01>");

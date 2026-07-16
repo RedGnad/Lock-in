@@ -142,7 +142,7 @@ test("requires exact parity for every Strava field signed by the backend", () =>
   const identityHash = `0x${"33".repeat(32)}` as const;
   const nullifier = `0x${"44".repeat(32)}` as const;
   const proofSetHash = `0x${"55".repeat(32)}` as const;
-  const timestamps = [1_784_000_000, 1_784_000_001, 1_784_000_002, 1_784_000_003];
+  const timestamps = [1_784_000_000, 1_784_000_001];
   const direct = {
     identityHash,
     nullifier,
@@ -153,7 +153,7 @@ test("requires exact parity for every Strava field signed by the backend", () =>
     elapsedTimeSeconds: 1_800n,
     elevationGainMeters: 50n,
     oldestProofTimestamp: timestamps[0],
-    newestProofTimestamp: timestamps[3],
+    newestProofTimestamp: timestamps[1],
   };
   const policy = {
     identityHash,
@@ -170,7 +170,7 @@ test("requires exact parity for every Strava field signed by the backend", () =>
     { ...direct, movingTimeSeconds: 1_499n },
     { ...direct, elapsedTimeSeconds: 1_799n },
     { ...direct, elevationGainMeters: 49n },
-    { ...direct, newestProofTimestamp: timestamps[3] + 1 },
+    { ...direct, newestProofTimestamp: timestamps[1] + 1 },
   ]) {
     assert.throws(() => assertStravaDirectParity({ direct: changed, policy, proofSetHash, timestamps }), /disagree/);
   }

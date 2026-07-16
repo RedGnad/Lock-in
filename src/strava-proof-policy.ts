@@ -10,17 +10,14 @@ import type { Proof } from "@reclaimprotocol/js-sdk";
 import { STRAVA_DAILY_PROOF_CODE_PATTERN, STRAVA_PACT_CHALLENGE_PATTERN } from "./pact-code";
 
 export const STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-export const STRAVA_PROVIDER_VERSION = "1.0.3";
+export const STRAVA_PROVIDER_VERSION = "6.0.0";
 export const STRAVA_PROVIDER_KEY = keccak256(stringToHex(`${STRAVA_PROVIDER_ID}@${STRAVA_PROVIDER_VERSION}`));
-export const STRAVA_PROVIDER_HASHES = [
-  "0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67",
-  "0x2ef5ed61f33aa62f83c1ebf18c191b1b897db0d4a959368a365fff0c036dab2b",
-  "0xdb71c7f76ee1b695648cbd13f8ec2f554d0efe6bfa0bab89fcc08d50bc99e208",
-  "0xefa53fe81b56a21d0aaa2f6cc34e0da3e2839480b0929ab761d131e8412c4b04",
-] as const;
+/** The 6.0.0 provider returns exactly two claims: the athlete marker, then the combined activity. */
+export const STRAVA_PROOF_COUNT = 2;
 export const STRAVA_CHALLENGE_PATTERN = STRAVA_PACT_CHALLENGE_PATTERN;
 
 const REQUIRED_FIELDS = [
+  "context_challenge",
   "marker",
   "id",
   "name",
@@ -82,29 +79,49 @@ export class StravaPolicyError extends Error {
   }
 }
 
-export function canonicalizeStravaProofs(proofs: readonly Proof[]): Proof[] {
-  if (proofs.length !== STRAVA_PROVIDER_HASHES.length) {
-    reject("WRONG_PROOF_COUNT", "The Strava provider must return exactly four proofs");
+const STRAVA_ROLES = ["marker", "activity"] as const;
+type StravaRole = (typeof STRAVA_ROLES)[number];
+
+/**
+ * The 6.0.0 provider signs no `context.providerHash`, so a claim's role is read from the shape of its
+ * signed extractedParameters: the marker claim carries `marker`, the combined activity claim carries `id`.
+ * This ordering only has to be deterministic. The request itself is re-pinned from `claimData.parameters`
+ * (url, method, body, responseMatches, responseRedactions, paramValues) by the on-chain verifier, so a
+ * claim placed in the wrong slot fails that pin rather than being trusted on the strength of its shape.
+ */
+function stravaRole(extracted: Record<string, unknown>): StravaRole {
+  const isMarker = typeof extracted.marker === "string";
+  const isActivity = typeof extracted.id === "string";
+  if (isMarker === isActivity) {
+    reject("WRONG_PROOF_SCHEMA", "A Strava proof does not match a pinned request schema");
   }
-  const byProviderHash = new Map<string, Proof>();
+  return isMarker ? "marker" : "activity";
+}
+
+export function canonicalizeStravaProofs(proofs: readonly Proof[]): Proof[] {
+  if (proofs.length !== STRAVA_PROOF_COUNT) {
+    reject("WRONG_PROOF_COUNT", "The Strava provider must return exactly two proofs");
+  }
+  const byRole = new Map<StravaRole, Proof>();
   for (const proof of proofs) {
-    let providerHash: unknown;
+    let extracted: unknown;
     try {
       const context = JSON.parse(proof.claimData.context) as Record<string, unknown>;
-      providerHash = context.providerHash;
+      extracted = context.extractedParameters;
     } catch {
       reject("INVALID_CONTEXT", "A Strava proof contains malformed signed context");
     }
-    if (typeof providerHash !== "string" || !STRAVA_PROVIDER_HASHES.includes(providerHash as typeof STRAVA_PROVIDER_HASHES[number])) {
-      reject("WRONG_PROOF_SCHEMA", "A Strava proof does not match a pinned request schema");
+    if (!extracted || typeof extracted !== "object" || Array.isArray(extracted)) {
+      reject("INVALID_CONTEXT", "A Strava proof carries no signed extracted parameters");
     }
-    if (byProviderHash.has(providerHash)) {
+    const role = stravaRole(extracted as Record<string, unknown>);
+    if (byRole.has(role)) {
       reject("DUPLICATE_PROOF_SCHEMA", "The Strava proof set repeats a request schema");
     }
-    byProviderHash.set(providerHash, proof);
+    byRole.set(role, proof);
   }
-  return STRAVA_PROVIDER_HASHES.map((hash) => {
-    const proof = byProviderHash.get(hash);
+  return STRAVA_ROLES.map((role) => {
+    const proof = byRole.get(role);
     if (!proof) return reject("MISSING_PROOF_SCHEMA", "The Strava proof set is incomplete");
     return proof;
   });
@@ -219,6 +236,12 @@ export function validateStravaEvidence(
   if (data.length === 0) reject("NO_PROOFS", "No verified Reclaim data was supplied");
   assertSharedContext(data, policy);
   const fields = collectFields(data);
+
+  // 6.0.0 keeps {{context_challenge}} as a template in the activity URL, so the daily challenge binds
+  // through the signed paramValues rather than through the request line. Both claims carry it.
+  if (fields.context_challenge !== policy.challenge) {
+    reject("WRONG_CHALLENGE", "The proof is bound to another daily challenge");
+  }
 
   const athleteMatch = /^userId: (0|[1-9]\d{0,19})$/.exec(fields.marker);
   if (!athleteMatch) reject("INVALID_ATHLETE", "The signed Strava athlete marker is invalid");

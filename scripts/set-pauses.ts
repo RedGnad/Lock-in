@@ -24,9 +24,9 @@ type PauseOperation = { name: PauseName; functionName: SetterName; current: bool
 const CHAIN_ID = 143;
 const EXPECTED_RECLAIM_WITNESS = getAddress("0x244897572368Eadf65bfBc5aec98D8e5443a9072");
 const EXPECTED_STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-const EXPECTED_STRAVA_PROVIDER_VERSION = "1.0.3";
+const EXPECTED_STRAVA_PROVIDER_VERSION = "6.0.0";
 const EXPECTED_STRAVA_SCHEMA_ID = keccak256(
-  stringToHex("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:1.0.3:synthetic"),
+  stringToHex("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:6.0.0:two-claim"),
 );
 const EXPECTED_DUOLINGO_PROVIDER_ID = "cdf8cb3b-2976-4413-ab2d-693ae5028380";
 const EXPECTED_DUOLINGO_PROVIDER_VERSION = "1.0.8";

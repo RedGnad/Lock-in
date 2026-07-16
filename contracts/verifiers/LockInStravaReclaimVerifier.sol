@@ -5,42 +5,42 @@ import {Reclaim} from "@reclaimprotocol/solidity-sdk/contracts/Reclaim.sol";
 import {Claims} from "@reclaimprotocol/solidity-sdk/contracts/lib/Claims.sol";
 import {LockInProofTypes} from "./LockInProofTypes.sol";
 
-/// @notice Strict, stateless parser for the four canonical Lock In Strava 1.0.3 request schemas.
+/// @notice Strict, stateless parser for the two canonical Lock In Strava 6.0.0 request schemas.
 /// @dev Kept separate so both this parser and its witness-verifying caller fit EIP-170 independently.
+/// @dev 6.0.0 merges the former core/GPS/trainer requests into ONE combined activity claim. The 4-claim
+///      1.0.3 set was too heavy for Reclaim's hosted browser lifecycle and never reached submission.
+/// @dev The request is pinned from the signed `claimData.parameters` (url, method, body, responseMatches,
+///      responseRedactions, paramValues), NOT from a `context.providerHash`: the live 6.0.0 context carries
+///      no providerHash at all. The proof is bound to the caller through the signed context
+///      (contextAddress / contextMessage / reclaimSessionId), never through `claimData.owner`, which the
+///      live capture returns as the legacy placeholder 0x1234...7890.
 contract LockInStravaClaimParser {
     string public constant STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-    string public constant STRAVA_PROVIDER_VERSION = "1.0.3";
+    string public constant STRAVA_PROVIDER_VERSION = "6.0.0";
     bool public constant LIVE_SCHEMA_CONFIRMED = false;
     bytes32 public constant SCHEMA_ID =
-        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:1.0.3:synthetic");
+        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:6.0.0:two-claim");
+
+    uint8 internal constant ROLE_MARKER = 0;
+    uint8 internal constant ROLE_ACTIVITY = 1;
 
     uint256 private constant MAX_JSON_BYTES = 16_384;
     uint256 private constant MAX_JSON_DEPTH = 12;
-    uint256 private constant MAX_PROOF_AGE_SECONDS = 10 minutes;
-    uint256 private constant MAX_FUTURE_SKEW_SECONDS = 60;
-    bytes32 private constant PROVIDER_KEY = keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.3");
+    string private constant TEE_APPLICATION_ID = "0x15678cD04e54ccc2bC1c24cb455be3C60Eb11ADf";
 
-    bytes32 private constant MARKER_REQUEST_HASH = 0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67;
-    bytes32 private constant CORE_REQUEST_HASH = 0x2ef5ed61f33aa62f83c1ebf18c191b1b897db0d4a959368a365fff0c036dab2b;
-    bytes32 private constant GPS_REQUEST_HASH = 0xdb71c7f76ee1b695648cbd13f8ec2f554d0efe6bfa0bab89fcc08d50bc99e208;
-    bytes32 private constant TRAINER_REQUEST_HASH = 0xefa53fe81b56a21d0aaa2f6cc34e0da3e2839480b0929ab761d131e8412c4b04;
-
+    // keccak256 of the exact signed `responseMatches` / `responseRedactions` byte slices of the
+    // published 6.0.0 provider, derived from the real captured proof set (session fa8968844e).
     bytes32 private constant MARKER_MATCHES_HASH = 0x50c9958ba1f7380373760eec627126eb1498058f65fcaa00b3653fcfb7aac000;
     bytes32 private constant MARKER_REDACTIONS_HASH =
-        0x9b13aec02e8c6583eef7f1e1a42789d1f7074b4adf1ba3f54ad1776414eaf829;
-    bytes32 private constant CORE_MATCHES_HASH = 0xf7bb0f70e15a18fe19abdf117d25c6372ea54aa478557e91b4cda5246d0d51c2;
-    bytes32 private constant CORE_REDACTIONS_HASH = 0xedce9a246f5044aa81e7ff7662b953b6ed8befdcbf0946fb9ea0dbd59572364d;
-    bytes32 private constant GPS_MATCHES_HASH = 0xf03e54c3f76dd1c7ef4172e69919389ef06b7f091099c2e988554d1e651573d7;
-    bytes32 private constant GPS_REDACTIONS_HASH = 0x08285b132a982ebc3fcf1dfbbb74c601fb8786d03692b23db5ce1b96f643cb51;
-    bytes32 private constant TRAINER_MATCHES_HASH = 0x85cba820624376a4122c57378ba8153e0eb7585aacc636c01168110459de6840;
-    bytes32 private constant TRAINER_REDACTIONS_HASH =
-        0xe4b0f5d1291f5ab6633b9c951b5645804e06b37c0016982ed5ccdbb38516d4ee;
+        0x4b7281e7975402537afd79fe785e44f44f269f86538a681dc2e96701abb7b16a;
+    bytes32 private constant ACTIVITY_MATCHES_HASH =
+        0x3c79c61040bd099467dfa869da4c5a6683909e3f5c2ed5da11a81af84b32150d;
+    bytes32 private constant ACTIVITY_REDACTIONS_HASH =
+        0x3310274e2d06c8e19ceffb22908fce62af08b7c05da6638857d80ce411e04b9e;
 
-    uint16 private constant MARKER_FIELDS = uint16(1) << 5;
-    uint16 private constant CORE_FIELDS = (uint16(1) << 0) | (uint16(1) << 1) | (uint16(1) << 2) | (uint16(1) << 3)
-        | (uint16(1) << 6) | (uint16(1) << 7) | (uint16(1) << 8) | (uint16(1) << 9) | (uint16(1) << 11);
-    uint16 private constant GPS_FIELDS = (uint16(1) << 3) | (uint16(1) << 4);
-    uint16 private constant TRAINER_FIELDS = (uint16(1) << 3) | (uint16(1) << 10);
+    // Field bits are (rank - 1) over the canonical (lexicographic) paramValues key order.
+    uint16 private constant MARKER_FIELDS = (uint16(1) << 0) | (uint16(1) << 6);
+    uint16 private constant ACTIVITY_FIELDS = uint16(0x1FFF) ^ (uint16(1) << 6);
 
     error JsonTooLarge();
     error InvalidJson();
@@ -49,16 +49,13 @@ contract LockInStravaClaimParser {
     error InvalidStravaSchema();
     error InvalidContext();
     error InvalidStravaFields();
-    error InconsistentActivity();
-    error InvalidPolicy();
-    error ActivityOutsideWindow();
-    error DistanceTooShort();
-    error ImplausibleMotion();
 
     struct ParsedFields {
         string marker;
         bytes32 nameHash;
         bytes32 typeHash;
+        bytes32 teeGroupHash;
+        bytes32 geoHash;
         uint64 activityId;
         uint64 distanceMeters;
         uint64 startTime;
@@ -68,11 +65,14 @@ contract LockInStravaClaimParser {
         bool flagged;
         bool latlng;
         bool trainer;
+        bool isAiProof;
+        bool isPortalProof;
     }
 
     struct StravaFields {
-        string elevation;
+        string challenge;
         string elapsed;
+        string elevation;
         string flagged;
         string activityId;
         string latlng;
@@ -92,6 +92,13 @@ contract LockInStravaClaimParser {
         string sessionId;
     }
 
+    struct ContextResult {
+        StravaFields fields;
+        bytes32 teeGroupHash;
+        bool isAiProof;
+        bool isPortalProof;
+    }
+
     function parseProofData(
         string calldata parameters,
         string calldata context,
@@ -99,37 +106,45 @@ contract LockInStravaClaimParser {
         string calldata challenge,
         ContextPolicy memory contextPolicy
     ) external pure returns (ParsedFields memory parsed) {
-        StravaFields memory parameterFields = _parseParameters(
-            bytes(parameters), role, challenge, contextPolicy.sessionId
-        );
-        StravaFields memory contextFields = _parseContext(bytes(context), role, contextPolicy);
-        _requireEqualFields(parameterFields, contextFields, role);
-        if (role == 0) {
+        (StravaFields memory parameterFields, bytes32 geoHash) =
+            _parseParameters(bytes(parameters), role, contextPolicy.sessionId);
+        ContextResult memory context_ = _parseContext(bytes(context), role, contextPolicy);
+        _requireEqualFields(parameterFields, context_.fields, role);
+
+        // The activity URL keeps the literal {{context_challenge}} template, so the daily challenge
+        // binds through the signed paramValues rather than through the request line.
+        if (keccak256(bytes(parameterFields.challenge)) != keccak256(bytes(challenge))) revert InvalidContext();
+
+        parsed.geoHash = geoHash;
+        parsed.teeGroupHash = context_.teeGroupHash;
+        // Parsed and surfaced, never gated on: `isAiProof`/`isPortalProof` are portal-orchestration
+        // flags. The executed session is a clean deterministic 6.0.0 (PROOF_SUBMITTED, no -ai tag),
+        // so the schema decides trust here; these two only have to be present and canonical booleans.
+        parsed.isAiProof = context_.isAiProof;
+        parsed.isPortalProof = context_.isPortalProof;
+
+        if (role == ROLE_MARKER) {
             parsed.marker = parameterFields.marker;
             return parsed;
         }
+
         parsed.activityId = uint64(_parseCanonicalUint(bytes(parameterFields.activityId), 20, type(uint64).max));
-        if (role == 1) {
-            parsed.nameHash = keccak256(bytes(parameterFields.name));
-            parsed.typeHash = keccak256(bytes(parameterFields.activityType));
-            parsed.distanceMeters = uint64(_parseCanonicalUint(bytes(parameterFields.raw), 10, 1_000_000_000));
-            parsed.movingTimeSeconds = uint64(_parseCanonicalUint(bytes(parameterFields.moving), 10, 1_000_000_000));
-            parsed.elapsedTimeSeconds = uint64(_parseCanonicalUint(bytes(parameterFields.elapsed), 10, 1_000_000_000));
-            parsed.elevationGainMeters =
-                uint64(_parseCanonicalUint(bytes(parameterFields.elevation), 10, 1_000_000_000));
-            parsed.startTime = _parseUtcTimestamp(bytes(parameterFields.time));
-            parsed.flagged = _parseCanonicalBool(bytes(parameterFields.flagged));
-        } else if (role == 2) {
-            parsed.latlng = _parseCanonicalBool(bytes(parameterFields.latlng));
-        } else {
-            parsed.trainer = _parseCanonicalBool(bytes(parameterFields.trainer));
-        }
+        parsed.nameHash = keccak256(bytes(parameterFields.name));
+        parsed.typeHash = keccak256(bytes(parameterFields.activityType));
+        parsed.distanceMeters = uint64(_parseCanonicalUint(bytes(parameterFields.raw), 10, 1_000_000_000));
+        parsed.movingTimeSeconds = uint64(_parseCanonicalUint(bytes(parameterFields.moving), 10, 1_000_000_000));
+        parsed.elapsedTimeSeconds = uint64(_parseCanonicalUint(bytes(parameterFields.elapsed), 10, 1_000_000_000));
+        parsed.elevationGainMeters = uint64(_parseCanonicalUint(bytes(parameterFields.elevation), 10, 1_000_000_000));
+        parsed.startTime = _parseUtcTimestamp(bytes(parameterFields.time));
+        parsed.flagged = _parseCanonicalBool(bytes(parameterFields.flagged));
+        parsed.latlng = _parseCanonicalBool(bytes(parameterFields.latlng));
+        parsed.trainer = _parseCanonicalBool(bytes(parameterFields.trainer));
     }
 
-    function _parseParameters(bytes memory json, uint8 role, string memory challenge, string memory sessionId)
+    function _parseParameters(bytes memory json, uint8 role, string memory sessionId)
         private
         pure
-        returns (StravaFields memory fields)
+        returns (StravaFields memory fields, bytes32 geoHash)
     {
         if (json.length > MAX_JSON_BYTES) revert JsonTooLarge();
         uint256 cursor = _expectByte(json, 0, "{");
@@ -145,33 +160,42 @@ contract LockInStravaClaimParser {
             mask |= uint16(1) << rank;
 
             if (rank == 1) {
+                // additionalClientOptions: not part of the pinned request semantics, but must stay
+                // canonical JSON so no unchecked bytes can hide inside the signed parameters.
+                cursor = _skipJsonValue(json, cursor, 0);
+            } else if (rank == 2) {
                 (string memory body, uint256 afterValue) = _readSecurityString(json, cursor);
                 if (bytes(body).length != 0) revert InvalidStravaSchema();
                 cursor = afterValue;
-            } else if (rank == 2) {
+            } else if (rank == 3) {
+                (string memory geo, uint256 afterValue) = _readSecurityString(json, cursor);
+                if (!_validGeo(bytes(geo))) revert InvalidStravaSchema();
+                geoHash = keccak256(bytes(geo));
+                cursor = afterValue;
+            } else if (rank == 4) {
                 if (cursor + 1 >= json.length || json[cursor] != "{" || json[cursor + 1] == "}") {
                     revert InvalidStravaSchema();
                 }
                 cursor = _skipJsonValue(json, cursor, 0);
-            } else if (rank == 3) {
+            } else if (rank == 5) {
                 (string memory method, uint256 afterValue) = _readSecurityString(json, cursor);
                 if (keccak256(bytes(method)) != keccak256("GET")) revert InvalidStravaSchema();
                 cursor = afterValue;
-            } else if (rank == 4) {
+            } else if (rank == 6) {
                 (fields, cursor) = _parseFields(json, cursor, role);
-            } else if (rank == 5 || rank == 8) {
+            } else if (rank == 7) {
                 (string memory actualSession, uint256 afterValue) = _readSecurityString(json, cursor);
                 if (keccak256(bytes(actualSession)) != keccak256(bytes(sessionId))) revert InvalidContext();
                 cursor = afterValue;
-            } else if (rank == 6 || rank == 7) {
+            } else if (rank == 8 || rank == 9) {
                 uint256 valueStart = cursor;
                 cursor = _skipJsonValue(json, cursor, 0);
                 bytes32 actual = _hashSlice(json, valueStart, cursor);
-                bytes32 expected = rank == 6 ? _matchesHash(role) : _redactionsHash(role);
+                bytes32 expected = rank == 8 ? _matchesHash(role) : _redactionsHash(role);
                 if (actual != expected) revert InvalidStravaSchema();
             } else {
                 (string memory url, uint256 afterValue) = _readSecurityString(json, cursor);
-                if (!_validUrl(url, role, challenge)) revert InvalidStravaSchema();
+                if (keccak256(bytes(url)) != keccak256(bytes(_expectedUrl(role)))) revert InvalidStravaSchema();
                 cursor = afterValue;
             }
 
@@ -186,20 +210,19 @@ contract LockInStravaClaimParser {
         }
         cursor = _expectByte(json, cursor, "}");
         if (cursor != json.length) revert InvalidJson();
-        uint16 required = (uint16(1) << 2) | (uint16(1) << 3) | (uint16(1) << 4) | (uint16(1) << 6) | (uint16(1) << 7)
-            | (uint16(1) << 9);
-        if ((mask & required) != required || fields.mask != _fieldMask(role)) revert InvalidStravaSchema();
+        // Every key of the published 6.0.0 request must be present: ranks 1..10.
+        if (mask != 2046 || fields.mask != _fieldMask(role)) revert InvalidStravaSchema();
     }
 
     function _parseContext(bytes memory json, uint8 role, ContextPolicy memory policy)
         private
         pure
-        returns (StravaFields memory fields)
+        returns (ContextResult memory result)
     {
         if (json.length > MAX_JSON_BYTES) revert JsonTooLarge();
         uint256 cursor = _expectByte(json, 0, "{");
         uint8 lastRank;
-        uint8 mask;
+        uint16 mask;
         while (true) {
             if (cursor >= json.length || json[cursor] == "}") break;
             (bytes32 keyHash, uint256 afterKey) = _readKey(json, cursor);
@@ -207,23 +230,33 @@ contract LockInStravaClaimParser {
             uint8 rank = _contextRank(keyHash);
             if (rank <= lastRank) revert NonCanonicalJson();
             lastRank = rank;
-            mask |= uint8(1) << rank;
+            mask |= uint16(1) << rank;
+
             if (rank == 1) {
+                (string memory nonce, uint256 afterValue) = _readSecurityString(json, cursor);
+                if (!_validLowerHex(bytes(nonce), 64)) revert InvalidContext();
+                result.teeGroupHash = keccak256(bytes(nonce));
+                cursor = afterValue;
+            } else if (rank == 2) {
+                (uint64 timestampMs, uint256 afterValue) = _parseAttestationData(json, cursor, policy.sessionId);
+                result.teeGroupHash = keccak256(abi.encode(result.teeGroupHash, timestampMs));
+                cursor = afterValue;
+            } else if (rank == 3) {
                 (string memory account, uint256 afterValue) = _readSecurityString(json, cursor);
                 if (keccak256(bytes(account)) != keccak256(bytes(_addressToLowerHex(policy.account)))) {
                     revert InvalidContext();
                 }
                 cursor = afterValue;
-            } else if (rank == 2) {
+            } else if (rank == 4) {
                 (string memory message, uint256 afterValue) = _readSecurityString(json, cursor);
                 if (keccak256(bytes(message)) != keccak256(bytes(policy.message))) revert InvalidContext();
                 cursor = afterValue;
-            } else if (rank == 3) {
-                (fields, cursor) = _parseFields(json, cursor, role);
-            } else if (rank == 4) {
-                (string memory providerHash, uint256 afterValue) = _readSecurityString(json, cursor);
-                if (_parseHex32(bytes(providerHash)) != _requestHash(role)) revert InvalidStravaSchema();
-                cursor = afterValue;
+            } else if (rank == 5) {
+                (result.fields, cursor) = _parseFields(json, cursor, role);
+            } else if (rank == 6) {
+                (result.isAiProof, cursor) = _readCanonicalBool(json, cursor);
+            } else if (rank == 7) {
+                (result.isPortalProof, cursor) = _readCanonicalBool(json, cursor);
             } else {
                 (string memory actualSession, uint256 afterValue) = _readSecurityString(json, cursor);
                 if (keccak256(bytes(actualSession)) != keccak256(bytes(policy.sessionId))) revert InvalidContext();
@@ -241,7 +274,55 @@ contract LockInStravaClaimParser {
         }
         cursor = _expectByte(json, cursor, "}");
         if (cursor != json.length) revert InvalidJson();
-        if (mask != 62 || fields.mask != _fieldMask(role)) revert InvalidContext();
+        // The live 6.0.0 context has EXACTLY these 8 keys (ranks 1..8). There is no providerHash and
+        // no pcr0_k/pcr0_t/tee_session_id, so the Duolingo cross-enclave pcr0_t relaxation has no
+        // analogue here: the two claims are bound by attestationNonce + attestation timestamp.
+        if (mask != 510 || result.fields.mask != _fieldMask(role)) revert InvalidContext();
+    }
+
+    function _parseAttestationData(bytes memory json, uint256 cursor, string memory expectedSessionId)
+        private
+        pure
+        returns (uint64 timestampMs, uint256)
+    {
+        cursor = _expectByte(json, cursor, "{");
+        uint8 lastRank;
+        uint8 mask;
+        while (true) {
+            if (cursor >= json.length || json[cursor] == "}") break;
+            (bytes32 keyHash, uint256 afterKey) = _readKey(json, cursor);
+            cursor = _expectByte(json, afterKey, ":");
+            uint8 rank = _attestationRank(keyHash);
+            if (rank <= lastRank) revert NonCanonicalJson();
+            lastRank = rank;
+            mask |= uint8(1) << rank;
+            (string memory value, uint256 afterValue) = _readSecurityString(json, cursor);
+            cursor = afterValue;
+            if (rank == 1) {
+                if (keccak256(bytes(value)) != keccak256(bytes(TEE_APPLICATION_ID))) revert InvalidContext();
+            } else if (rank == 2) {
+                if (keccak256(bytes(value)) != keccak256("v3")) revert InvalidContext();
+            } else if (rank == 3) {
+                if (keccak256(bytes(value)) != keccak256(bytes(expectedSessionId))) revert InvalidContext();
+            } else {
+                bytes memory rawTimestamp = bytes(value);
+                if (rawTimestamp.length != 13) revert InvalidContext();
+                // forge-lint: disable-next-line(unsafe-typecast)
+                timestampMs = uint64(_parseCanonicalUint(rawTimestamp, 13, 9_999_999_999_999));
+            }
+
+            if (cursor >= json.length) revert InvalidJson();
+            if (json[cursor] == ",") {
+                ++cursor;
+                if (cursor >= json.length || json[cursor] == "}") revert InvalidJson();
+                continue;
+            }
+            if (json[cursor] != "}") revert InvalidJson();
+            break;
+        }
+        cursor = _expectByte(json, cursor, "}");
+        if (mask != 30) revert InvalidContext();
+        return (timestampMs, cursor);
     }
 
     function _parseFields(bytes memory json, uint256 cursor, uint8 role)
@@ -263,17 +344,18 @@ contract LockInStravaClaimParser {
             fields.mask |= bit;
             (string memory value, uint256 afterValue) = _readSecurityString(json, cursor);
             cursor = afterValue;
-            if (rank == 1) fields.elevation = value;
+            if (rank == 1) fields.challenge = value;
             else if (rank == 2) fields.elapsed = value;
-            else if (rank == 3) fields.flagged = value;
-            else if (rank == 4) fields.activityId = value;
-            else if (rank == 5) fields.latlng = value;
-            else if (rank == 6) fields.marker = value;
-            else if (rank == 7) fields.moving = value;
-            else if (rank == 8) fields.name = value;
-            else if (rank == 9) fields.raw = value;
-            else if (rank == 10) fields.time = value;
-            else if (rank == 11) fields.trainer = value;
+            else if (rank == 3) fields.elevation = value;
+            else if (rank == 4) fields.flagged = value;
+            else if (rank == 5) fields.activityId = value;
+            else if (rank == 6) fields.latlng = value;
+            else if (rank == 7) fields.marker = value;
+            else if (rank == 8) fields.moving = value;
+            else if (rank == 9) fields.name = value;
+            else if (rank == 10) fields.raw = value;
+            else if (rank == 11) fields.time = value;
+            else if (rank == 12) fields.trainer = value;
             else fields.activityType = value;
 
             if (cursor >= json.length) revert InvalidJson();
@@ -289,109 +371,103 @@ contract LockInStravaClaimParser {
         return (fields, cursor);
     }
 
+    /// @dev Canonical (lexicographic) key order of the signed 6.0.0 `parameters` object.
     function _parameterRank(bytes32 keyHash) private pure returns (uint8) {
-        if (keyHash == keccak256("body")) return 1;
-        if (keyHash == keccak256("headers")) return 2;
-        if (keyHash == keccak256("method")) return 3;
-        if (keyHash == keccak256("paramValues")) return 4;
-        if (keyHash == keccak256("proxySessionId")) return 5;
-        if (keyHash == keccak256("responseMatches")) return 6;
-        if (keyHash == keccak256("responseRedactions")) return 7;
-        if (keyHash == keccak256("sessionId")) return 8;
-        if (keyHash == keccak256("url")) return 9;
+        if (keyHash == keccak256("additionalClientOptions")) return 1;
+        if (keyHash == keccak256("body")) return 2;
+        if (keyHash == keccak256("geoLocation")) return 3;
+        if (keyHash == keccak256("headers")) return 4;
+        if (keyHash == keccak256("method")) return 5;
+        if (keyHash == keccak256("paramValues")) return 6;
+        if (keyHash == keccak256("proxySessionId")) return 7;
+        if (keyHash == keccak256("responseMatches")) return 8;
+        if (keyHash == keccak256("responseRedactions")) return 9;
+        if (keyHash == keccak256("url")) return 10;
         revert UnknownJsonKey(keyHash);
     }
 
     function _contextRank(bytes32 keyHash) private pure returns (uint8) {
-        if (keyHash == keccak256("contextAddress")) return 1;
-        if (keyHash == keccak256("contextMessage")) return 2;
-        if (keyHash == keccak256("extractedParameters")) return 3;
-        if (keyHash == keccak256("providerHash")) return 4;
-        if (keyHash == keccak256("reclaimSessionId")) return 5;
+        if (keyHash == keccak256("attestationNonce")) return 1;
+        if (keyHash == keccak256("attestationNonceData")) return 2;
+        if (keyHash == keccak256("contextAddress")) return 3;
+        if (keyHash == keccak256("contextMessage")) return 4;
+        if (keyHash == keccak256("extractedParameters")) return 5;
+        if (keyHash == keccak256("isAiProof")) return 6;
+        if (keyHash == keccak256("isPortalProof")) return 7;
+        if (keyHash == keccak256("reclaimSessionId")) return 8;
+        revert UnknownJsonKey(keyHash);
+    }
+
+    function _attestationRank(bytes32 keyHash) private pure returns (uint8) {
+        if (keyHash == keccak256("applicationId")) return 1;
+        if (keyHash == keccak256("attestationVersion")) return 2;
+        if (keyHash == keccak256("sessionId")) return 3;
+        if (keyHash == keccak256("timestamp")) return 4;
         revert UnknownJsonKey(keyHash);
     }
 
     function _fieldRank(bytes32 keyHash) private pure returns (uint8) {
-        if (keyHash == keccak256("elevation")) return 1;
+        if (keyHash == keccak256("context_challenge")) return 1;
         if (keyHash == keccak256("elapsed")) return 2;
-        if (keyHash == keccak256("flagged")) return 3;
-        if (keyHash == keccak256("id")) return 4;
-        if (keyHash == keccak256("latlng")) return 5;
-        if (keyHash == keccak256("marker")) return 6;
-        if (keyHash == keccak256("moving")) return 7;
-        if (keyHash == keccak256("name")) return 8;
-        if (keyHash == keccak256("raw")) return 9;
-        if (keyHash == keccak256("time")) return 10;
-        if (keyHash == keccak256("trainer")) return 11;
-        if (keyHash == keccak256("type")) return 12;
+        if (keyHash == keccak256("elevation")) return 3;
+        if (keyHash == keccak256("flagged")) return 4;
+        if (keyHash == keccak256("id")) return 5;
+        if (keyHash == keccak256("latlng")) return 6;
+        if (keyHash == keccak256("marker")) return 7;
+        if (keyHash == keccak256("moving")) return 8;
+        if (keyHash == keccak256("name")) return 9;
+        if (keyHash == keccak256("raw")) return 10;
+        if (keyHash == keccak256("time")) return 11;
+        if (keyHash == keccak256("trainer")) return 12;
+        if (keyHash == keccak256("type")) return 13;
         revert UnknownJsonKey(keyHash);
     }
 
     function _fieldMask(uint8 role) private pure returns (uint16) {
-        if (role == 0) return MARKER_FIELDS;
-        if (role == 1) return CORE_FIELDS;
-        if (role == 2) return GPS_FIELDS;
-        if (role == 3) return TRAINER_FIELDS;
-        revert InvalidStravaSchema();
-    }
-
-    function _requestHash(uint8 role) private pure returns (bytes32) {
-        if (role == 0) return MARKER_REQUEST_HASH;
-        if (role == 1) return CORE_REQUEST_HASH;
-        if (role == 2) return GPS_REQUEST_HASH;
-        if (role == 3) return TRAINER_REQUEST_HASH;
+        if (role == ROLE_MARKER) return MARKER_FIELDS;
+        if (role == ROLE_ACTIVITY) return ACTIVITY_FIELDS;
         revert InvalidStravaSchema();
     }
 
     function _matchesHash(uint8 role) private pure returns (bytes32) {
-        if (role == 0) return MARKER_MATCHES_HASH;
-        if (role == 1) return CORE_MATCHES_HASH;
-        if (role == 2) return GPS_MATCHES_HASH;
-        if (role == 3) return TRAINER_MATCHES_HASH;
+        if (role == ROLE_MARKER) return MARKER_MATCHES_HASH;
+        if (role == ROLE_ACTIVITY) return ACTIVITY_MATCHES_HASH;
         revert InvalidStravaSchema();
     }
 
     function _redactionsHash(uint8 role) private pure returns (bytes32) {
-        if (role == 0) return MARKER_REDACTIONS_HASH;
-        if (role == 1) return CORE_REDACTIONS_HASH;
-        if (role == 2) return GPS_REDACTIONS_HASH;
-        if (role == 3) return TRAINER_REDACTIONS_HASH;
+        if (role == ROLE_MARKER) return MARKER_REDACTIONS_HASH;
+        if (role == ROLE_ACTIVITY) return ACTIVITY_REDACTIONS_HASH;
         revert InvalidStravaSchema();
     }
 
-    function _validUrl(string memory url, uint8 role, string memory challenge) private pure returns (bool) {
-        if (role == 0) return keccak256(bytes(url)) == keccak256("https://www.strava.com/athlete/training");
-        string memory expected = string.concat(
-            "https://www.strava.com/athlete/training_activities?keywords=",
-            challenge,
-            "&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false"
-        );
-        return keccak256(bytes(url)) == keccak256(bytes(expected));
+    function _expectedUrl(uint8 role) private pure returns (string memory) {
+        if (role == ROLE_MARKER) return "https://www.strava.com/athlete/training";
+        if (role == ROLE_ACTIVITY) {
+            return
+            "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
+        }
+        revert InvalidStravaSchema();
     }
 
     function _requireEqualFields(StravaFields memory left, StravaFields memory right, uint8 role) private pure {
         if (left.mask != right.mask || left.mask != _fieldMask(role)) revert InvalidStravaFields();
-        if (role == 0) {
+        if (keccak256(bytes(left.challenge)) != keccak256(bytes(right.challenge))) revert InvalidStravaFields();
+        if (role == ROLE_MARKER) {
             if (keccak256(bytes(left.marker)) != keccak256(bytes(right.marker))) revert InvalidStravaFields();
             return;
         }
-        if (keccak256(bytes(left.activityId)) != keccak256(bytes(right.activityId))) revert InvalidStravaFields();
-        if (role == 2) {
-            if (keccak256(bytes(left.latlng)) != keccak256(bytes(right.latlng))) revert InvalidStravaFields();
-            return;
-        }
-        if (role == 3) {
-            if (keccak256(bytes(left.trainer)) != keccak256(bytes(right.trainer))) revert InvalidStravaFields();
-            return;
-        }
         if (
-            keccak256(bytes(left.elevation)) != keccak256(bytes(right.elevation))
+            keccak256(bytes(left.activityId)) != keccak256(bytes(right.activityId))
+                || keccak256(bytes(left.elevation)) != keccak256(bytes(right.elevation))
                 || keccak256(bytes(left.elapsed)) != keccak256(bytes(right.elapsed))
                 || keccak256(bytes(left.flagged)) != keccak256(bytes(right.flagged))
+                || keccak256(bytes(left.latlng)) != keccak256(bytes(right.latlng))
                 || keccak256(bytes(left.moving)) != keccak256(bytes(right.moving))
                 || keccak256(bytes(left.name)) != keccak256(bytes(right.name))
                 || keccak256(bytes(left.raw)) != keccak256(bytes(right.raw))
                 || keccak256(bytes(left.time)) != keccak256(bytes(right.time))
+                || keccak256(bytes(left.trainer)) != keccak256(bytes(right.trainer))
                 || keccak256(bytes(left.activityType)) != keccak256(bytes(right.activityType))
         ) revert InvalidStravaFields();
     }
@@ -468,6 +544,13 @@ contract LockInStravaClaimParser {
             output[i] = json[start + i];
         }
         return (string(output), next);
+    }
+
+    /// @dev isAiProof / isPortalProof are JSON booleans, not strings: read the bare literal.
+    function _readCanonicalBool(bytes memory json, uint256 cursor) private pure returns (bool, uint256) {
+        if (_startsWith(json, cursor, "true")) return (true, cursor + 4);
+        if (_startsWith(json, cursor, "false")) return (false, cursor + 5);
+        revert InvalidContext();
     }
 
     function _readJsonString(bytes memory json, uint256 cursor)
@@ -609,27 +692,21 @@ contract LockInStravaClaimParser {
         revert InvalidStravaFields();
     }
 
-    function _parseHex32(bytes memory raw) private pure returns (bytes32 output) {
-        if (raw.length != 66 || raw[0] != "0" || raw[1] != "x") revert InvalidStravaSchema();
-        uint256 value;
-        for (uint256 i = 2; i < 66; ++i) {
-            uint8 c = uint8(raw[i]);
-            uint8 nibble;
-            if (c >= 48 && c <= 57) nibble = c - 48;
-            else if (c >= 97 && c <= 102) nibble = c - 87;
-            else revert InvalidStravaSchema();
-            value = (value << 4) | nibble;
+    function _validGeo(bytes memory geo) private pure returns (bool) {
+        if (geo.length > 8) return false;
+        for (uint256 i; i < geo.length; ++i) {
+            if (geo[i] < "A" || geo[i] > "Z") return false;
         }
-        output = bytes32(value);
+        return true;
     }
 
-    function _validateSafeToken(bytes memory token) private pure {
-        for (uint256 i; i < token.length; ++i) {
-            uint8 c = uint8(token[i]);
-            bool valid = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 45 || c == 46
-                || c == 58 || c == 95;
-            if (!valid) revert InvalidContext();
+    function _validLowerHex(bytes memory value, uint256 expectedLength) private pure returns (bool) {
+        if (value.length != expectedLength) return false;
+        for (uint256 i; i < value.length; ++i) {
+            bytes1 c = value[i];
+            if (!((c >= "0" && c <= "9") || (c >= "a" && c <= "f"))) return false;
         }
+        return true;
     }
 
     function _addressToLowerHex(address account) private pure returns (string memory) {
@@ -645,45 +722,32 @@ contract LockInStravaClaimParser {
         return string(output);
     }
 
-    function _uintToString(uint256 value) private pure returns (string memory) {
-        if (value == 0) return "0";
-        uint256 digits;
-        uint256 cursor = value;
-        while (cursor != 0) {
-            ++digits;
-            cursor /= 10;
-        }
-        bytes memory output = new bytes(digits);
-        while (value != 0) {
-            output[--digits] = bytes1(uint8(48 + (value % 10)));
-            value /= 10;
-        }
-        return string(output);
-    }
-
     function _isHex(bytes1 character) private pure returns (bool) {
         return (character >= "0" && character <= "9") || (character >= "a" && character <= "f")
             || (character >= "A" && character <= "F");
     }
 }
 
-/// @notice Isolated direct-verification spike for the private Lock In Strava provider.
+/// @notice Isolated direct verifier for the private Lock In Strava provider, version 6.0.0.
 /// @dev Pins one witness and one stateless parser; it never consults Reclaim's upgradeable registry.
-/// @dev LIVE_SCHEMA_CONFIRMED intentionally remains false. The four 1.0.3 claim schemas are derived from the
-///      published provider and older canonical local claim shapes, but no complete modern 1.0.3 proof set has been
-///      captured. Modern contexts containing attestationNonce/attestationNonceData are deliberately rejected until
-///      their separate TEE attestation can be validated without weakening the canonical grammar.
+/// @dev LIVE_SCHEMA_CONFIRMED intentionally remains false. The two 6.0.0 claim schemas are pinned from a
+///      REAL captured proof set that passes the SDK+TEE barrier (session fa8968844e), and
+///      test/LockInStravaRealProof.t.sol drives that capture through this grammar. The gate stays closed
+///      until the remaining provenance items are settled (live dashboard verificationType == WITNESS) and
+///      the full on-chain flow is exercised on a deployed escrow.
 contract LockInStravaReclaimVerifier {
     string public constant STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-    string public constant STRAVA_PROVIDER_VERSION = "1.0.3";
+    string public constant STRAVA_PROVIDER_VERSION = "6.0.0";
     bool public constant LIVE_SCHEMA_CONFIRMED = false;
 
+    uint8 private constant ROLE_MARKER = 0;
+    uint8 private constant ROLE_ACTIVITY = 1;
     uint256 private constant MAX_PROOF_AGE_SECONDS = 10 minutes;
     uint256 private constant MAX_FUTURE_SKEW_SECONDS = 60;
     uint256 private constant MAX_PROOF_SET_SPAN_SECONDS = 2 minutes;
-    bytes32 private constant PROVIDER_KEY = keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@1.0.3");
+    bytes32 private constant PROVIDER_KEY = keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@6.0.0");
     bytes32 private constant EXPECTED_SCHEMA_ID =
-        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:1.0.3:synthetic");
+        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:6.0.0:two-claim");
 
     address public immutable WITNESS;
     LockInStravaClaimParser public immutable PARSER;
@@ -692,12 +756,12 @@ contract LockInStravaReclaimVerifier {
     error InvalidParser();
     error InvalidProvider();
     error InvalidClaimIdentifier();
-    error InvalidClaimOwner();
     error InvalidSignatureCount();
     error InvalidWitness();
     error InvalidProofTime();
+    error InvalidStravaSchema();
     error InvalidStravaFields();
-    error InconsistentActivity();
+    error InvalidContext();
     error InvalidPolicy();
     error ActivityOutsideWindow();
     error DistanceTooShort();
@@ -720,8 +784,8 @@ contract LockInStravaReclaimVerifier {
         PARSER = LockInStravaClaimParser(parser);
     }
 
-    /// @notice Validates marker, core activity, GPS and trainer claims in canonical provider order.
-    /// @dev `proofSetHash` is keccak256(identifier[0] || ... || identifier[3]), matching backend order.
+    /// @notice Validates the athlete marker claim and the combined activity claim, in provider order.
+    /// @dev `proofSetHash` is keccak256(identifier[0] || identifier[1]), matching backend order.
     function validateStravaProofs(Reclaim.Proof[] calldata proofs, LockInProofTypes.StravaPolicy calldata policy)
         external
         view
@@ -731,61 +795,60 @@ contract LockInStravaReclaimVerifier {
         return _validateStravaProofs(proofs, policy);
     }
 
-    /// @dev Canonical grammar implementation. It is internal so synthetic fixtures can exercise it from a
-    ///      test-only harness without making the production entry point usable before live-schema confirmation.
+    /// @dev Canonical grammar implementation. It is internal so the real capture and synthetic fixtures can
+    ///      exercise it from a test-only harness without making the production entry point usable before
+    ///      live-schema confirmation.
     function _validateStravaProofs(Reclaim.Proof[] calldata proofs, LockInProofTypes.StravaPolicy calldata policy)
         internal
         view
         returns (LockInProofTypes.StravaEvidence memory evidence)
     {
-        if (proofs.length != 4) revert InvalidProofCount();
+        if (proofs.length != 2) revert InvalidProofCount();
         _validatePolicy(policy);
         string memory contextMessage = string.concat(_uintToString(policy.pactId), ":", _uintToString(policy.dayIndex));
         LockInStravaClaimParser.ContextPolicy memory contextPolicy = LockInStravaClaimParser.ContextPolicy({
             account: policy.account, message: contextMessage, sessionId: policy.expectedSessionId
         });
 
-        ParsedProof memory marker = _validateProof(proofs[0], 0, policy.challenge, contextPolicy);
-        ParsedProof memory core = _validateProof(proofs[1], 1, policy.challenge, contextPolicy);
-        ParsedProof memory gps = _validateProof(proofs[2], 2, policy.challenge, contextPolicy);
-        ParsedProof memory trainer = _validateProof(proofs[3], 3, policy.challenge, contextPolicy);
+        ParsedProof memory marker = _validateProof(proofs[0], ROLE_MARKER, policy.challenge, contextPolicy);
+        ParsedProof memory activity = _validateProof(proofs[1], ROLE_ACTIVITY, policy.challenge, contextPolicy);
 
-        if (core.fields.activityId != gps.fields.activityId || core.fields.activityId != trainer.fields.activityId) {
-            revert InconsistentActivity();
+        // Both claims must come from the same attested session: same attestationNonce, same attestation
+        // timestamp, same proxy egress. The Strava context carries no pcr0, so there is nothing else to fold.
+        if (marker.fields.teeGroupHash != activity.fields.teeGroupHash || marker.fields.geoHash != activity.fields.geoHash)
+        {
+            revert InvalidContext();
         }
         if (
-            core.fields.nameHash != keccak256(bytes(policy.challenge)) || core.fields.typeHash != keccak256("Run")
-                || core.fields.flagged || !gps.fields.latlng || trainer.fields.trainer
+            activity.fields.nameHash != keccak256(bytes(policy.challenge)) || activity.fields.typeHash != keccak256("Run")
+                || activity.fields.flagged || !activity.fields.latlng || activity.fields.trainer
         ) revert InvalidStravaFields();
         _validateMarker(bytes(marker.fields.marker));
 
-        uint256 distance = core.fields.distanceMeters;
-        uint256 moving = core.fields.movingTimeSeconds;
-        uint256 elapsed = core.fields.elapsedTimeSeconds;
+        uint256 distance = activity.fields.distanceMeters;
+        uint256 moving = activity.fields.movingTimeSeconds;
+        uint256 elapsed = activity.fields.elapsedTimeSeconds;
         if (distance < policy.minDistanceMeters) revert DistanceTooShort();
         if (
             moving == 0 || elapsed < moving || distance > moving * 9 || distance * 2 < moving
                 || elapsed > moving * 4 + 900
         ) revert ImplausibleMotion();
-        if (core.fields.startTime < policy.startsAt || core.fields.startTime >= policy.endsAt) {
+        if (activity.fields.startTime < policy.startsAt || activity.fields.startTime >= policy.endsAt) {
             revert ActivityOutsideWindow();
         }
 
         evidence.identityHash = keccak256(abi.encode(PROVIDER_KEY, marker.fields.marker));
-        evidence.nullifier = keccak256(abi.encode(PROVIDER_KEY, marker.fields.marker, core.fields.activityId));
-        evidence.proofSetHash =
-            keccak256(abi.encodePacked(marker.identifier, core.identifier, gps.identifier, trainer.identifier));
-        evidence.distanceMeters = core.fields.distanceMeters;
-        evidence.startTime = core.fields.startTime;
-        evidence.movingTimeSeconds = core.fields.movingTimeSeconds;
-        evidence.elapsedTimeSeconds = core.fields.elapsedTimeSeconds;
-        evidence.elevationGainMeters = core.fields.elevationGainMeters;
+        evidence.nullifier = keccak256(abi.encode(PROVIDER_KEY, marker.fields.marker, activity.fields.activityId));
+        evidence.proofSetHash = keccak256(abi.encodePacked(marker.identifier, activity.identifier));
+        evidence.distanceMeters = activity.fields.distanceMeters;
+        evidence.startTime = activity.fields.startTime;
+        evidence.movingTimeSeconds = activity.fields.movingTimeSeconds;
+        evidence.elapsedTimeSeconds = activity.fields.elapsedTimeSeconds;
+        evidence.elevationGainMeters = activity.fields.elevationGainMeters;
 
         evidence.oldestProofTimestamp = marker.timestampS;
         evidence.newestProofTimestamp = marker.timestampS;
-        _includeTimestamp(evidence, core.timestampS);
-        _includeTimestamp(evidence, gps.timestampS);
-        _includeTimestamp(evidence, trainer.timestampS);
+        _includeTimestamp(evidence, activity.timestampS);
         if (evidence.newestProofTimestamp - evidence.oldestProofTimestamp > MAX_PROOF_SET_SPAN_SECONDS) {
             revert InvalidProofTime();
         }
@@ -801,7 +864,11 @@ contract LockInStravaReclaimVerifier {
         Claims.ClaimInfo memory claimInfo = proof.claimInfo;
         parsed.identifier = Claims.hashClaimInfo(claimInfo);
         if (proof.signedClaim.claim.identifier != parsed.identifier) revert InvalidClaimIdentifier();
-        if (proof.signedClaim.claim.owner != contextPolicy.account) revert InvalidClaimOwner();
+        // `claimData.owner` is deliberately NOT checked: the live 6.0.0 capture returns the legacy
+        // placeholder 0x1234...7890 for every proof, so it carries no binding value. The claim is bound to
+        // the caller by the signed context (contextAddress + contextMessage + reclaimSessionId), which the
+        // parser enforces against this policy.
+        if (proof.signedClaim.claim.epoch != 1) revert InvalidStravaSchema();
         if (proof.signedClaim.signatures.length != 1) revert InvalidSignatureCount();
 
         Claims.SignedClaim memory signedClaim = proof.signedClaim;

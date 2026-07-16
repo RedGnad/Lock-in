@@ -6,7 +6,6 @@ import test from "node:test";
 import {
   assertFreshProofTimestamps,
   canonicalizeStravaProofs,
-  STRAVA_PROVIDER_HASHES,
   validateStravaEvidence,
   type ReclaimTrustedData,
   type StravaPactPolicy,
@@ -57,9 +56,11 @@ function validData(overrides: Record<string, string> = {}): ReclaimTrustedData[]
     trainer: "false",
     ...overrides,
   };
+  // The 6.0.0 provider returns two claims: the athlete marker, then one combined activity claim.
   return [
-    { context: context(), extractedParameters: { marker: values.marker } },
+    { context: context(), extractedParameters: { context_challenge: challenge, marker: values.marker } },
     { context: context(), extractedParameters: {
+      context_challenge: challenge,
       id: values.id,
       name: values.name,
       type: values.type,
@@ -69,9 +70,9 @@ function validData(overrides: Record<string, string> = {}): ReclaimTrustedData[]
       moving: values.moving,
       elapsed: values.elapsed,
       elevation: values.elevation,
+      latlng: values.latlng,
+      trainer: values.trainer,
     } },
-    { context: context(), extractedParameters: { id: values.id, latlng: values.latlng } },
-    { context: context(), extractedParameters: { id: values.id, trainer: values.trainer } },
   ];
 }
 
@@ -82,22 +83,35 @@ test("accepts a challenge-bound Strava GPS-run record", () => {
   assert.match(evidence.nullifier, /^0x[0-9a-f]{64}$/);
 });
 
-test("canonicalizes the four Strava proofs by their pinned request schema", () => {
-  const fake = (providerHash: string) => ({
-    claimData: { context: JSON.stringify({ providerHash }) },
+test("canonicalizes the two Strava proofs by the shape of their signed extracted parameters", () => {
+  // 6.0.0 signs no providerHash, so the role is read from extractedParameters.
+  const fake = (extractedParameters: Record<string, string>) => ({
+    claimData: { context: JSON.stringify({ extractedParameters }) },
   });
-  const shuffled = [
-    fake(STRAVA_PROVIDER_HASHES[2]),
-    fake(STRAVA_PROVIDER_HASHES[0]),
-    fake(STRAVA_PROVIDER_HASHES[3]),
-    fake(STRAVA_PROVIDER_HASHES[1]),
-  ];
-  const canonical = canonicalizeStravaProofs(shuffled as never);
-  assert.deepEqual(canonical, [shuffled[1], shuffled[3], shuffled[0], shuffled[2]]);
+  const marker = fake({ context_challenge: challenge, marker: "userId: 1815502280" });
+  const activity = fake({ context_challenge: challenge, id: "19309163477", name: challenge });
+
+  assert.deepEqual(canonicalizeStravaProofs([activity, marker] as never), [marker, activity]);
+  assert.deepEqual(canonicalizeStravaProofs([marker, activity] as never), [marker, activity]);
+  assert.throws(() => canonicalizeStravaProofs([marker, marker] as never), /repeats a request schema/);
+  assert.throws(() => canonicalizeStravaProofs([marker] as never), /exactly two proofs/);
   assert.throws(
-    () => canonicalizeStravaProofs([shuffled[0], shuffled[0], shuffled[1], shuffled[2]] as never),
-    /repeats a request schema/,
+    () => canonicalizeStravaProofs([marker, fake({ context_challenge: challenge })] as never),
+    /does not match a pinned request schema/,
   );
+  // A claim that looks like both roles at once is ambiguous and must not be ordered.
+  assert.throws(
+    () => canonicalizeStravaProofs([marker, fake({ marker: "userId: 1", id: "1" })] as never),
+    /does not match a pinned request schema/,
+  );
+});
+
+test("rejects a proof bound to another day's challenge", () => {
+  const foreign = validData().map((item) => ({
+    ...item,
+    extractedParameters: { ...item.extractedParameters, context_challenge: `${pactChallenge}D02` },
+  }));
+  assert.throws(() => validateStravaEvidence(foreign, policy), /another daily challenge/);
 });
 
 test("derives deterministic, non-overlapping daily proof codes", () => {
@@ -168,9 +182,11 @@ test("rejects a proof bound to another session", () => {
   assert.throws(() => validateStravaEvidence(data, policy), /initiated Reclaim session/);
 });
 
-test("rejects GPS or trainer flags extracted from another activity id", () => {
+test("rejects two claims that disagree on a field they both sign", () => {
+  // context_challenge is the field the marker and activity claims share, so a mismatch there means the
+  // two claims were not produced for the same daily challenge.
   const data = validData();
-  data[2].extractedParameters.id = "99999999999";
+  data[0].extractedParameters.context_challenge = `${pactChallenge}D02`;
   assert.throws(
     () => validateStravaEvidence(data, policy),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "CONFLICTING_FIELD",

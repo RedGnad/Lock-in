@@ -247,7 +247,7 @@ async function refetchProofs(token: ProofSession): Promise<Proof[]> {
   }
   const isDuolingo = token.missionType === DUOLINGO_XP_MISSION;
   const proofs = assertSdkProofSet(status.session.proofs, {
-    expectedCount: isDuolingo ? 2 : 4,
+    expectedCount: 2,
     maxSignedJsonBytes: isDuolingo ? DUOLINGO_MAX_SIGNED_JSON_BYTES : STRAVA_MAX_SIGNED_JSON_BYTES,
   });
   return isDuolingo ? proofs : canonicalizeStravaProofs(proofs);

@@ -3,7 +3,7 @@ import {
   hashRequestSpec,
 } from "@reclaimprotocol/js-sdk";
 import {
-  STRAVA_PROVIDER_HASHES,
+  STRAVA_PROOF_COUNT,
   STRAVA_PROVIDER_ID,
   STRAVA_PROVIDER_VERSION,
 } from "../src/strava-proof-policy.js";
@@ -23,23 +23,14 @@ if (response.providers?.length !== 1) {
   throw new Error(`Expected one exact provider config, received ${response.providers?.length || 0}`);
 }
 const requests = response.providers[0].requestData;
-if (requests.length !== STRAVA_PROVIDER_HASHES.length) {
-  throw new Error(`Expected four required requests, received ${requests.length}`);
+if (requests.length !== STRAVA_PROOF_COUNT) {
+  throw new Error(`Expected ${STRAVA_PROOF_COUNT} required requests, received ${requests.length}`);
 }
 
-const liveHashes = requests.map((request) => {
-  const value = hashRequestSpec(request).value;
-  if (!Array.isArray(value) || value.length !== 1) {
-    throw new Error("Every Strava request must resolve to exactly one required hash");
-  }
-  return value[0].toLowerCase();
-});
-
-for (const [index, expected] of STRAVA_PROVIDER_HASHES.entries()) {
-  if (liveHashes[index] !== expected) {
-    throw new Error(`Provider hash ${index} drifted: expected ${expected}, received ${liveHashes[index]}`);
-  }
-}
+// Strava 6.0.0 signs no context.providerHash, so there is no live hash to pin the way Duolingo does.
+// The request schema is pinned on-chain from claimData.parameters (url, method, body, responseMatches,
+// responseRedactions, paramValues) by LockInStravaClaimParser, and that pin is exercised against the real
+// captured proof set by test/LockInStravaRealProof.t.sol. All this script can add is the claim count.
 
 const duolingoResponse = await fetchProviderConfigs(
   DUOLINGO_PROVIDER_ID,
@@ -64,5 +55,6 @@ console.log(JSON.stringify({
   duolingoProviderId: DUOLINGO_PROVIDER_ID,
   duolingoProviderVersion: DUOLINGO_PROVIDER_VERSION,
   duolingoRequiredRequests: 2,
-  hashesMatchPinnedPolicy: true,
+  stravaSchemaPinnedFrom: "claimData.parameters (no providerHash in 6.0.0)",
+  duolingoHashesMatchPinnedPolicy: true,
 }, null, 2));

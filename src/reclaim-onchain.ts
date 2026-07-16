@@ -173,7 +173,7 @@ function canonicalClaimContext(context: string): string {
  */
 export function assertSdkProofSet(
   value: unknown,
-  options: { expectedCount: 1 | 2 | 4; maxSignedJsonBytes: number },
+  options: { expectedCount: 1 | 2; maxSignedJsonBytes: number },
 ): Proof[] {
   const proofs = Array.isArray(value) ? value : value ? [value] : [];
   if (proofs.length !== options.expectedCount) reject("Unexpected Reclaim proof count");
@@ -342,7 +342,7 @@ export function assertStravaDirectParity(input: {
   proofSetHash: Hash;
   timestamps: readonly number[];
 }): void {
-  if (input.timestamps.length !== 4) reject("Strava timestamp count mismatch");
+  if (input.timestamps.length !== 2) reject("Strava timestamp count mismatch");
   if (
     !sameHash(input.direct.identityHash, input.policy.identityHash)
       || !sameHash(input.direct.nullifier, input.policy.nullifier)
