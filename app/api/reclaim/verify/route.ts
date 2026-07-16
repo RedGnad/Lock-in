@@ -296,7 +296,6 @@ async function directStrava(input: {
   startsAtMs: number;
   endsAtMs: number;
   dailyTarget: number;
-  challenge: string;
 }) {
   assertDirectStravaInput({
     hasEscrow: Boolean(escrowAddress),
@@ -314,7 +313,6 @@ async function directStrava(input: {
         // assertDirectStravaInput above rejects an undefined dayIndex.
         dayIndex: input.token.dayIndex!,
         expectedSessionId: input.directProof.sessionId,
-        challenge: input.challenge,
         startsAt: BigInt(Math.floor(input.startsAtMs / 1_000)),
         endsAt: BigInt(Math.floor(input.endsAtMs / 1_000)),
         minDistanceMeters: BigInt(input.dailyTarget),
@@ -362,7 +360,6 @@ export async function POST(request: Request) {
     });
     if (
       policy.missionType !== token.missionType || policy.dailyTarget !== token.dailyTarget
-        || policy.proofCode !== token.proofCode
     ) throw new ReclaimProofRejectedError("Lock policy changed");
 
     const proofs = await refetchProofs(token);
@@ -506,20 +503,10 @@ export async function POST(request: Request) {
     if (token.missionType !== STRAVA_RUN_MISSION || token.dayIndex === undefined) {
       throw new ReclaimProofRejectedError("Unsupported proof mission");
     }
-    const onchainChallenge = await client.readContract({
-      address: escrowAddress,
-      abi: lockInAbi,
-      functionName: "stravaChallenge",
-      args: [BigInt(token.pactId), account, token.dayIndex],
-    });
-    if (policy.proofCode !== onchainChallenge || token.proofCode !== onchainChallenge) {
-      throw new ReclaimProofRejectedError("Strava challenge mismatch");
-    }
     const policyEvidence = validateStravaEvidence(trustedData, {
       walletAddress: policy.walletAddress,
       pactId: policy.pactId,
       dayIndex: policy.dayIndex!,
-      challenge: onchainChallenge,
       expectedSessionId: token.sessionId,
       startsAtMs: policy.startsAtMs,
       endsAtMs: policy.endsAtMs,
@@ -532,7 +519,6 @@ export async function POST(request: Request) {
       startsAtMs: policy.startsAtMs,
       endsAtMs: policy.endsAtMs,
       dailyTarget: policy.dailyTarget,
-      challenge: onchainChallenge,
     });
     assertStravaDirectParity({
       direct,

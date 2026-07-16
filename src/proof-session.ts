@@ -15,7 +15,6 @@ export type ProofSession = {
   providerId: string;
   providerVersion: string;
   duolingoProfileId?: string;
-  proofCode?: string;
   dailyTarget: number;
   startsAtMs: number;
   endsAtMs: number;

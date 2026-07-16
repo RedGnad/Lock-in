@@ -465,7 +465,6 @@ const stravaPolicyComponents = [
   { name: "pactId", type: "uint256" },
   { name: "dayIndex", type: "uint8" },
   { name: "expectedSessionId", type: "string" },
-  { name: "challenge", type: "string" },
   { name: "startsAt", type: "uint64" },
   { name: "endsAt", type: "uint64" },
   { name: "minDistanceMeters", type: "uint64" },

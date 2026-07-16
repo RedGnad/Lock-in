@@ -1,11 +1,11 @@
 {
   "providerId": "f3ec8292-d8f3-487c-a79d-f53f482f88e2",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "name": "Lock In Strava authenticated GPS activity",
-  "status": "two-claim-live-capture-verified",
+  "status": "no-title-binding-redesign",
   "loginUrl": "https://www.strava.com/athlete/training",
   "useIncognitoWebview": false,
-  "description": "Proves a logged-in Strava athlete and a challenge-bound Run using canonical activity id, title, UTC start time, distance, GPS, trainer, Strava flag, and signed motion metrics.",
+  "description": "Proves a logged-in Strava athlete and their most recent Run using canonical activity id, title, UTC start time, distance, GPS, trainer, Strava flag, and signed motion metrics. The run is bound to the Lock by the on-chain day window and the global activity nullifier, not by its title.",
   "runtimePolicy": {
     "requiredSportType": "Run",
     "requiredHasLatLng": true,
@@ -15,11 +15,11 @@
     "minAverageSpeedMetersPerSecond": 0.5,
     "maxElapsedToMovingRatio": 4,
     "maxAdditionalPauseSeconds": 900,
-    "titleMustEqualRuntimePolicy": "{{context_challenge}}",
-    "dailyCodeFormat": "<pactChallenge>D01 through <pactChallenge>D30",
     "distanceField": "distance_raw",
     "timeField": "start_time",
-    "providerVersionMustEqual": "set to the newly published two-claim version"
+    "providerVersionMustEqual": "7.0.0",
+    "activitySelection": "models[0], the most recent Run returned by Strava for this athlete",
+    "bindingModel": "Binding comes from the escrow, not from the activity title: joinPact closes at pact.startsAt so every participant is committed before day 1; the verifier requires start_time inside the day window [pact.startsAt + dayIndex*1d, +1d); usedEventNullifiers is global over the activity id so one run can never be counted twice; identityOwner[pactId][identityHash] gives one Strava identity one participant per Lock; the athlete marker proves the run is the caller's."
   },
   "requestData": [
     {
@@ -42,9 +42,9 @@
       ]
     },
     {
-      "purpose": "Extract the challenge-bound run identity, title, sport, start, integer metres, GPS presence and trainer flag from a single training_activities response",
-      "url": "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
-      "urlType": "TEMPLATE",
+      "purpose": "Read the athlete's most recent Run and its signed metrics.",
+      "url": "https://www.strava.com/athlete/training_activities?keywords=&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false",
+      "urlType": "CONSTANT",
       "method": "GET",
       "credentials": "include",
       "responseMatches": [
@@ -147,30 +147,14 @@
     "purpose": "Diagnostic self-reporting injection: drives the training and challenge-filtered activity GET requests after sign-in (activities request sends Accept: application/json and X-Requested-With), and if it cannot release within the window it calls reclaim.reportProviderError with the exact stage, host, /athlete/training status, training_activities status and matched title so the hosted-flow failure point is visible. Reads only the daily proof code; never reads or exports cookies."
   },
   "authoringEvidence": {
-    "inheritsRequestSchemaFrom": "1.0.3",
+    "inheritsRequestSchemaFrom": "6.0.0",
     "requestSchemaUnchanged": false,
-    "requestSchemaChange": "merged the 4 training_activities claims into 1 combined claim; provider now has 2 claims (marker + activity)",
+    "requestSchemaChange": "dropped the {{context_challenge}} keyword from the activity URL and removed the context_challenge parameter; the activity is now selected as the athlete's most recent Run instead of by title",
     "claimCount": 2,
-    "claimCountReducedFrom": 4,
-    "publishedProviderVersionOnReclaim": "6.0.0",
-    "hostedFlowRootCauseConfirmed": true,
-    "hostedFlowRootCause": "the 4-claim set exceeded the hosted (Popcorn) browser lifecycle: the login-indicator re-check timed out during proof generation and the session was declared BROWSER_CONNECTION_FAILED. 2 claims reach submission.",
-    "hostedFlowLastStatusObserved": "PROOF_SUBMITTED (session fa8968844e, provider version 6.0.0, no -ai prerelease tag)",
-    "liveAppProofCanary": true,
-    "liveConfigurationReadBackViaMcp": true,
-    "liveVerificationType": "WITNESS",
-    "liveRequestHashes": [
-      "0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67",
-      "0xe3d80a409ec480b9ef026ebc96e1737a5789b0ca05e198e37d137f36eaa7705d"
-    ],
-    "liveRequestHashesMatchPinnedPolicy": true,
-    "capturedProofPassesContentBarrier": true,
-    "capturedProofPassesOnchainGrammar": true,
-    "previousVersionAuthenticatedReplaySucceeded": true,
-    "previousVersionAnonymousReplayRejected": true,
-    "manualFetchReturnedJsonWithLatLng": true,
-    "instrumentedWithDiagnosticLogs": true,
-    "draftInjectionSyntaxChecked": true,
-    "reuseBrowserSession": true
+    "reasonForChange": "requiring the user to retitle their Strava run with a 30-character code is not a viable consumer flow, and the code was redundant against the escrow's own bindings",
+    "titleBindingRemoved": true,
+    "publishedProviderVersionOnReclaim": "pending: publish 7.0.0 on the Reclaim dashboard",
+    "liveVerificationTypeExpected": "WITNESS",
+    "previousVersionLiveEvidence": "6.0.0 reached PROOF_SUBMITTED with verificationType WITNESS and both request hashes matching policy"
   }
 }

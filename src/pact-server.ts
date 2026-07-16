@@ -15,7 +15,6 @@ export type ProofPolicy = {
   phase: "baseline" | "completion";
   intent?: "create" | "join";
   dayIndex?: number;
-  proofCode?: string;
   dailyTarget: number;
   startsAtMs: number;
   endsAtMs: number;
@@ -108,23 +107,12 @@ export async function loadProofPolicy(input: {
   ) {
     throw new Error("This pact day is not open");
   }
-  const proofCode = typedPact[11] === STRAVA_RUN_MISSION
-    ? await client.readContract({
-      address: escrowAddress,
-      abi: lockInAbi,
-      functionName: "stravaChallenge",
-      args: [pactId, walletAddress, dayIndex],
-      ...atBlock,
-    })
-    : undefined;
-
   return {
     walletAddress,
     pactId: pactId.toString(),
     missionType: typedPact[11] as 1 | 2,
     phase: "completion",
     dayIndex,
-    proofCode,
     dailyTarget: typedPact[3],
     startsAtMs,
     endsAtMs,

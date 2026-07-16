@@ -80,9 +80,12 @@ contract LockInStravaRealProofTest {
     ///      It lives in a gitignored private directory (override with LOCK_IN_PRIVATE_FIXTURES). When it is
     ///      absent, as in public CI, these tests skip rather than fail: the grammar itself stays covered by
     ///      the synthetic suite in LockInStravaReclaimVerifier.t.sol.
+    /// @dev The filename carries the provider version on purpose. A 6.0.0 capture is not a 7.0.0 proof (it
+    ///      still signs context_challenge), so it must never be silently replayed against this grammar.
+    ///      These tests stay skipped until a real 7.0.0 capture exists.
     function _fixture() private returns (string memory) {
         string memory dir = VM.envOr("LOCK_IN_PRIVATE_FIXTURES", string("private-fixtures"));
-        string memory path = string.concat(VM.projectRoot(), "/", dir, "/strava-real-onchain.json");
+        string memory path = string.concat(VM.projectRoot(), "/", dir, "/strava-real-onchain-7.0.0.json");
         if (!VM.isFile(path)) {
             VM.skip(true);
             return "";
@@ -113,7 +116,6 @@ contract LockInStravaRealProofTest {
             pactId: 0,
             dayIndex: 0,
             expectedSessionId: VM.parseJsonString(json, ".sessionId"),
-            challenge: VM.parseJsonString(json, ".activityExtracted.context_challenge"),
             startsAt: uint64(startTime - 1 hours),
             endsAt: uint64(startTime + 1 hours),
             minDistanceMeters: 200
@@ -167,12 +169,10 @@ contract LockInStravaRealProofTest {
             account: policy.account, message: VM.parseJsonString(json, ".contextMessage"), sessionId: policy.expectedSessionId
         });
 
-        LockInStravaClaimParser.ParsedFields memory marker = parser.parseProofData(
-            proofs[0].claimInfo.parameters, proofs[0].claimInfo.context, 0, policy.challenge, contextPolicy
-        );
-        LockInStravaClaimParser.ParsedFields memory activity = parser.parseProofData(
-            proofs[1].claimInfo.parameters, proofs[1].claimInfo.context, 1, policy.challenge, contextPolicy
-        );
+        LockInStravaClaimParser.ParsedFields memory marker =
+            parser.parseProofData(proofs[0].claimInfo.parameters, proofs[0].claimInfo.context, 0, contextPolicy);
+        LockInStravaClaimParser.ParsedFields memory activity =
+            parser.parseProofData(proofs[1].claimInfo.parameters, proofs[1].claimInfo.context, 1, contextPolicy);
 
         require(marker.isAiProof == VM.parseJsonBool(json, ".isAiProof"), "marker isAiProof mismatch");
         require(marker.isPortalProof == VM.parseJsonBool(json, ".isPortalProof"), "marker isPortalProof mismatch");

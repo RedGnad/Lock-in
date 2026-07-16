@@ -1,15 +1,12 @@
 import "dotenv/config";
-import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import { ReclaimProofRequest } from "@reclaimprotocol/js-sdk";
 import { getAddress, isAddress } from "viem";
 import { pruneSessionStore, savePendingSession } from "../src/proof-session-store.js";
 import {
-  STRAVA_CHALLENGE_PATTERN,
   STRAVA_PROVIDER_ID,
   STRAVA_PROVIDER_VERSION,
 } from "../src/strava-proof-policy.js";
-import { dailyProofCode } from "../src/pact-code.js";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -41,12 +38,6 @@ if (providerId !== STRAVA_PROVIDER_ID || providerVersion !== STRAVA_PROVIDER_VER
   throw new Error(`Lock In requires Strava provider ${STRAVA_PROVIDER_ID} exactly at ${STRAVA_PROVIDER_VERSION}`);
 }
 
-const challenge = process.env.STRAVA_CHALLENGE?.trim()
-  || `LI-${randomBytes(12).toString("hex").toUpperCase()}`;
-if (!STRAVA_CHALLENGE_PATTERN.test(challenge)) {
-  throw new Error("STRAVA_CHALLENGE must match LI- followed by 16 to 28 uppercase letters or digits");
-}
-const proofCode = dailyProofCode(challenge, dayIndex);
 
 const now = Date.now();
 const pactStartsAtMs = parseDate("PACT_STARTS_AT", now);
@@ -72,7 +63,7 @@ const request = await ReclaimProofRequest.init(
 );
 
 request.setContext(walletAddress, `${pactId}:${dayIndex}`);
-request.setParams({ context_challenge: proofCode });
+// 7.0.0 takes no parameter: it reads the athlete's most recent run.
 
 const sessionId = request.getSessionId();
 const sessionsRoot = resolve("sessions");
@@ -84,8 +75,6 @@ await savePendingSession(sessionsRoot, {
   walletAddress,
   pactId,
   dayIndex,
-  pactChallenge: challenge,
-  proofCode,
   startsAtMs,
   endsAtMs,
   minDistanceMeters,
@@ -113,9 +102,7 @@ console.log(JSON.stringify({
   contextAddress: walletAddress,
   pactId,
   dayIndex,
-  challenge,
-  proofCode,
-  activityInstruction: `Set the Strava title to exactly ${proofCode}.`,
+  activityInstruction: "Record a GPS run inside the window. No title constraint: the most recent run is read.",
   pactStartsAt: new Date(startsAtMs).toISOString(),
   pactEndsAt: new Date(endsAtMs).toISOString(),
   minDistanceMeters,

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { consumeSessionOnce } from "../src/proof-session-store.js";
 import {
   assertFreshProofTimestamps,
   canonicalizeStravaProofs,
@@ -10,22 +11,15 @@ import {
   type ReclaimTrustedData,
   type StravaPactPolicy,
 } from "../src/strava-proof-policy.js";
-import { consumeSessionOnce } from "../src/proof-session-store.js";
-import { dailyProofCode } from "../src/pact-code.js";
-import { issueProofSessionToken, verifyProofSessionToken } from "../src/session-token.js";
-import { STRAVA_DAILY_PROOF_CODE_PATTERN, stravaActivityCode } from "../src/pact-code.js";
 
 const sessionId = "session_123456789";
 const walletAddress = "0x000000000000000000000000000000000000dEaD";
-const pactChallenge = "LI-7M4Q9X2K8P6R3T5V";
-const challenge = dailyProofCode(pactChallenge, 0);
 const startTime = "2026-07-14T13:04:46+0000";
 
 const policy: StravaPactPolicy = {
   walletAddress,
   pactId: "42",
   dayIndex: 0,
-  challenge,
   expectedSessionId: sessionId,
   startsAtMs: Date.parse("2026-07-14T13:00:00Z"),
   endsAtMs: Date.parse("2026-07-14T14:00:00Z"),
@@ -44,7 +38,7 @@ function validData(overrides: Record<string, string> = {}): ReclaimTrustedData[]
   const values = {
     marker: "userId: 1815502280",
     id: "19309163477",
-    name: challenge,
+    name: "Morning run",
     type: "Run",
     time: startTime,
     raw: "1000",
@@ -56,11 +50,11 @@ function validData(overrides: Record<string, string> = {}): ReclaimTrustedData[]
     trainer: "false",
     ...overrides,
   };
-  // The 6.0.0 provider returns two claims: the athlete marker, then one combined activity claim.
+  // The 7.0.0 provider returns two claims: the athlete marker, then one combined activity claim.
+  // No context_challenge: the run is tied to the Lock by the day window, not by its title.
   return [
-    { context: context(), extractedParameters: { context_challenge: challenge, marker: values.marker } },
+    { context: context(), extractedParameters: { marker: values.marker } },
     { context: context(), extractedParameters: {
-      context_challenge: challenge,
       id: values.id,
       name: values.name,
       type: values.type,
@@ -76,7 +70,7 @@ function validData(overrides: Record<string, string> = {}): ReclaimTrustedData[]
   ];
 }
 
-test("accepts a challenge-bound Strava GPS-run record", () => {
+test("accepts a Strava GPS-run record inside the Lock day window", () => {
   const evidence = validateStravaEvidence(validData(), policy);
   assert.equal(evidence.distanceMeters, 1_000);
   assert.equal(evidence.hasGps, true);
@@ -84,19 +78,19 @@ test("accepts a challenge-bound Strava GPS-run record", () => {
 });
 
 test("canonicalizes the two Strava proofs by the shape of their signed extracted parameters", () => {
-  // 6.0.0 signs no providerHash, so the role is read from extractedParameters.
+  // The provider signs no providerHash, so the role is read from extractedParameters.
   const fake = (extractedParameters: Record<string, string>) => ({
     claimData: { context: JSON.stringify({ extractedParameters }) },
   });
-  const marker = fake({ context_challenge: challenge, marker: "userId: 1815502280" });
-  const activity = fake({ context_challenge: challenge, id: "19309163477", name: challenge });
+  const marker = fake({ marker: "userId: 1815502280" });
+  const activity = fake({ id: "19309163477", name: "Morning run" });
 
   assert.deepEqual(canonicalizeStravaProofs([activity, marker] as never), [marker, activity]);
   assert.deepEqual(canonicalizeStravaProofs([marker, activity] as never), [marker, activity]);
   assert.throws(() => canonicalizeStravaProofs([marker, marker] as never), /repeats a request schema/);
   assert.throws(() => canonicalizeStravaProofs([marker] as never), /exactly two proofs/);
   assert.throws(
-    () => canonicalizeStravaProofs([marker, fake({ context_challenge: challenge })] as never),
+    () => canonicalizeStravaProofs([marker, fake({ name: "Morning run" })] as never),
     /does not match a pinned request schema/,
   );
   // A claim that looks like both roles at once is ambiguous and must not be ordered.
@@ -106,45 +100,13 @@ test("canonicalizes the two Strava proofs by the shape of their signed extracted
   );
 });
 
-test("rejects a proof bound to another day's challenge", () => {
-  const foreign = validData().map((item) => ({
-    ...item,
-    extractedParameters: { ...item.extractedParameters, context_challenge: `${pactChallenge}D02` },
-  }));
-  assert.throws(() => validateStravaEvidence(foreign, policy), /another daily challenge/);
-});
-
-test("derives deterministic, non-overlapping daily proof codes", () => {
-  assert.equal(dailyProofCode(pactChallenge, 0), `${pactChallenge}D01`);
-  assert.equal(dailyProofCode(pactChallenge, 9), `${pactChallenge}D10`);
-  assert.equal(dailyProofCode(pactChallenge, 29), `${pactChallenge}D30`);
-  assert.notEqual(dailyProofCode(pactChallenge, 0), dailyProofCode(pactChallenge, 9));
-});
-
-test("derives a release activity code accepted by the Strava verifier", () => {
-  const dayOne = stravaActivityCode("42", walletAddress, 0);
-  const dayTwo = stravaActivityCode("42", walletAddress, 1);
-  assert.match(dayOne, STRAVA_DAILY_PROOF_CODE_PATTERN);
-  assert.match(dayTwo, STRAVA_DAILY_PROOF_CODE_PATTERN);
-  assert.notEqual(dayOne, dayTwo);
-});
-
-test("binds the deterministic daily code inside the signed session token", () => {
-  process.env.SESSION_SIGNING_SECRET = "test-session-secret-that-is-at-least-32-characters";
-  const proofCode = dailyProofCode(pactChallenge, 9);
-  const token = issueProofSessionToken({
-    sessionId,
-    walletAddress,
-    pactId: "42",
-    dayIndex: 9,
-    challenge: pactChallenge,
-    proofCode,
-    startsAtMs: policy.startsAtMs,
-    endsAtMs: policy.endsAtMs,
-    minDistanceMeters: policy.minDistanceMeters,
-    claimDeadlineMs: policy.endsAtMs + 3_600_000,
-  });
-  assert.equal(verifyProofSessionToken(token).proofCode, proofCode);
+test("accepts any activity title: the athlete never retitles a run", () => {
+  // 7.0.0 dropped the title binding. What ties the run to this Lock is the day window here, and the
+  // escrow's global activity nullifier on-chain.
+  for (const name of ["Morning run", "", "Course du soir 🏃", "LI-SOMETHING-ELSED02"]) {
+    const evidence = validateStravaEvidence(validData({ name }), policy);
+    assert.equal(evidence.activityName, name);
+  }
 });
 
 for (const [name, overrides, code] of [
@@ -157,8 +119,6 @@ for (const [name, overrides, code] of [
   ["implausibly slow run", { raw: "1000", moving: "2001", elapsed: "2001" }, "IMPLAUSIBLE_PACE"],
   ["implausible pause ratio", { raw: "1000", moving: "600", elapsed: "3301" }, "IMPLAUSIBLE_ELAPSED_TIME"],
   ["wrong sport", { type: "Ride" }, "WRONG_SPORT"],
-  ["missing challenge", { name: "Morning Run" }, "WRONG_CHALLENGE"],
-  ["free-form title containing the challenge", { name: `Morning Run ${challenge}` }, "WRONG_CHALLENGE"],
   ["short distance", { raw: "999" }, "DISTANCE_TOO_SHORT"],
   ["activity outside the pact window", { time: "2026-07-14T12:59:59+0000" }, "OUTSIDE_PACT_WINDOW"],
   ["activity exactly at the exclusive end", { time: "2026-07-14T14:00:00+0000" }, "OUTSIDE_PACT_WINDOW"],
@@ -183,10 +143,9 @@ test("rejects a proof bound to another session", () => {
 });
 
 test("rejects two claims that disagree on a field they both sign", () => {
-  // context_challenge is the field the marker and activity claims share, so a mismatch there means the
-  // two claims were not produced for the same daily challenge.
   const data = validData();
-  data[0].extractedParameters.context_challenge = `${pactChallenge}D02`;
+  // Give the marker claim its own conflicting copy of a field the activity claim also signs.
+  data[0].extractedParameters.id = "99999999999";
   assert.throws(
     () => validateStravaEvidence(data, policy),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "CONFLICTING_FIELD",

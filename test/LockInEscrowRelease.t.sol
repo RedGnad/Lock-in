@@ -49,8 +49,8 @@ contract MockStravaDirectVerifier is ILockInStravaVerifier {
         pure
         returns (LockInProofTypes.StravaEvidence memory evidence)
     {
-        if (proofs.length != 4) revert InvalidMockProof();
-        for (uint256 i; i < 4; ++i) {
+        if (proofs.length != 2) revert InvalidMockProof();
+        for (uint256 i; i < 2; ++i) {
             if (
                 proofs[i].signedClaim.claim.owner != policy.account
                     || keccak256(bytes(proofs[i].claimInfo.provider))
@@ -60,7 +60,9 @@ contract MockStravaDirectVerifier is ILockInStravaVerifier {
         }
         evidence.identityHash = proofs[0].signedClaim.claim.identifier;
         evidence.nullifier = proofs[1].signedClaim.claim.identifier;
-        evidence.proofSetHash = proofs[2].signedClaim.claim.identifier;
+        evidence.proofSetHash = keccak256(
+            abi.encodePacked(proofs[0].signedClaim.claim.identifier, proofs[1].signedClaim.claim.identifier)
+        );
         evidence.distanceMeters = proofs[0].signedClaim.claim.epoch;
         evidence.startTime = proofs[0].signedClaim.claim.timestampS;
         evidence.movingTimeSeconds = 600;
@@ -1331,8 +1333,8 @@ contract LockInEscrowReleaseTest {
             evidence.movingTimeSeconds = 600;
             evidence.elapsedTimeSeconds = 700;
             evidence.elevationGainMeters = 10;
-            directProof.proofs = new Reclaim.Proof[](4);
-            for (uint256 i; i < 4; ++i) {
+            directProof.proofs = new Reclaim.Proof[](2);
+            for (uint256 i; i < 2; ++i) {
                 directProof.proofs[i].claimInfo.provider = string(abi.encodePacked("role", bytes1(uint8(48 + i))));
                 directProof.proofs[i].claimInfo.context = directProof.sessionId;
                 directProof.proofs[i].signedClaim.claim.owner = account;
@@ -1341,7 +1343,9 @@ contract LockInEscrowReleaseTest {
             directProof.proofs[0].signedClaim.claim.identifier = identity;
             directProof.proofs[0].signedClaim.claim.epoch = uint32(metric);
             directProof.proofs[1].signedClaim.claim.identifier = evidence.eventNullifier;
-            directProof.proofs[2].signedClaim.claim.identifier = evidence.proofSetHash;
+            evidence.proofSetHash = keccak256(
+                abi.encodePacked(identity, evidence.eventNullifier)
+            );
         } else {
             directProof = _duoBundle(account, identity, metric, occurredAt);
             evidence.proofSetHash =

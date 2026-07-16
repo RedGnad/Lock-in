@@ -1,11 +1,10 @@
 (() => {
-  if (window.__lockInStravaProofV104) return;
-  window.__lockInStravaProofV104 = true;
+  if (window.__lockInStravaProofV700) return;
+  window.__lockInStravaProofV700 = true;
 
   const RETRY_DELAY_MS = 1_500;
   const MAX_ATTEMPTS = 80; // ~2 min, before Reclaim's own session timeout
   const POST_LOGIN_LIMIT = 8;
-  const DAILY_PROOF_CODE = /^LI-[A-Z0-9]{16,28}D(?:0[1-9]|[12][0-9]|30)$/;
   const AUTH_PATH = /^\/(?:login|session|register)(?:\/|$)/;
   let attempts = 0;
   let postLogin = 0;
@@ -14,7 +13,7 @@
   let trainingStatus = "-";
   let activitiesStatus = "-";
   let activitiesLen = 0;
-  let name0 = "-";
+  let runCount = 0;
   let reported = false;
 
   const log = (...a) => { try { console.log("[LockIn]", ...a); } catch {} };
@@ -23,7 +22,7 @@
     reported = true;
     const msg = "LockIn diag: " + why + " stage=" + stage + " host=" + window.location.hostname
       + " training=" + trainingStatus + " activities=" + activitiesStatus
-      + " len=" + activitiesLen + " name0=" + name0 + " attempts=" + attempts;
+      + " len=" + activitiesLen + " runs=" + runCount + " attempts=" + attempts;
     log(msg);
     try { window.Reclaim.reportProviderError({ message: msg }); } catch (e) { log("report failed", e); }
   };
@@ -40,10 +39,6 @@
     const reclaim = window.Reclaim;
     if (!reclaim) { stage = "no-reclaim"; retry(200); return; }
     reclaim.requiresUserInteraction(true);
-    if (!reclaim.parameters) { stage = "no-params"; retry(200); return; }
-
-    const challenge = String(reclaim.parameters.context_challenge || "");
-    if (!DAILY_PROOF_CODE.test(challenge)) { stage = "bad-code"; report("invalid challenge"); return; }
     if (window.location.hostname !== "www.strava.com") { stage = "wrong-host"; retry(); return; }
 
     running = true;
@@ -61,9 +56,11 @@
       if (!t.ok) { stage = "training-not-ok"; running = false; retry(); return; }
 
       // Past this point Strava accepted an authenticated same-origin request.
+      // 7.0.0 no longer searches by title: it reads the athlete's most recent Run. The run is tied to the
+      // Lock on-chain (day window + global activity nullifier), so nothing here has to match a code.
       stage = "fetch-activities";
       const q = new URLSearchParams({
-        keywords: challenge, sport_type: "Run", tags: "", commute: "",
+        keywords: "", sport_type: "Run", tags: "", commute: "",
         private_activities: "", trainer: "false", gear: "", new_activity_only: "false",
       });
       const a = await fetch("/athlete/training_activities?" + q.toString(), {
@@ -85,24 +82,27 @@
         retry(); return;
       }
 
-      let matched = false;
+      let hasRun = false;
       try {
         const payload = JSON.parse(body);
-        name0 = String((payload && payload.models && payload.models[0] && payload.models[0].name) || "-");
-        matched = Array.isArray(payload && payload.models) && name0 === challenge;
+        const models = payload && payload.models;
+        runCount = Array.isArray(models) ? models.length : 0;
+        // Only the presence of an extractable run matters here. Distance, GPS, trainer, the flag and the
+        // day window are all decided by the on-chain verifier against the signed values.
+        hasRun = runCount > 0 && models[0] && models[0].id !== undefined && models[0].start_time !== undefined;
       } catch (e) {
         stage = "json-parse-fail"; running = false;
         if (postLogin >= POST_LOGIN_LIMIT) { report("activities returned non-JSON after login"); return; }
         retry(); return;
       }
-      if (!matched) {
-        stage = "no-match"; running = false;
-        if (postLogin >= POST_LOGIN_LIMIT) { report("activity title not matched after login"); return; }
+      if (!hasRun) {
+        stage = "no-run"; running = false;
+        if (postLogin >= POST_LOGIN_LIMIT) { report("no Strava run found for this athlete"); return; }
         retry(); return;
       }
 
       stage = "released";
-      log("MATCH ok, releasing interaction");
+      log("run found, releasing interaction");
       reclaim.requiresUserInteraction(false);
     } catch (e) {
       stage = "fetch-exception:" + String((e && e.message) || e);

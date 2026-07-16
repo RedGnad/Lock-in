@@ -75,10 +75,9 @@ export async function POST(request: Request) {
       const profile = await resolvePublicDuolingoProfile(username);
       duolingoProfileId = profile.id;
       proofRequest.setParams({ duolingo_user_id: profile.id });
-    } else {
-      if (!policy.proofCode) throw new Error("Strava proof code is missing");
-      proofRequest.setParams({ context_challenge: policy.proofCode });
     }
+    // Strava takes no parameter: 7.0.0 reads the athlete's most recent run rather than searching for a
+    // code the user would have to type into their activity title.
     const sessionId = proofRequest.getSessionId();
     const token = issueProofSession({
       sessionId,
@@ -91,7 +90,6 @@ export async function POST(request: Request) {
       providerId,
       providerVersion,
       duolingoProfileId,
-      proofCode: policy.proofCode,
       dailyTarget: policy.dailyTarget,
       startsAtMs: policy.startsAtMs,
       endsAtMs: policy.endsAtMs,
@@ -102,10 +100,9 @@ export async function POST(request: Request) {
       sessionId,
       token,
       providerVersion,
-      proofCode: policy.proofCode,
       instruction: isDuolingo
         ? "Sign in to Duolingo if asked, then continue. Your profile name will not be changed."
-        : `Set the title of your Strava GPS run to exactly ${policy.proofCode}.`,
+        : "Record your GPS run on Strava first, then sign in here. We read your most recent run: nothing to rename.",
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const authStatus = walletAuthErrorStatus(error);

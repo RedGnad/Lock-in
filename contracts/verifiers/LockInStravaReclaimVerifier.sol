@@ -16,10 +16,10 @@ import {LockInProofTypes} from "./LockInProofTypes.sol";
 ///      live capture returns as the legacy placeholder 0x1234...7890.
 contract LockInStravaClaimParser {
     string public constant STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-    string public constant STRAVA_PROVIDER_VERSION = "6.0.0";
+    string public constant STRAVA_PROVIDER_VERSION = "7.0.0";
     bool public constant LIVE_SCHEMA_CONFIRMED = false;
     bytes32 public constant SCHEMA_ID =
-        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:6.0.0:two-claim");
+        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:7.0.0:two-claim-no-title");
 
     uint8 internal constant ROLE_MARKER = 0;
     uint8 internal constant ROLE_ACTIVITY = 1;
@@ -39,8 +39,8 @@ contract LockInStravaClaimParser {
         0x3310274e2d06c8e19ceffb22908fce62af08b7c05da6638857d80ce411e04b9e;
 
     // Field bits are (rank - 1) over the canonical (lexicographic) paramValues key order.
-    uint16 private constant MARKER_FIELDS = (uint16(1) << 0) | (uint16(1) << 6);
-    uint16 private constant ACTIVITY_FIELDS = uint16(0x1FFF) ^ (uint16(1) << 6);
+    uint16 private constant MARKER_FIELDS = uint16(1) << 5;
+    uint16 private constant ACTIVITY_FIELDS = uint16(0x0FFF) ^ (uint16(1) << 5);
 
     error JsonTooLarge();
     error InvalidJson();
@@ -70,7 +70,6 @@ contract LockInStravaClaimParser {
     }
 
     struct StravaFields {
-        string challenge;
         string elapsed;
         string elevation;
         string flagged;
@@ -103,17 +102,12 @@ contract LockInStravaClaimParser {
         string calldata parameters,
         string calldata context,
         uint8 role,
-        string calldata challenge,
         ContextPolicy memory contextPolicy
     ) external pure returns (ParsedFields memory parsed) {
         (StravaFields memory parameterFields, bytes32 geoHash) =
             _parseParameters(bytes(parameters), role, contextPolicy.sessionId);
         ContextResult memory context_ = _parseContext(bytes(context), role, contextPolicy);
         _requireEqualFields(parameterFields, context_.fields, role);
-
-        // The activity URL keeps the literal {{context_challenge}} template, so the daily challenge
-        // binds through the signed paramValues rather than through the request line.
-        if (keccak256(bytes(parameterFields.challenge)) != keccak256(bytes(challenge))) revert InvalidContext();
 
         parsed.geoHash = geoHash;
         parsed.teeGroupHash = context_.teeGroupHash;
@@ -344,18 +338,17 @@ contract LockInStravaClaimParser {
             fields.mask |= bit;
             (string memory value, uint256 afterValue) = _readSecurityString(json, cursor);
             cursor = afterValue;
-            if (rank == 1) fields.challenge = value;
-            else if (rank == 2) fields.elapsed = value;
-            else if (rank == 3) fields.elevation = value;
-            else if (rank == 4) fields.flagged = value;
-            else if (rank == 5) fields.activityId = value;
-            else if (rank == 6) fields.latlng = value;
-            else if (rank == 7) fields.marker = value;
-            else if (rank == 8) fields.moving = value;
-            else if (rank == 9) fields.name = value;
-            else if (rank == 10) fields.raw = value;
-            else if (rank == 11) fields.time = value;
-            else if (rank == 12) fields.trainer = value;
+            if (rank == 1) fields.elapsed = value;
+            else if (rank == 2) fields.elevation = value;
+            else if (rank == 3) fields.flagged = value;
+            else if (rank == 4) fields.activityId = value;
+            else if (rank == 5) fields.latlng = value;
+            else if (rank == 6) fields.marker = value;
+            else if (rank == 7) fields.moving = value;
+            else if (rank == 8) fields.name = value;
+            else if (rank == 9) fields.raw = value;
+            else if (rank == 10) fields.time = value;
+            else if (rank == 11) fields.trainer = value;
             else fields.activityType = value;
 
             if (cursor >= json.length) revert InvalidJson();
@@ -407,19 +400,18 @@ contract LockInStravaClaimParser {
     }
 
     function _fieldRank(bytes32 keyHash) private pure returns (uint8) {
-        if (keyHash == keccak256("context_challenge")) return 1;
-        if (keyHash == keccak256("elapsed")) return 2;
-        if (keyHash == keccak256("elevation")) return 3;
-        if (keyHash == keccak256("flagged")) return 4;
-        if (keyHash == keccak256("id")) return 5;
-        if (keyHash == keccak256("latlng")) return 6;
-        if (keyHash == keccak256("marker")) return 7;
-        if (keyHash == keccak256("moving")) return 8;
-        if (keyHash == keccak256("name")) return 9;
-        if (keyHash == keccak256("raw")) return 10;
-        if (keyHash == keccak256("time")) return 11;
-        if (keyHash == keccak256("trainer")) return 12;
-        if (keyHash == keccak256("type")) return 13;
+        if (keyHash == keccak256("elapsed")) return 1;
+        if (keyHash == keccak256("elevation")) return 2;
+        if (keyHash == keccak256("flagged")) return 3;
+        if (keyHash == keccak256("id")) return 4;
+        if (keyHash == keccak256("latlng")) return 5;
+        if (keyHash == keccak256("marker")) return 6;
+        if (keyHash == keccak256("moving")) return 7;
+        if (keyHash == keccak256("name")) return 8;
+        if (keyHash == keccak256("raw")) return 9;
+        if (keyHash == keccak256("time")) return 10;
+        if (keyHash == keccak256("trainer")) return 11;
+        if (keyHash == keccak256("type")) return 12;
         revert UnknownJsonKey(keyHash);
     }
 
@@ -445,14 +437,13 @@ contract LockInStravaClaimParser {
         if (role == ROLE_MARKER) return "https://www.strava.com/athlete/training";
         if (role == ROLE_ACTIVITY) {
             return
-            "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
+            "https://www.strava.com/athlete/training_activities?keywords=&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
         }
         revert InvalidStravaSchema();
     }
 
     function _requireEqualFields(StravaFields memory left, StravaFields memory right, uint8 role) private pure {
         if (left.mask != right.mask || left.mask != _fieldMask(role)) revert InvalidStravaFields();
-        if (keccak256(bytes(left.challenge)) != keccak256(bytes(right.challenge))) revert InvalidStravaFields();
         if (role == ROLE_MARKER) {
             if (keccak256(bytes(left.marker)) != keccak256(bytes(right.marker))) revert InvalidStravaFields();
             return;
@@ -737,7 +728,7 @@ contract LockInStravaClaimParser {
 ///      the full on-chain flow is exercised on a deployed escrow.
 contract LockInStravaReclaimVerifier {
     string public constant STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-    string public constant STRAVA_PROVIDER_VERSION = "6.0.0";
+    string public constant STRAVA_PROVIDER_VERSION = "7.0.0";
     bool public constant LIVE_SCHEMA_CONFIRMED = false;
 
     uint8 private constant ROLE_MARKER = 0;
@@ -745,9 +736,9 @@ contract LockInStravaReclaimVerifier {
     uint256 private constant MAX_PROOF_AGE_SECONDS = 10 minutes;
     uint256 private constant MAX_FUTURE_SKEW_SECONDS = 60;
     uint256 private constant MAX_PROOF_SET_SPAN_SECONDS = 2 minutes;
-    bytes32 private constant PROVIDER_KEY = keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@6.0.0");
+    bytes32 private constant PROVIDER_KEY = keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@7.0.0");
     bytes32 private constant EXPECTED_SCHEMA_ID =
-        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:6.0.0:two-claim");
+        keccak256("lock-in:strava:f3ec8292-d8f3-487c-a79d-f53f482f88e2:7.0.0:two-claim-no-title");
 
     address public immutable WITNESS;
     LockInStravaClaimParser public immutable PARSER;
@@ -805,13 +796,8 @@ contract LockInStravaReclaimVerifier {
     {
         if (proofs.length != 2) revert InvalidProofCount();
         _validatePolicy(policy);
-        string memory contextMessage = string.concat(_uintToString(policy.pactId), ":", _uintToString(policy.dayIndex));
-        LockInStravaClaimParser.ContextPolicy memory contextPolicy = LockInStravaClaimParser.ContextPolicy({
-            account: policy.account, message: contextMessage, sessionId: policy.expectedSessionId
-        });
 
-        ParsedProof memory marker = _validateProof(proofs[0], ROLE_MARKER, policy.challenge, contextPolicy);
-        ParsedProof memory activity = _validateProof(proofs[1], ROLE_ACTIVITY, policy.challenge, contextPolicy);
+        (ParsedProof memory marker, ParsedProof memory activity) = _parseBoth(proofs, policy);
 
         // Both claims must come from the same attested session: same attestationNonce, same attestation
         // timestamp, same proxy egress. The Strava context carries no pcr0, so there is nothing else to fold.
@@ -825,24 +811,54 @@ contract LockInStravaReclaimVerifier {
             marker.fields.isAiProof != activity.fields.isAiProof
                 || marker.fields.isPortalProof != activity.fields.isPortalProof
         ) revert InvalidContext();
+        // 7.0.0 does not bind the run by its title. The activity is tied to this Lock and day by the
+        // window check below, and to a single use by the escrow's global activity nullifier, so the
+        // athlete never has to retitle a run. The title itself is signed but carries no decision.
         if (
-            activity.fields.nameHash != keccak256(bytes(policy.challenge)) || activity.fields.typeHash != keccak256("Run")
-                || activity.fields.flagged || !activity.fields.latlng || activity.fields.trainer
+            activity.fields.typeHash != keccak256("Run") || activity.fields.flagged || !activity.fields.latlng
+                || activity.fields.trainer
         ) revert InvalidStravaFields();
         _validateMarker(bytes(marker.fields.marker));
 
-        uint256 distance = activity.fields.distanceMeters;
-        uint256 moving = activity.fields.movingTimeSeconds;
-        uint256 elapsed = activity.fields.elapsedTimeSeconds;
-        if (distance < policy.minDistanceMeters) revert DistanceTooShort();
-        if (
-            moving == 0 || elapsed < moving || distance > moving * 9 || distance * 2 < moving
-                || elapsed > moving * 4 + 900
-        ) revert ImplausibleMotion();
+        // Scoped so the motion locals leave the stack before the evidence is assembled.
+        {
+            uint256 distance = activity.fields.distanceMeters;
+            uint256 moving = activity.fields.movingTimeSeconds;
+            uint256 elapsed = activity.fields.elapsedTimeSeconds;
+            if (distance < policy.minDistanceMeters) revert DistanceTooShort();
+            if (
+                moving == 0 || elapsed < moving || distance > moving * 9 || distance * 2 < moving
+                    || elapsed > moving * 4 + 900
+            ) revert ImplausibleMotion();
+        }
+        // With no title binding, this window is what ties the run to this Lock and this day.
         if (activity.fields.startTime < policy.startsAt || activity.fields.startTime >= policy.endsAt) {
             revert ActivityOutsideWindow();
         }
 
+        evidence = _buildEvidence(marker, activity);
+    }
+
+    /// @dev Split out to keep the context policy and the two parsed claims off the caller's stack.
+    function _parseBoth(Reclaim.Proof[] calldata proofs, LockInProofTypes.StravaPolicy calldata policy)
+        private
+        view
+        returns (ParsedProof memory marker, ParsedProof memory activity)
+    {
+        LockInStravaClaimParser.ContextPolicy memory contextPolicy = LockInStravaClaimParser.ContextPolicy({
+            account: policy.account,
+            message: string.concat(_uintToString(policy.pactId), ":", _uintToString(policy.dayIndex)),
+            sessionId: policy.expectedSessionId
+        });
+        marker = _validateProof(proofs[0], ROLE_MARKER, contextPolicy);
+        activity = _validateProof(proofs[1], ROLE_ACTIVITY, contextPolicy);
+    }
+
+    function _buildEvidence(ParsedProof memory marker, ParsedProof memory activity)
+        private
+        pure
+        returns (LockInProofTypes.StravaEvidence memory evidence)
+    {
         evidence.identityHash = keccak256(abi.encode(PROVIDER_KEY, marker.fields.marker));
         evidence.nullifier = keccak256(abi.encode(PROVIDER_KEY, marker.fields.marker, activity.fields.activityId));
         evidence.proofSetHash = keccak256(abi.encodePacked(marker.identifier, activity.identifier));
@@ -863,7 +879,6 @@ contract LockInStravaReclaimVerifier {
     function _validateProof(
         Reclaim.Proof calldata proof,
         uint8 role,
-        string calldata challenge,
         LockInStravaClaimParser.ContextPolicy memory contextPolicy
     ) private view returns (ParsedProof memory parsed) {
         if (keccak256(bytes(proof.claimInfo.provider)) != keccak256("http")) revert InvalidProvider();
@@ -886,8 +901,7 @@ contract LockInStravaReclaimVerifier {
             uint256(parsed.timestampS) > block.timestamp + MAX_FUTURE_SKEW_SECONDS
                 || block.timestamp > uint256(parsed.timestampS) + MAX_PROOF_AGE_SECONDS
         ) revert InvalidProofTime();
-        parsed.fields =
-            PARSER.parseProofData(proof.claimInfo.parameters, proof.claimInfo.context, role, challenge, contextPolicy);
+        parsed.fields = PARSER.parseProofData(proof.claimInfo.parameters, proof.claimInfo.context, role, contextPolicy);
     }
 
     function _validatePolicy(LockInProofTypes.StravaPolicy calldata policy) private pure {
@@ -897,24 +911,6 @@ contract LockInStravaReclaimVerifier {
                 || bytes(policy.expectedSessionId).length > 128
         ) revert InvalidPolicy();
         _validateSafeToken(bytes(policy.expectedSessionId));
-        if (!_validChallenge(bytes(policy.challenge), policy.dayIndex)) revert InvalidPolicy();
-    }
-
-    function _validChallenge(bytes memory challenge, uint8 dayIndex) private pure returns (bool) {
-        if (
-            challenge.length < 22 || challenge.length > 34 || challenge[0] != "L" || challenge[1] != "I"
-                || challenge[2] != "-"
-        ) return false;
-        uint256 suffix = challenge.length - 3;
-        if (challenge[suffix] != "D") return false;
-        uint8 expectedDay = dayIndex + 1;
-        if (challenge[suffix + 1] != bytes1(uint8(48 + expectedDay / 10))) return false;
-        if (challenge[suffix + 2] != bytes1(uint8(48 + expectedDay % 10))) return false;
-        for (uint256 i = 3; i < suffix; ++i) {
-            uint8 c = uint8(challenge[i]);
-            if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90))) return false;
-        }
-        return true;
     }
 
     function _validateMarker(bytes memory marker) private pure {

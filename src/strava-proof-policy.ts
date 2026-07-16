@@ -7,33 +7,33 @@ import {
   stringToHex,
 } from "viem";
 import type { Proof } from "@reclaimprotocol/js-sdk";
-import { STRAVA_DAILY_PROOF_CODE_PATTERN, STRAVA_PACT_CHALLENGE_PATTERN } from "./pact-code";
+import { STRAVA_PACT_CHALLENGE_PATTERN } from "./pact-code";
 
 export const STRAVA_PROVIDER_ID = "f3ec8292-d8f3-487c-a79d-f53f482f88e2";
-export const STRAVA_PROVIDER_VERSION = "6.0.0";
+export const STRAVA_PROVIDER_VERSION = "7.0.0";
 export const STRAVA_PROVIDER_KEY = keccak256(stringToHex(`${STRAVA_PROVIDER_ID}@${STRAVA_PROVIDER_VERSION}`));
-/** The 6.0.0 provider returns exactly two claims: the athlete marker, then the combined activity. */
+/** The 7.0.0 provider returns exactly two claims: the athlete marker, then the combined activity. */
 export const STRAVA_PROOF_COUNT = 2;
 /**
- * Deterministic request hashes of the published 6.0.0 provider, in canonical request order.
+ * Deterministic request hashes of the published 7.0.0 provider, in canonical request order.
  *
- * A 6.0.0 proof context carries no `providerHash`, so these are NOT used to pin a proof (the on-chain
- * parser pins the request from `claimData.parameters`). They exist to detect drift of the LIVE provider
- * configuration before a user ever launches a proof. Both were recomputed with the SDK's
- * `hashRequestSpec` over `providers/strava-date-distance.json`; the marker value reproduces the hash
- * historically pinned for the unchanged marker request, which validates the derivation.
+ * A proof context carries no `providerHash` on this provider, so these are NOT used to pin a proof (the
+ * on-chain parser pins the request from `claimData.parameters`). They exist to detect drift of the LIVE
+ * provider configuration before a user ever launches a proof. Both were recomputed with the SDK's
+ * `hashRequestSpec` over `providers/strava-date-distance.json`; the marker request is unchanged since
+ * 1.0.3 and its value still reproduces the historically pinned hash, which validates the derivation.
+ * The activity hash changed with 7.0.0: its URL no longer carries the {{context_challenge}} keyword.
  */
 export const STRAVA_MARKER_REQUEST_HASH =
   "0xdbb40a205e1a2036ccd2b371eebc19d6e01ae3a9b2cfd414d4d7abfbd9d11f67";
 export const STRAVA_ACTIVITY_REQUEST_HASH =
-  "0xe3d80a409ec480b9ef026ebc96e1737a5789b0ca05e198e37d137f36eaa7705d";
+  "0x59883c374d190f23e1f3891267f1fd041a369479a51aafefd45648765b359134";
 export const STRAVA_REQUEST_HASHES = [STRAVA_MARKER_REQUEST_HASH, STRAVA_ACTIVITY_REQUEST_HASH] as const;
 /** Reclaim classifies a provider as AI when this is "AI"; Lock In requires the witness path. */
 export const STRAVA_VERIFICATION_TYPE = "WITNESS";
 export const STRAVA_CHALLENGE_PATTERN = STRAVA_PACT_CHALLENGE_PATTERN;
 
 const REQUIRED_FIELDS = [
-  "context_challenge",
   "marker",
   "id",
   "name",
@@ -59,7 +59,6 @@ export type StravaPactPolicy = {
   walletAddress: string;
   pactId: string;
   dayIndex: number;
-  challenge: string;
   expectedSessionId: string;
   startsAtMs: number;
   endsAtMs: number;
@@ -99,7 +98,7 @@ const STRAVA_ROLES = ["marker", "activity"] as const;
 type StravaRole = (typeof STRAVA_ROLES)[number];
 
 /**
- * The 6.0.0 provider signs no `context.providerHash`, so a claim's role is read from the shape of its
+ * The provider signs no `context.providerHash`, so a claim's role is read from the shape of its
  * signed extractedParameters: the marker claim carries `marker`, the combined activity claim carries `id`.
  * This ordering only has to be deterministic. The request itself is re-pinned from `claimData.parameters`
  * (url, method, body, responseMatches, responseRedactions, paramValues) by the on-chain verifier, so a
@@ -217,9 +216,6 @@ function assertSharedContext(
   if (!Number.isSafeInteger(policy.dayIndex) || policy.dayIndex < 0 || policy.dayIndex > 29) {
     reject("INVALID_POLICY", "The day index must be between 0 and 29");
   }
-  if (!STRAVA_DAILY_PROOF_CODE_PATTERN.test(policy.challenge)) {
-    reject("INVALID_POLICY", "The daily proof code must be the lock challenge followed by D01 through D30");
-  }
   if (!Number.isSafeInteger(policy.minDistanceMeters) || policy.minDistanceMeters <= 0) {
     reject("INVALID_POLICY", "The minimum distance must be a positive integer number of meters");
   }
@@ -253,19 +249,12 @@ export function validateStravaEvidence(
   assertSharedContext(data, policy);
   const fields = collectFields(data);
 
-  // 6.0.0 keeps {{context_challenge}} as a template in the activity URL, so the daily challenge binds
-  // through the signed paramValues rather than through the request line. Both claims carry it.
-  if (fields.context_challenge !== policy.challenge) {
-    reject("WRONG_CHALLENGE", "The proof is bound to another daily challenge");
-  }
-
   const athleteMatch = /^userId: (0|[1-9]\d{0,19})$/.exec(fields.marker);
   if (!athleteMatch) reject("INVALID_ATHLETE", "The signed Strava athlete marker is invalid");
   canonicalUint(fields.id, 20, (1n << 64n) - 1n, "INVALID_ACTIVITY");
   if (fields.type !== "Run") reject("WRONG_SPORT", "The activity is not a run");
-  if (fields.name !== policy.challenge) {
-    reject("WRONG_CHALLENGE", "The activity title must be exactly this lock's challenge");
-  }
+  // 7.0.0 puts no constraint on the activity title: an athlete never retitles a run. The run is tied to
+  // this Lock by the day window below and, on-chain, by the escrow's global activity nullifier.
   if (fields.latlng !== "true") {
     reject("NO_GPS", "Strava reports no GPS trace for this activity");
   }

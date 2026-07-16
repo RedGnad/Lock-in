@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { type Proof } from "@reclaimprotocol/js-sdk";
 import { toDirectProofBundle } from "../src/reclaim-onchain.js";
+import { DUOLINGO_PROVIDER_VERSION } from "../src/duolingo-proof-policy.js";
 
 // Transforms the captured real Duolingo proofs into the exact on-chain structs and
 // writes an auditable fixture the forge test feeds to the FINAL verifier grammar.
@@ -59,7 +60,7 @@ const fixture = {
 // gitignored private directory, never into the public test tree.
 const outDir = resolve(process.env.LOCK_IN_PRIVATE_FIXTURES || "private-fixtures");
 mkdirSync(outDir, { recursive: true });
-const outPath = resolve(outDir, "duolingo-real-onchain.json");
+const outPath = resolve(outDir, `duolingo-real-onchain-${DUOLINGO_PROVIDER_VERSION}.json`);
 writeFileSync(outPath, JSON.stringify(fixture, null, 2));
 
 console.log("wrote", outPath);

@@ -85,7 +85,7 @@ contract LockInDuolingoRealProofTest {
     ///      the synthetic suite in LockInReclaimVerifier.t.sol.
     function _fixture() private returns (string memory) {
         string memory dir = VM.envOr("LOCK_IN_PRIVATE_FIXTURES", string("private-fixtures"));
-        string memory path = string.concat(VM.projectRoot(), "/", dir, "/duolingo-real-onchain.json");
+        string memory path = string.concat(VM.projectRoot(), "/", dir, "/duolingo-real-onchain-1.0.8.json");
         if (!VM.isFile(path)) {
             VM.skip(true);
             return "";

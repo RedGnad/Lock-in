@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { type Proof } from "@reclaimprotocol/js-sdk";
 import { toDirectProofBundle } from "../src/reclaim-onchain.js";
+import { STRAVA_PROVIDER_VERSION } from "../src/strava-proof-policy.js";
 
 // Transforms a captured Strava proof pair into the exact on-chain structs (canonical
 // context so hashClaimInfo matches the signed identifier) and writes an auditable
@@ -55,7 +56,7 @@ const fixture = {
 // gitignored private directory, never into the public test tree.
 const outDir = resolve(process.env.LOCK_IN_PRIVATE_FIXTURES || "private-fixtures");
 mkdirSync(outDir, { recursive: true });
-const outPath = resolve(outDir, "strava-real-onchain.json");
+const outPath = resolve(outDir, `strava-real-onchain-${STRAVA_PROVIDER_VERSION}.json`);
 writeFileSync(outPath, JSON.stringify(fixture, null, 2));
 console.log("wrote", outPath);
 console.log("sessionId", fixture.sessionId, "account", fixture.account, "contextMessage", fixture.contextMessage);

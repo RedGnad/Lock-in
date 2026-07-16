@@ -202,11 +202,6 @@ export const lockInAbi = [
     inputs: [{ name: "missionType", type: "uint8" }], outputs: [{ name: "", type: "bytes32" }],
   },
   {
-    type: "function", name: "stravaChallenge", stateMutability: "view",
-    inputs: [{ name: "pactId", type: "uint256" }, { name: "account", type: "address" }, { name: "dayIndex", type: "uint8" }],
-    outputs: [{ name: "", type: "string" }],
-  },
-  {
     type: "function", name: "pactSubmissionDeadline", stateMutability: "view",
     inputs: [{ name: "pactId", type: "uint256" }], outputs: [{ name: "", type: "uint256" }],
   },

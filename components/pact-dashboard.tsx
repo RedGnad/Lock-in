@@ -218,18 +218,6 @@ export function PactDashboard({ id }: { id: string }) {
           && (bitmap & (1n << BigInt(day))) === 0n;
       }) ?? null;
   }, [bitmap, nowSeconds, pact]);
-  const { data: activityCodeResult } = useReadContract({
-    address: contract,
-    abi: lockInAbi,
-    functionName: "stravaChallenge",
-    args: [pactId, address || zeroAddress, latestOpenDay ?? 0],
-    query: {
-      enabled: Boolean(
-        escrowAddress && address && isJoined && pact?.[11] === STRAVA_RUN_MISSION && latestOpenDay !== null,
-      ),
-    },
-  });
-  const activityCode = typeof activityCodeResult === "string" ? activityCodeResult : null;
 
   async function send(request: Parameters<typeof writeContractAsync>[0], action: string) {
     if (!address || !publicClient) throw new Error("Wallet or Monad RPC unavailable");
@@ -492,7 +480,7 @@ export function PactDashboard({ id }: { id: string }) {
       </section>
 
       <div className="pact-actions" id="join-pact">
-        {isJoined && (active || proofGraceOpen) && activityCode && latestOpenDay !== null && <div className="proof-prep"><div><span>STRAVA RUN TITLE · DAY {latestOpenDay + 1}</span><code>{activityCode}</code><small>Use this exact title for the GPS run completed on that lock day.</small></div><button className="secondary-button" type="button" onClick={() => void copyProofValue(activityCode, "Run title")}>COPY TITLE</button></div>}
+        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <div className="proof-prep"><div><span>DAY {latestOpenDay + 1}</span><small>Record your GPS run on Strava, then verify here. We read your most recent run, so there is nothing to rename.</small></div></div>}
         {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && !targetReached && actions.checkIns && <p className="proof-disclosure proof-disclosure-inline">{pact[11] === DUOLINGO_XP_MISSION ? "Submitting proof makes the verified Duolingo profile ID, XP, non-sensitive ownership marker, proof time and standard Reclaim request metadata public in Monad calldata. Your username, password, cookies, email and privacy-setting values are excluded." : "Submitting proof makes the verified Strava activity ID, title, time, distance, motion fields and standard Reclaim request metadata public in Monad calldata. Login data and the GPS route are excluded."}</p>}
         {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
         {!isJoined && registration && !full && <button className="lock-button" disabled={!entryAccepted || !actions.join || Boolean(busyAction)} onClick={() => address ? setJoinReviewOpen(true) : setMessage("Connect your wallet to join.")}>JOIN FOR {formatUnits(pact[2], decimals)} {symbol}</button>}

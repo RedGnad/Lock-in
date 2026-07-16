@@ -48,7 +48,8 @@ contract LockInStravaReclaimVerifierTest {
     uint64 private constant ENDS_AT = 1_784_160_000;
 
     string private constant SESSION = "session-123";
-    string private constant CHALLENGE = "LI-ABCDEFGHIJKLMNOPD01";
+    // A real user titles their run whatever they like: 7.0.0 puts no constraint on it.
+    string private constant ACTIVITY_NAME = "Morning run";
     string private constant MARKER = "userId: 987654";
     string private constant ACTIVITY_ID = "19309163477";
     string private constant NONCE = "276acec29135bea3e1b85d54f9922444cf7fb114f8c1e9351169b1f940c2d36a";
@@ -82,7 +83,7 @@ contract LockInStravaReclaimVerifierTest {
         LockInProofTypes.StravaEvidence memory evidence =
             verifier.validateSyntheticStravaProofsForTesting(proofs, _policy());
 
-        bytes32 providerKey = keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@6.0.0");
+        bytes32 providerKey = keccak256("f3ec8292-d8f3-487c-a79d-f53f482f88e2@7.0.0");
         require(evidence.identityHash == keccak256(abi.encode(providerKey, MARKER)), "wrong identity");
         require(
             evidence.nullifier == keccak256(abi.encode(providerKey, MARKER, uint256(19_309_163_477))), "wrong nullifier"
@@ -265,33 +266,35 @@ contract LockInStravaReclaimVerifierTest {
         proofs[1] = _changeEverywhere(proofs[1], "\"trainer\":\"false\"", "\"trainer\":\"true\"", WITNESS_KEY);
         _assertRejected(proofs, _policy());
 
-        proofs = _validProofs(WITNESS_KEY);
-        proofs[1] = _changeEverywhere(
-            proofs[1], string.concat("\"name\":\"", CHALLENGE, "\""), "\"name\":\"LI-ATTACKERATTACKERD01\"", WITNESS_KEY
-        );
-        _assertRejected(proofs, _policy());
     }
 
-    /// @dev The activity URL keeps the literal {{context_challenge}} template, so the daily challenge binds
-    ///      through the signed paramValues. A claim fetched for another day's challenge must not validate.
-    function testRejectsForeignChallengeInParamValues() public {
+    /// @dev 7.0.0 removed the title binding: an athlete never retitles a run. The activity title is signed
+    ///      but carries no decision, so renaming it must not change the verdict in either direction. What
+    ///      ties the run to this Lock is the day window, plus the escrow's global activity nullifier.
+    function testActivityTitleIsNotADecisionInput() public {
         Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
-        proofs[0] = _changeEverywhere(
-            proofs[0],
-            string.concat("\"context_challenge\":\"", CHALLENGE, "\""),
-            "\"context_challenge\":\"LI-ABCDEFGHIJKLMNOPD02\"",
-            WITNESS_KEY
-        );
-        _assertRejected(proofs, _policy());
-
-        proofs = _validProofs(WITNESS_KEY);
         proofs[1] = _changeEverywhere(
-            proofs[1],
-            string.concat("\"context_challenge\":\"", CHALLENGE, "\""),
-            "\"context_challenge\":\"LI-ABCDEFGHIJKLMNOPD02\"",
-            WITNESS_KEY
+            proofs[1], string.concat("\"name\":\"", ACTIVITY_NAME, "\""), "\"name\":\"Anything at all\"", WITNESS_KEY
         );
-        _assertRejected(proofs, _policy());
+        LockInProofTypes.StravaEvidence memory evidence =
+            verifier.validateSyntheticStravaProofsForTesting(proofs, _policy());
+        require(evidence.distanceMeters == 5000, "a renamed run changed the verdict");
+    }
+
+    /// @dev With no title binding, the day window is what ties a run to this Lock and day. A run outside
+    ///      the window must not validate, whatever it is called.
+    function testRejectsRunOutsideTheDayWindow() public {
+        Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
+        LockInProofTypes.StravaPolicy memory policy = _policy();
+        // The run sits one full day before the window opens.
+        policy.startsAt = ACTIVITY_TIME + 1 days;
+        policy.endsAt = policy.startsAt + uint64(1 days);
+        _assertRejected(proofs, policy);
+
+        policy = _policy();
+        // ...and one after it closes.
+        policy.endsAt = ACTIVITY_TIME;
+        _assertRejected(proofs, policy);
     }
 
     function testRejectsDistanceSpeedPauseAndWindowViolations() public {
@@ -333,10 +336,6 @@ contract LockInStravaReclaimVerifierTest {
         proofs = _validProofs(WITNESS_KEY);
         LockInProofTypes.StravaPolicy memory policy = _policy();
         policy.account = address(0);
-        _assertRejected(proofs, policy);
-
-        policy = _policy();
-        policy.challenge = "LI-TOOSHORTD01";
         _assertRejected(proofs, policy);
 
         policy = _policy();
@@ -502,7 +501,6 @@ contract LockInStravaReclaimVerifierTest {
             pactId: PACT_ID,
             dayIndex: DAY_INDEX,
             expectedSessionId: SESSION,
-            challenge: CHALLENGE,
             startsAt: STARTS_AT,
             endsAt: ENDS_AT,
             minDistanceMeters: 1000
@@ -540,25 +538,21 @@ contract LockInStravaReclaimVerifierTest {
     }
 
     function _fields(uint8 role) private pure returns (string memory) {
-        if (role == 0) {
-            return string.concat("{\"context_challenge\":\"", CHALLENGE, "\",\"marker\":\"", MARKER, "\"}");
-        }
+        if (role == 0) return string.concat("{\"marker\":\"", MARKER, "\"}");
         return string.concat(
-            "{\"context_challenge\":\"",
-            CHALLENGE,
-            "\",\"elapsed\":\"1800\",\"elevation\":\"50\",\"flagged\":\"false\",\"id\":\"",
+            "{\"elapsed\":\"1800\",\"elevation\":\"50\",\"flagged\":\"false\",\"id\":\"",
             ACTIVITY_ID,
             "\",\"latlng\":\"true\",\"moving\":\"1500\",\"name\":\"",
-            CHALLENGE,
+            ACTIVITY_NAME,
             "\",\"raw\":\"5000\",\"time\":\"2026-07-15T08:00:00Z\",\"trainer\":\"false\",\"type\":\"Run\"}"
         );
     }
 
     function _url(uint8 role) private pure returns (string memory) {
         if (role == 0) return "https://www.strava.com/athlete/training";
-        // 6.0.0 keeps the challenge as a template in the URL; it binds through paramValues.
+        // 7.0.0 reads the athlete's most recent Run: no keyword, no title binding.
         return
-        "https://www.strava.com/athlete/training_activities?keywords={{context_challenge}}&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
+        "https://www.strava.com/athlete/training_activities?keywords=&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
     }
 
     /// @dev Byte-identical to the published 6.0.0 provider: these slices are what the parser pins.

@@ -36,6 +36,8 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     uint8 public constant MIN_PARTICIPANTS = 2;
     uint8 public constant MAX_PARTICIPANTS = 100;
     uint32 public constant MIN_STRAVA_DISTANCE_METERS = 500;
+    /// @dev The Strava provider returns two claims: the athlete marker and the combined activity.
+    uint256 private constant STRAVA_PROOF_COUNT = 2;
     uint32 public constant MAX_STRAVA_DISTANCE_METERS = 20_000;
     uint32 public constant MIN_DUOLINGO_XP = 5;
     uint32 public constant MAX_DUOLINGO_XP = 200;
@@ -557,25 +559,6 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     }
 
     /// @notice Deterministic, pact-bound activity title required by the Strava provider for a given day.
-    function stravaChallenge(uint256 pactId, address account, uint8 dayIndex) public view returns (string memory) {
-        if (account == address(0) || dayIndex >= MAX_DURATION_DAYS) revert InvalidDay();
-        bytes32 seed = keccak256(
-            abi.encode(keccak256("LOCK_IN_STRAVA_CHALLENGE"), block.chainid, address(this), pactId, account, dayIndex)
-        );
-        bytes memory output = new bytes(22);
-        output[0] = "L";
-        output[1] = "I";
-        output[2] = "-";
-        bytes16 alphabet = "0123456789ABCDEF";
-        for (uint256 i; i < 16; ++i) {
-            output[3 + i] = alphabet[uint8(seed[i / 2]) >> (i % 2 == 0 ? 4 : 0) & 0x0f];
-        }
-        output[19] = "D";
-        uint8 day = dayIndex + 1;
-        output[20] = bytes1(uint8(48 + day / 10));
-        output[21] = bytes1(uint8(48 + day % 10));
-        return string(output);
-    }
 
     function getPact(uint256 pactId) external view returns (Pact memory) {
         return _pact(pactId);
@@ -752,6 +735,46 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         emit BaselineAccepted(pactId, account, evidence.identityHash, evidence.metric);
     }
 
+    /// @dev Split out of _verifyDirectCompletion so the Strava comparison does not blow the stack, and so the
+    ///      expected proof count sits next to the policy it belongs to. STRAVA_PROOF_COUNT is 2 since the
+    ///      provider was redesigned from four claims to two.
+    function _verifyStravaDirect(
+        uint256 pactId,
+        address account,
+        uint8 dayIndex,
+        Pact storage pact,
+        CompletionEvidence calldata evidence,
+        LockInProofTypes.DirectProofBundle calldata directProof
+    ) private view {
+        if (directProof.proofs.length != STRAVA_PROOF_COUNT || bytes(directProof.sessionId).length == 0) {
+            revert InvalidProofBundle();
+        }
+        if (evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))) revert InvalidMissionPolicy();
+        uint64 startsAt = uint64(uint256(pact.startsAt) + uint256(dayIndex) * 1 days);
+        LockInProofTypes.StravaEvidence memory direct = stravaVerifier.validateStravaProofs(
+            directProof.proofs,
+            LockInProofTypes.StravaPolicy({
+                account: account,
+                pactId: pactId,
+                dayIndex: dayIndex,
+                expectedSessionId: directProof.sessionId,
+                startsAt: startsAt,
+                endsAt: startsAt + uint64(1 days),
+                minDistanceMeters: pact.dailyTarget
+            })
+        );
+        if (
+            direct.identityHash != evidence.identityHash || direct.nullifier != evidence.eventNullifier
+                || direct.proofSetHash != evidence.proofSetHash || direct.distanceMeters != evidence.metric
+                || direct.startTime != evidence.occurredAt
+                || direct.oldestProofTimestamp != evidence.oldestProofTimestamp
+                || direct.newestProofTimestamp != evidence.newestProofTimestamp
+                || direct.movingTimeSeconds != evidence.movingTimeSeconds
+                || direct.elapsedTimeSeconds != evidence.elapsedTimeSeconds
+                || direct.elevationGainMeters != evidence.elevationGainMeters
+        ) revert DirectProofMismatch();
+    }
+
     function _verifyDirectCompletion(
         uint256 pactId,
         address account,
@@ -766,33 +789,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
         ) revert InvalidMissionPolicy();
 
         if (pact.missionType == MISSION_STRAVA_RUN) {
-            if (directProof.proofs.length != 4 || bytes(directProof.sessionId).length == 0) {
-                revert InvalidProofBundle();
-            }
-            if (evidence.sessionIdHash != keccak256(bytes(directProof.sessionId))) revert InvalidMissionPolicy();
-            uint64 startsAt = uint64(uint256(pact.startsAt) + uint256(dayIndex) * 1 days);
-            LockInProofTypes.StravaPolicy memory policy = LockInProofTypes.StravaPolicy({
-                account: account,
-                pactId: pactId,
-                dayIndex: dayIndex,
-                expectedSessionId: directProof.sessionId,
-                challenge: stravaChallenge(pactId, account, dayIndex),
-                startsAt: startsAt,
-                endsAt: startsAt + uint64(1 days),
-                minDistanceMeters: pact.dailyTarget
-            });
-            LockInProofTypes.StravaEvidence memory direct =
-                stravaVerifier.validateStravaProofs(directProof.proofs, policy);
-            if (
-                direct.identityHash != evidence.identityHash || direct.nullifier != evidence.eventNullifier
-                    || direct.proofSetHash != evidence.proofSetHash || direct.distanceMeters != evidence.metric
-                    || direct.startTime != evidence.occurredAt
-                    || direct.oldestProofTimestamp != evidence.oldestProofTimestamp
-                    || direct.newestProofTimestamp != evidence.newestProofTimestamp
-                    || direct.movingTimeSeconds != evidence.movingTimeSeconds
-                    || direct.elapsedTimeSeconds != evidence.elapsedTimeSeconds
-                    || direct.elevationGainMeters != evidence.elevationGainMeters
-            ) revert DirectProofMismatch();
+            _verifyStravaDirect(pactId, account, dayIndex, pact, evidence, directProof);
         } else if (pact.missionType == MISSION_DUOLINGO_XP) {
             if (directProof.proofs.length != 2 || bytes(directProof.sessionId).length == 0) {
                 revert InvalidProofBundle();

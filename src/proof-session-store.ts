@@ -8,8 +8,6 @@ export type PendingProofSession = {
   walletAddress: string;
   pactId: string;
   dayIndex: number;
-  pactChallenge: string;
-  proofCode: string;
   startsAtMs: number;
   endsAtMs: number;
   minDistanceMeters: number;

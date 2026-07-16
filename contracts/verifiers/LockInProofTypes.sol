@@ -22,7 +22,6 @@ library LockInProofTypes {
         uint256 pactId;
         uint8 dayIndex;
         string expectedSessionId;
-        string challenge;
         uint64 startsAt;
         uint64 endsAt;
         uint64 minDistanceMeters;
