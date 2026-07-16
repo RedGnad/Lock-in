@@ -13,6 +13,9 @@ interface VmStrava {
     function warp(uint256 timestamp) external;
     function projectRoot() external view returns (string memory);
     function readFile(string calldata path) external view returns (string memory);
+    function isFile(string calldata path) external returns (bool);
+    function envOr(string calldata name, string calldata defaultValue) external returns (string memory);
+    function skip(bool skipTest) external;
     function parseJsonString(string calldata json, string calldata key) external pure returns (string memory);
     function parseJsonBytes32(string calldata json, string calldata key) external pure returns (bytes32);
     function parseJsonAddress(string calldata json, string calldata key) external pure returns (address);
@@ -73,8 +76,18 @@ contract LockInStravaRealProofTest {
         return string(b);
     }
 
-    function _fixture() private view returns (string memory) {
-        return VM.readFile(string.concat(VM.projectRoot(), "/test/fixtures/strava-real-onchain.json"));
+    /// @dev The real capture binds a personal wallet to a personal Strava account, so it is NOT committed.
+    ///      It lives in a gitignored private directory (override with LOCK_IN_PRIVATE_FIXTURES). When it is
+    ///      absent, as in public CI, these tests skip rather than fail: the grammar itself stays covered by
+    ///      the synthetic suite in LockInStravaReclaimVerifier.t.sol.
+    function _fixture() private returns (string memory) {
+        string memory dir = VM.envOr("LOCK_IN_PRIVATE_FIXTURES", string("private-fixtures"));
+        string memory path = string.concat(VM.projectRoot(), "/", dir, "/strava-real-onchain.json");
+        if (!VM.isFile(path)) {
+            VM.skip(true);
+            return "";
+        }
+        return VM.readFile(path);
     }
 
     function _proofs(string memory json) private pure returns (Reclaim.Proof[] memory proofs) {
@@ -93,7 +106,7 @@ contract LockInStravaRealProofTest {
     ///      signature and the extraction, but it could never satisfy a real Lock: the escrow refuses any
     ///      dailyTarget under 500 m. The release capture must be a run of at least 500 m and be exercised
     ///      against a policy using the real target.
-    function _policy(string memory json) private view returns (LockInProofTypes.StravaPolicy memory policy) {
+    function _policy(string memory json) private pure returns (LockInProofTypes.StravaPolicy memory policy) {
         uint256 startTime = 1784140730; // 2026-07-15T18:38:50+0000, the real run's start_time
         policy = LockInProofTypes.StravaPolicy({
             account: VM.parseJsonAddress(json, ".account"),

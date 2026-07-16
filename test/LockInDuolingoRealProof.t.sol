@@ -9,6 +9,9 @@ interface VmReal {
     function warp(uint256 timestamp) external;
     function projectRoot() external view returns (string memory);
     function readFile(string calldata path) external view returns (string memory);
+    function isFile(string calldata path) external returns (bool);
+    function envOr(string calldata name, string calldata defaultValue) external returns (string memory);
+    function skip(bool skipTest) external;
     function parseJsonString(string calldata json, string calldata key) external pure returns (string memory);
     function parseJsonBytes32(string calldata json, string calldata key) external pure returns (bytes32);
     function parseJsonAddress(string calldata json, string calldata key) external pure returns (address);
@@ -76,8 +79,22 @@ contract LockInDuolingoRealProofTest {
     ///      pcr0_t and tee_session_id differ; the group binds the shared invariants
     ///      (attestationNonce, attestation timestamp, pcr0_k) plus the witness. Passing this
     ///      is the evidence required before flipping LIVE_SCHEMA_CONFIRMED.
+    /// @dev The real capture binds a personal wallet to a personal Duolingo profile, so it is NOT committed.
+    ///      It lives in a gitignored private directory (override with LOCK_IN_PRIVATE_FIXTURES). When it is
+    ///      absent, as in public CI, this test skips rather than fails: the grammar itself stays covered by
+    ///      the synthetic suite in LockInReclaimVerifier.t.sol.
+    function _fixture() private returns (string memory) {
+        string memory dir = VM.envOr("LOCK_IN_PRIVATE_FIXTURES", string("private-fixtures"));
+        string memory path = string.concat(VM.projectRoot(), "/", dir, "/duolingo-real-onchain.json");
+        if (!VM.isFile(path)) {
+            VM.skip(true);
+            return "";
+        }
+        return VM.readFile(path);
+    }
+
     function testRealCapturedDuolingoProofPassesFinalGrammar() public {
-        string memory json = VM.readFile(string.concat(VM.projectRoot(), "/test/fixtures/duolingo-real-onchain.json"));
+        string memory json = _fixture();
 
         Reclaim.Proof[] memory proofs = new Reclaim.Proof[](2);
         proofs[0] = _readProof(json, 0);

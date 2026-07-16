@@ -40,3 +40,6 @@ raw-proof*.json
 
 # Private release evidence (TEE tokens, raw captures)
 release-artifacts/
+
+# Real captured proofs: they bind a personal wallet to a personal Strava/Duolingo account
+private-fixtures/

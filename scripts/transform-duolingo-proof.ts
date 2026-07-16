@@ -55,7 +55,9 @@ const fixture = {
   })),
 };
 
-const outDir = resolve("test/fixtures");
+// The fixture embeds a real wallet address and a real Duolingo account id, so it is written to a
+// gitignored private directory, never into the public test tree.
+const outDir = resolve(process.env.LOCK_IN_PRIVATE_FIXTURES || "private-fixtures");
 mkdirSync(outDir, { recursive: true });
 const outPath = resolve(outDir, "duolingo-real-onchain.json");
 writeFileSync(outPath, JSON.stringify(fixture, null, 2));

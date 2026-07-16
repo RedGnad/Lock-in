@@ -12,8 +12,10 @@ via_ir = true
 # Monad raises the CREATE/CREATE2 contract-size limit to 128 KiB. Keep this
 # explicit so upstream Foundry uses the target chain's limit in `--sizes` CI.
 code_size_limit = 131072
-# Allow tests to read committed proof fixtures (real captured proofs for grammar audits).
-fs_permissions = [{ access = "read", path = "./test/fixtures" }]
+# Real captured proofs bind a personal wallet to a personal Strava/Duolingo account, so they are NOT
+# committed. They live in a gitignored private directory; the real-proof tests skip when it is absent, and
+# the synthetic suites keep the grammar covered in public CI.
+fs_permissions = [{ access = "read", path = "./private-fixtures" }]
 
 [rpc_endpoints]
 monad = "${MONAD_RPC_URL}"
