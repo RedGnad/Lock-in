@@ -26,8 +26,10 @@ contract LockInDuolingoEscrowTest {
     uint256 private constant START = 1_800_000_000;
     address private constant ALICE = address(0xA11CE);
     address private constant BOB = address(0xB0B);
+    address private constant CAROL = address(0xCA401);
     bytes32 private constant ALICE_ID = keccak256("duo:alice");
     bytes32 private constant BOB_ID = keccak256("duo:bob");
+    bytes32 private constant CAROL_ID = keccak256("duo:carol");
 
     uint96 private constant STAKE = 100_000; // 0.1 USDC
     uint32 private constant TARGET = 50;
@@ -81,6 +83,45 @@ contract LockInDuolingoEscrowTest {
             require(escrow.claim(pactId) == uint256(stake) * 2, "tier payout wrong");
             VM.warp(START - 30 minutes); // reset the clock for the next round's create
         }
+    }
+
+    // Several finishers, fewer than the crew, splitting a pool that does NOT divide evenly: the claims must
+    // sum to exactly the pool, the last claimant taking the remainder, with nothing stuck and no overpay.
+    function testMultipleFinishersSplitPoolWithoutDust() public {
+        uint96 stake = 100_001; // odd, so 3 * stake is odd and the two-way split leaves a remainder
+        token.mint(CAROL, 10_000_000);
+        VM.prank(CAROL);
+        token.approve(address(escrow), type(uint256).max);
+
+        bytes32 nonce = keccak256("multi-finisher");
+        bytes32 config = escrow.hashConfiguration(stake, TARGET, DURATION, 2, 3, uint64(START), nonce);
+        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
+        VM.prank(ALICE);
+        uint256 pactId = escrow.createPact(stake, TARGET, DURATION, 2, 3, uint64(START), nonce, b);
+        _joinRaw(pactId, BOB, BOB_ID, stake, EVIDENCE_KEY);
+        _joinRaw(pactId, CAROL, CAROL_ID, stake, EVIDENCE_KEY);
+
+        VM.warp(START + 10 minutes);
+        _submitFinal(pactId, ALICE, ALICE_ID, TARGET, TARGET);
+        _submitFinal(pactId, BOB, BOB_ID, TARGET, TARGET);
+        // Carol does not finish.
+
+        VM.warp(START + DURATION + escrow.SUBMISSION_GRACE_PERIOD() + 1);
+        escrow.finalizePact(pactId);
+
+        uint256 pool = uint256(stake) * 3;
+        VM.prank(ALICE);
+        uint256 first = escrow.claim(pactId);
+        VM.prank(BOB);
+        uint256 second = escrow.claim(pactId);
+        require(first == pool / 2, "first claim not floor split");
+        require(first + second == pool, "claims do not sum to the pool");
+        require(second == pool - first, "last claimant did not take the remainder");
+        // Carol proved nothing, so there is nothing to claim.
+        VM.expectRevert(LockInDuolingoEscrow.NotEligible.selector);
+        VM.prank(CAROL);
+        escrow.claim(pactId);
+        require(token.balanceOf(address(escrow)) == 0, "dust left in the escrow");
     }
 
     function testNobodyFinishesRefundsEveryone() public {

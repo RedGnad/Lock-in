@@ -57,7 +57,8 @@ compromise and provider error remain possible. We never claim otherwise.
 | Scenario | Handling | Test |
 |---|---|---|
 | Pool conservation, exact split | `remainingPool = stake · participants`, split by `claimsRemaining` with no dust path that loses funds | `testOnlyFinisherTakesTheWholePot`, `testStakeTiersAllSettle` |
-| Rounding | integer division with `remainingPool -=` and `--claimsRemaining`; the last claimant takes the remainder | `testStakeTiersAllSettle` |
+| Several finishers split the pool | claims sum to the pool exactly across multiple eligible claimants | `testMultipleFinishersSplitPoolWithoutDust` |
+| Rounding | integer division with `remainingPool -=` and `--claimsRemaining`; the last claimant takes the remainder, no dust left | `testMultipleFinishersSplitPoolWithoutDust` (odd stake, 2-of-3 split) |
 | Double claim | `claimed[pactId][account]` set before payout | `testDoubleClaimRejected` |
 | No finisher | everyone joined is refunded their stake | `testNobodyFinishesRefundsEveryone` |
 | One finisher takes the pot | non-finishers are `NotEligible` | `testOnlyFinisherTakesTheWholePot` |
@@ -83,6 +84,20 @@ If the backend or Reclaim is down for the whole challenge, no participant can
 submit a final, `finisherCount` stays 0, and `finalizePact` refunds everyone their
 stake. A completion pause that overlaps a live Lock likewise cancels it and
 refunds. So a verification outage costs gas and time, never stake.
+
+## Second review pass (fresh context)
+
+A second, independent pass over the money paths (pool conservation, atomic
+create/join, configHash+createNonce, EIP-712 signatures, nullifiers, shared
+profile, short-then-retry final, early/late finalize, no/one/several finishers,
+rounding, double claim, pauses during a live Lock, signer compromise, backend
+outage, expiry between approve and create/join) found **no High or Medium code
+defect**. It did find one **test-coverage gap**: the multi-claimant division path
+(`remainingPool / claimsRemaining` with more than one eligible finisher and a
+non-even split) was not exercised by any test. That path is now covered by
+`testMultipleFinishersSplitPoolWithoutDust` (odd stake, two of three finish,
+claims sum to the pool, last takes the remainder, no dust). The
+"no High/Medium" conclusion is validated only together with this added test.
 
 ## Residual risks / open items
 
