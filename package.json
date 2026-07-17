@@ -26,7 +26,8 @@
     "canary:preflight": "tsx scripts/canary.ts preflight",
     "canary:status": "tsx scripts/canary.ts snapshot",
     "canary:reconcile": "tsx scripts/canary.ts reconcile",
-    "production:check": "tsx scripts/check-production.ts"
+    "production:check": "tsx scripts/check-production.ts",
+    "gate:duolingo": "tsx scripts/check-duolingo-escrow.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
