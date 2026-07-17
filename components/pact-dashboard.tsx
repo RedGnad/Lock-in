@@ -21,6 +21,7 @@ import { requestAccessEvidence } from "@/src/access-client";
 import { ActionDialog } from "@/components/action-dialog";
 import { PactCrew } from "@/components/pact-crew";
 import { StravaConnect } from "@/components/strava-connect";
+import { ShareSheet } from "@/components/share-sheet";
 import type { StravaView } from "@/src/strava-connection-view";
 
 type ProductActions = { join: boolean; checkIns: boolean };
@@ -267,7 +268,7 @@ export function PactDashboard({ id }: { id: string }) {
         setMessage(`Approve ${formatUnits(pact[2], decimals)} ${symbol} in your wallet…`);
         await send({ address: token, abi: erc20Abi, functionName: "approve", args: [escrowAddress, pact[2]] }, "approval");
       }
-      setMessage("Checking secure wallet access…");
+      setMessage("SECURING YOUR CHECK-IN…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
       setMessage("Authorizing your place in the crew…");
       const access = await requestAccessEvidence({
@@ -295,7 +296,7 @@ export function PactDashboard({ id }: { id: string }) {
     try {
       setMessage("Checking secure wallet access…");
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
-      setMessage("Reading today's run from Strava…");
+      setMessage("CHECKING STRAVA…");
       // The server holds the OAuth grant, reads the run and signs the attestation. Nothing to install,
       // nothing to rename, no second login: that is the whole point of this path.
       const { evidence, signature, run } = await checkInStrava({
@@ -303,14 +304,14 @@ export function PactDashboard({ id }: { id: string }) {
         pactId: pactId.toString(),
         dayIndex,
       });
-      setMessage(`Publishing ${(run.distanceMeters / 1000).toFixed(2)} km for day ${dayIndex + 1}…`);
+      setMessage("PUBLISHING YOUR RUN…");
       await send({
         address: escrowAddress,
         abi: lockInAbi,
         functionName: "submitCompletion",
         args: [pactId, dayIndex, { ...evidence, signature }],
       }, "verification");
-      setMessage(`Day ${dayIndex + 1} verified ✓`);
+      setMessage(`DAY ${dayIndex + 1} VERIFIED ✓`);
     } catch (error) {
       setMessage(friendlyError(error));
     } finally {
@@ -329,28 +330,6 @@ export function PactDashboard({ id }: { id: string }) {
       setMessage(action === "finalize" ? "Lock settled." : action === "claim" ? "Payout received." : "Lock cancelled. Refunds can now be enabled.");
     } catch (error) {
       setMessage(friendlyError(error));
-    }
-  }
-
-  async function sharePact() {
-    const url = inviteUrl;
-    const text = pact
-      ? `Join my ${missionByType(pact[11]).name} Lock In (${inviteCode}): ${formatMissionTarget(pact[11], pact[3])}, ${pact[8]} wins in ${pact[7]} days, ${formatUnits(pact[2], decimals)} ${symbol} each. Finishers split the pool.`
-      : `Join my Lock In challenge (${inviteCode}).`;
-    // navigator.share exists on desktops where it then refuses, and clipboard access can be denied without
-    // warning. Either way the link is rendered next to this button, so the invite never depends on this
-    // succeeding.
-    try {
-      if (navigator.canShare?.({ title: `Lock In · ${inviteCode}`, text, url })) {
-        await navigator.share({ title: `Lock In · ${inviteCode}`, text, url });
-        setMessage("Invite shared.");
-        return;
-      }
-      await navigator.clipboard.writeText(url);
-      setMessage(`Invite link copied: ${url}`);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setMessage(`Copy this invite link: ${url}`);
     }
   }
 
@@ -408,9 +387,13 @@ export function PactDashboard({ id }: { id: string }) {
     : active ? `${targetLabel} before the window closes.`
     : status;
 
+  const shareText = pact
+    ? `I'm ${completed}/${requiredCompletions} on my ${mission.name} Lock In challenge on Monad. Would you keep the commitment?`
+    : "Join my Lock In challenge on Monad.";
+
   return (
     <main className="pact-shell">
-      <div className="pact-topline"><Link href="/">← Home</Link><span>{mission.name.toUpperCase()} / {inviteCode}</span><button type="button" onClick={sharePact}>SHARE ↗</button></div>
+      <div className="pact-topline"><Link href="/">← Home</Link><span>{mission.name.toUpperCase()} / {inviteCode}</span><ShareSheet url={inviteUrl} text={shareText} title={`Lock In · ${inviteCode}`} /></div>
       <section className="pact-hero">
         <div><div className="live-pill"><i /> {status}</div><h1>{requiredCompletions} {mission.verb}<br/><em>in {durationDays} days</em></h1><p>{targetLabel} each · {isJoined ? `${completed} verified` : `Starts ${formatDate(startsAt)}`}</p></div>
         <div className="pot"><span>{pact[15] ? "UNCLAIMED POOL" : "TOTAL POOL"}</span><strong>{formatUnits(displayedPool, decimals)}</strong><b>{symbol}</b><small>{pact[4]}/{pact[10]} players · {minParticipants} needed</small></div>
@@ -423,10 +406,10 @@ export function PactDashboard({ id }: { id: string }) {
           {registration ? <p>{full ? "This lock is full." : `Registration closes ${formatDate(startsAt)}.`}</p> : (active || proofGraceOpen) && !actions.checkIns ? <p>Verification is currently paused. Lock refund rules still apply.</p> : active ? <p>Verify through {mission.name} before {formatDate(startsAt + BigInt((currentDay + 1) * 86_400))}.</p> : proofGraceOpen ? <p>Only a run completed on the final lock day counts. Proof closes {formatDate(submissionDeadline)}.</p> : graceOpen ? <p>The lock can settle after {formatDate(submissionDeadline)}.</p> : <p>{pact[15] && pact[16] ? "Refunds are ready." : pact[15] ? "Payouts are ready." : `Program ended ${formatDate(endsAt)}.`}</p>}
         </div>
         <div className="pact-now-actions">
-          {registration && isJoined && !full && <div className="invite-block"><button className="lock-button" type="button" onClick={sharePact}>INVITE A PLAYER</button><input className="invite-link" readOnly value={inviteUrl} onFocus={(event) => event.target.select()} aria-label="Invite link" /></div>}
+          {registration && isJoined && !full && <ShareSheet url={inviteUrl} text={shareText} title={`Lock In · ${inviteCode}`} />}
           {registration && !isJoined && !full && <a className="primary-link" href="#join-pact">JOIN THIS LOCK</a>}
           {canCheckIn && latestOpenDay !== null && <button className="lock-button" type="button" onClick={() => void checkIn(latestOpenDay)}>{latestOpenDay === currentDay ? "VERIFY TODAY" : `VERIFY DAY ${latestOpenDay + 1}`}</button>}
-          {!registration && isJoined && !canCheckIn && actions.checkIns && <button className="secondary-button" type="button" onClick={sharePact}>SHARE PROGRESS</button>}
+          {!registration && isJoined && !canCheckIn && actions.checkIns && <ShareSheet url={inviteUrl} text={shareText} title={`Lock In · ${inviteCode}`} />}
         </div>
       </section>
 
@@ -449,8 +432,8 @@ export function PactDashboard({ id }: { id: string }) {
       </section>
 
       <div className="pact-actions" id="join-pact">
-        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <StravaConnect onViewChange={setStravaView} />}
-        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <div className="proof-prep"><div><span>DAY {latestOpenDay + 1}</span><small>{stravaView === "strava_not_connected" ? "Connect Strava once above, then record your GPS run and verify here." : "Record your GPS run on Strava, then verify here. We read the run for you, so there is nothing to rename."}</small></div></div>}
+        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <StravaConnect compact onViewChange={setStravaView} />}
+        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <div className="proof-prep"><div><span>DAY {latestOpenDay + 1}</span><small>{stravaView === "strava_not_connected" ? "Connect Strava above, then record your GPS run and verify here." : "Record your GPS run on Strava, then verify it here. We read the run for you."}</small></div></div>}
         {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && !targetReached && actions.checkIns && <p className="proof-disclosure proof-disclosure-inline">Checking in publishes your distance, motion fields and start time in Monad calldata, alongside pseudonymous identifiers derived under a key we hold. Your raw Strava activity ID, your route, your login and your other activities are not published.</p>}
         {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
         {!isJoined && registration && !full && <button className="lock-button" disabled={!entryAccepted || !actions.join || Boolean(busyAction)} onClick={() => address ? setJoinReviewOpen(true) : setMessage("Connect your wallet to join.")}>JOIN FOR {formatUnits(pact[2], decimals)} {symbol}</button>}
