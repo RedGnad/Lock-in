@@ -615,6 +615,13 @@ footer div { display: flex; gap: 22px; }
 .duo-result strong { display: block; margin-bottom: 6px; font-size: 22px; text-transform: uppercase; letter-spacing: -.03em; }
 .duo-result p { margin: 0; color: var(--muted); font: 15px/1.5 Georgia, serif; }
 .duo-error { color: white; background: var(--acid); padding: 10px 12px; }
+.duo-experience { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 18px; }
+.duo-financial { display: grid; gap: 18px; }
+.duo-mode-badge { justify-self: start; padding: 6px 10px; border: 2px solid var(--ink); background: var(--surface); font: 900 10px/1 Arial, sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+.duo-mode-badge[data-mode="live-usdc"] { background: var(--lime); }
+.duo-mode-badge[data-mode="canary-paused"] { color: white; background: var(--ink); }
+.join-by-id { display: flex; gap: 8px; align-items: stretch; }
+.join-by-id .invite-link { flex: 1; }
 .share-control { position: relative; display: inline-block; }
 .share-menu { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: min(300px, 82vw); padding: 8px; display: grid; gap: 4px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 6px 6px 0 var(--ink); }
 .share-item { width: 100%; min-height: 44px; padding: 10px 12px; display: flex; align-items: center; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font: 900 11px/1 Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }

@@ -1,31 +1,13 @@
 import { getAddress, type Address, type Hex } from "viem";
 import { lockInPublicClient } from "./chain";
 import { escrowVerifyingContract } from "./duolingo-escrow-attestation";
+import { duoPactComponents } from "./lock-in-duolingo-abi";
 
 /**
  * Reads LockInDuolingoEscrow (contract B) on-chain. A payout-authorising final attestation must take the
  * Lock's terms from the chain, never from the browser: the client sends only a pactId, and the backend
  * resolves the configHash, the participant's bound identity, the target and the window from the contract.
  */
-
-const duoPactComponents = [
-  { name: "creator", type: "address" },
-  { name: "startsAt", type: "uint64" },
-  { name: "durationSeconds", type: "uint32" },
-  { name: "stake", type: "uint96" },
-  { name: "targetXp", type: "uint32" },
-  { name: "participantCount", type: "uint32" },
-  { name: "finisherCount", type: "uint32" },
-  { name: "claimsRemaining", type: "uint32" },
-  { name: "minParticipants", type: "uint8" },
-  { name: "maxParticipants", type: "uint8" },
-  { name: "completionPauseGenerationAtCreation", type: "uint64" },
-  { name: "missionPolicyHash", type: "bytes32" },
-  { name: "configHash", type: "bytes32" },
-  { name: "remainingPool", type: "uint256" },
-  { name: "finalized", type: "bool" },
-  { name: "cancelled", type: "bool" },
-] as const;
 
 export const duolingoEscrowAbi = [
   { type: "function", name: "getPact", stateMutability: "view", inputs: [{ name: "pactId", type: "uint256" }], outputs: [{ name: "", type: "tuple", components: duoPactComponents }] },

@@ -14,6 +14,11 @@ export const monad = defineChain({
 
 export const escrowAddress = process.env.NEXT_PUBLIC_LOCK_IN_ESCROW_ADDRESS as Address | undefined;
 /**
+ * The Duolingo escrow (contract B). Absent until B is deployed and pinned: while it is unset the financial
+ * flow stays inert and the Duolingo page shows the Live Proof Beta with the stake selector disabled.
+ */
+export const duolingoEscrowAddress = process.env.NEXT_PUBLIC_DUOLINGO_ESCROW_ADDRESS as Address | undefined;
+/**
  * The block the CURRENT escrow was deployed in, per deployments/monad-mainnet-oauth.json.
  *
  * Every log scan starts here. Leaving it on a previous escrow's block does not just waste requests: it
