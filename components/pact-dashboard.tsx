@@ -21,6 +21,7 @@ import { requestAccessEvidence } from "@/src/access-client";
 import { ActionDialog } from "@/components/action-dialog";
 import { PactCrew } from "@/components/pact-crew";
 import { StravaConnect } from "@/components/strava-connect";
+import type { StravaView } from "@/src/strava-connection-view";
 
 type ProductActions = { join: boolean; checkIns: boolean };
 type PendingAction = { account: Address; action: string; hash: Hash };
@@ -96,9 +97,10 @@ export function PactDashboard({ id }: { id: string }) {
   const [message, setMessage] = useState("");
   const [txHash, setTxHash] = useState<Hash | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  // null until the connection card has answered, so the verify button never blames a missing connection
-  // before it knows there is one.
-  const [stravaConnected, setStravaConnected] = useState<boolean | null>(null);
+  // The card's exact state. Only "strava_not_connected" means the database really has nothing: an expired
+  // wallet session must never be rendered as "connect Strava", because following that advice re-authorises
+  // a live grant and rotates the very refresh token the check-in was about to use.
+  const [stravaView, setStravaView] = useState<StravaView["kind"]>("loading");
   const busyRef = useRef(false);
   const proofBusyRef = useRef(false);
   const [entryAccepted, setEntryAccepted] = useState(false);
@@ -447,8 +449,8 @@ export function PactDashboard({ id }: { id: string }) {
       </section>
 
       <div className="pact-actions" id="join-pact">
-        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <StravaConnect onConnectedChange={setStravaConnected} />}
-        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <div className="proof-prep"><div><span>DAY {latestOpenDay + 1}</span><small>{stravaConnected === false ? "Connect Strava once above, then record your GPS run and verify here." : "Record your GPS run on Strava, then verify here. We read the run for you, so there is nothing to rename."}</small></div></div>}
+        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <StravaConnect onViewChange={setStravaView} />}
+        {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && pact?.[11] === STRAVA_RUN_MISSION && <div className="proof-prep"><div><span>DAY {latestOpenDay + 1}</span><small>{stravaView === "strava_not_connected" ? "Connect Strava once above, then record your GPS run and verify here." : "Record your GPS run on Strava, then verify here. We read the run for you, so there is nothing to rename."}</small></div></div>}
         {isJoined && (active || proofGraceOpen) && latestOpenDay !== null && !targetReached && actions.checkIns && <p className="proof-disclosure proof-disclosure-inline">Checking in publishes your distance, motion fields and start time in Monad calldata, alongside pseudonymous identifiers derived under a key we hold. Your raw Strava activity ID, your route, your login and your other activities are not published.</p>}
         {!isJoined && registration && <label className="consent-row"><input type="checkbox" checked={entryAccepted} onChange={(event) => setEntryAccepted(event.target.checked)}/><span>I&apos;m 18+ and accept the <Link href="/rules">Rules</Link>.</span></label>}
         {!isJoined && registration && !full && <button className="lock-button" disabled={!entryAccepted || !actions.join || Boolean(busyAction)} onClick={() => address ? setJoinReviewOpen(true) : setMessage("Connect your wallet to join.")}>JOIN FOR {formatUnits(pact[2], decimals)} {symbol}</button>}

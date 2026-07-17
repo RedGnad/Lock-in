@@ -12,6 +12,7 @@ import {
   canStartAuthorization,
   resolveStravaView,
   type ConnectionRead,
+  type StravaView,
 } from "@/src/strava-connection-view";
 import { ensureWalletSession, hasWalletSession } from "@/src/wallet-auth-client";
 
@@ -25,7 +26,7 @@ import { ensureWalletSession, hasWalletSession } from "@/src/wallet-auth-client"
  * gathers the two facts it needs and renders the answer.
  */
 
-export function StravaConnect({ onConnectedChange }: { onConnectedChange?: (connected: boolean) => void }) {
+export function StravaConnect({ onViewChange }: { onViewChange?: (kind: StravaView["kind"]) => void }) {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const [walletSession, setWalletSession] = useState<boolean | "unknown">("unknown");
@@ -36,9 +37,11 @@ export function StravaConnect({ onConnectedChange }: { onConnectedChange?: (conn
 
   const view = resolveStravaView({ wallet: address, walletSession, connection });
 
+  // The KIND, never a boolean. "not connected" and "we can't tell yet" are different facts, and collapsing
+  // them is what told an athlete with a live grant to re-authorise.
   useEffect(() => {
-    onConnectedChange?.(view.kind === "strava_connected");
-  }, [view.kind, onConnectedChange]);
+    onViewChange?.(view.kind);
+  }, [view.kind, onViewChange]);
 
   useEffect(() => {
     // What Strava sent the athlete back with. Read once, then removed, so a refresh does not replay it.
