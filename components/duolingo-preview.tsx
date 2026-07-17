@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useSignMessage } from "wagmi";
+import { ensureWalletSession } from "@/src/wallet-auth-client";
 
 /**
  * Duolingo XP — Live Proof Beta.
@@ -31,6 +32,7 @@ function formatTime(seconds: number) {
 
 export function DuolingoPreview() {
   const { address } = useAccount();
+  const { signMessageAsync } = useSignMessage();
   const [username, setUsername] = useState("");
   const [targetXp, setTargetXp] = useState<number>(100);
   const [run, setRun] = useState<Run | null>(null);
@@ -43,7 +45,7 @@ export function DuolingoPreview() {
   const loadRun = useCallback(async (wallet: string) => {
     setLoadingRun(true);
     try {
-      const response = await fetch(`/api/duolingo/run?wallet=${wallet}`, { cache: "no-store" });
+      const response = await fetch(`/api/duolingo/run?wallet=${wallet}`, { cache: "no-store", credentials: "same-origin" });
       const payload = await response.json();
       setRun(response.ok ? payload.run : null);
     } catch {
@@ -73,11 +75,16 @@ export function DuolingoPreview() {
     setResult(null);
     const portal = window.open("", "_blank");
     try {
+      // A signed session is required by every route below. Restore it before opening the portal so the
+      // signature prompt does not land in the middle of the proof flow.
+      setStatus("Securing your session…");
+      await ensureWalletSession(address, (text) => signMessageAsync({ message: text }));
       setStatus("Opening the Duolingo proof…");
       const started = await fetch("/api/duolingo/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress: address, phase, username: username.trim() }),
+        credentials: "same-origin",
+        body: JSON.stringify({ walletAddress: address, phase, username: username.trim(), targetXp }),
       });
       const session = await started.json();
       if (!started.ok) throw new Error(session.error || "Could not start the proof");
@@ -90,7 +97,8 @@ export function DuolingoPreview() {
         const response = await fetch("/api/duolingo/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: session.sessionId, targetXp }),
+          credentials: "same-origin",
+          body: JSON.stringify({ sessionId: session.sessionId }),
         });
         const payload = await response.json();
         if (response.ok) {
@@ -123,7 +131,7 @@ export function DuolingoPreview() {
 
   async function reset() {
     if (!address) return;
-    await fetch(`/api/duolingo/run?wallet=${address}`, { method: "DELETE" });
+    await fetch(`/api/duolingo/run?wallet=${address}`, { method: "DELETE", credentials: "same-origin" });
     setRun(null);
     setResult(null);
     setError(null);

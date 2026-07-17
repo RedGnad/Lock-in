@@ -1,4 +1,3 @@
-import "server-only";
 import { neon } from "@neondatabase/serverless";
 import type { Hex } from "viem";
 
@@ -20,9 +19,11 @@ CREATE TABLE IF NOT EXISTS duolingo_preview_sessions (
   session_id text PRIMARY KEY,
   wallet_address text NOT NULL,
   phase text NOT NULL,
+  target_xp integer NOT NULL DEFAULT 0,
   duolingo_username text NOT NULL,
   duolingo_profile_id text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  consumed_at timestamptz
 );
 
 CREATE TABLE IF NOT EXISTS duolingo_preview_runs (
@@ -47,6 +48,7 @@ export type PreviewSession = Readonly<{
   sessionId: string;
   walletAddress: string;
   phase: "baseline" | "final";
+  targetXp: number;
   duolingoUsername: string;
   duolingoProfileId: string;
 }>;
@@ -64,30 +66,49 @@ export type PreviewRun = Readonly<{
 export async function savePreviewSession(session: PreviewSession): Promise<void> {
   await sql()`
     INSERT INTO duolingo_preview_sessions
-      (session_id, wallet_address, phase, duolingo_username, duolingo_profile_id)
+      (session_id, wallet_address, phase, target_xp, duolingo_username, duolingo_profile_id)
     VALUES (${session.sessionId}, ${session.walletAddress.toLowerCase()}, ${session.phase},
-            ${session.duolingoUsername}, ${session.duolingoProfileId})
+            ${session.targetXp}, ${session.duolingoUsername}, ${session.duolingoProfileId})
     ON CONFLICT (session_id) DO NOTHING`;
 }
 
 /**
- * The session is the ONLY thing that says which wallet and phase a Reclaim session belongs to. Taking
- * either from the request body would let anyone claim someone else's proof, or replay a baseline as a final.
+ * The session is the ONLY thing that says which wallet, phase and target a Reclaim session belongs to.
+ * Taking any of them from the request body would let anyone claim someone else's proof, replay a baseline
+ * as a final, or lower the target mid-flight. The target is fixed here, at creation, so the polling that
+ * follows cannot change it.
  */
 export async function loadPreviewSession(sessionId: string): Promise<PreviewSession | null> {
   const rows = (await sql()`
-    SELECT session_id, wallet_address, phase, duolingo_username, duolingo_profile_id
+    SELECT session_id, wallet_address, phase, target_xp, duolingo_username, duolingo_profile_id
       FROM duolingo_preview_sessions WHERE session_id = ${sessionId}`
-  ) as Record<string, string>[];
+  ) as Record<string, string | number>[];
   const row = rows[0];
   if (!row) return null;
   return {
-    sessionId: row.session_id,
-    walletAddress: row.wallet_address,
+    sessionId: String(row.session_id),
+    walletAddress: String(row.wallet_address),
     phase: row.phase === "final" ? "final" : "baseline",
-    duolingoUsername: row.duolingo_username,
-    duolingoProfileId: row.duolingo_profile_id,
+    targetXp: Number(row.target_xp),
+    duolingoUsername: String(row.duolingo_username),
+    duolingoProfileId: String(row.duolingo_profile_id),
   };
+}
+
+/**
+ * Marks a session used, and returns false if it already was.
+ *
+ * A Reclaim session that has produced a verified proof must never be accepted a second time: without this
+ * a single baseline capture could be replayed to overwrite a later baseline, or a final could be counted
+ * twice. The UPDATE ... WHERE consumed_at IS NULL is the lock: exactly one caller sees a row affected.
+ */
+export async function consumePreviewSession(sessionId: string): Promise<boolean> {
+  const rows = (await sql()`
+    UPDATE duolingo_preview_sessions SET consumed_at = now()
+    WHERE session_id = ${sessionId} AND consumed_at IS NULL
+    RETURNING session_id`
+  ) as Record<string, string>[];
+  return rows.length === 1;
 }
 
 /** A new baseline replaces the old one: starting over is legitimate, and there is no stake to protect. */

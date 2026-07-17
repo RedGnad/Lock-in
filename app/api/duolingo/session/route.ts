@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { ReclaimProofRequest } from "@reclaimprotocol/js-sdk";
-import { getAddress, isAddress } from "viem";
 import { readJsonBody } from "@/src/api-guard";
 import { DUOLINGO_PROVIDER_ID, DUOLINGO_PROVIDER_VERSION } from "@/src/duolingo-proof-policy";
 import { resolvePublicDuolingoProfile } from "@/src/duolingo-profile";
 import { loadPreviewRun, savePreviewSession } from "@/src/duolingo-preview-store";
+import {
+  requireWalletAuthSession,
+  walletAuthErrorStatus,
+  walletAuthPublicMessage,
+} from "@/src/wallet-auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,17 +27,22 @@ export const maxDuration = 30;
 export async function POST(request: Request) {
   try {
     const body = await readJsonBody<Record<string, unknown>>(request, 4 * 1_024);
-    const walletRaw = String(body.walletAddress || "");
-    if (!isAddress(walletRaw)) throw new Error("Connect a valid wallet first");
-    const wallet = getAddress(walletRaw);
+    // The wallet comes from the signed session cookie, never from the body: otherwise anyone could open a
+    // proof session bound to someone else's wallet.
+    const session = requireWalletAuthSession(request, String(body.walletAddress || ""));
+    const wallet = session.walletAddress;
     const phase = body.phase === "final" ? "final" : "baseline";
     const username = String(body.username || "").trim();
     if (!username) throw new Error("Enter your Duolingo username");
 
-    // A final with no stored baseline is meaningless, and silently treating it as a baseline would hide
-    // the mistake from the athlete.
+    // The target is fixed now, at baseline, and carried on the session so the later polling cannot lower
+    // it. On a final it is read back from the stored run, never from the request.
     const run = phase === "final" ? await loadPreviewRun(wallet) : null;
     if (phase === "final" && !run) throw new Error("Verify your starting XP before your final XP");
+    const targetXp = phase === "final" ? (run?.targetXp ?? 0) : Number(body.targetXp);
+    if (phase === "baseline" && (!Number.isSafeInteger(targetXp) || targetXp <= 0)) {
+      throw new Error("Choose an XP target");
+    }
 
     const profile = await resolvePublicDuolingoProfile(username);
     if (run && run.duolingoProfileId !== profile.id) {
@@ -60,6 +69,7 @@ export async function POST(request: Request) {
       sessionId,
       walletAddress: wallet,
       phase,
+      targetXp,
       duolingoUsername: profile.username,
       duolingoProfileId: profile.id,
     });
@@ -68,8 +78,11 @@ export async function POST(request: Request) {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
+    const authStatus = walletAuthErrorStatus(error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : "Could not start the Duolingo proof",
-    }, { status: 400, headers: { "Cache-Control": "no-store" } });
+      error: authStatus
+        ? walletAuthPublicMessage(error)
+        : error instanceof Error ? error.message : "Could not start the Duolingo proof",
+    }, { status: authStatus || 400, headers: { "Cache-Control": "no-store" } });
   }
 }

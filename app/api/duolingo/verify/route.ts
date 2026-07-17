@@ -8,12 +8,18 @@ import {
   validateDuolingoEvidence,
 } from "@/src/duolingo-proof-policy";
 import {
+  consumePreviewSession,
   loadPreviewRun,
   loadPreviewSession,
   savePreviewRun,
 } from "@/src/duolingo-preview-store";
 import { assertSdkProofSet } from "@/src/reclaim-onchain";
 import type { ReclaimTrustedData } from "@/src/strava-proof-policy";
+import {
+  requireWalletAuthSession,
+  walletAuthErrorStatus,
+  walletAuthPublicMessage,
+} from "@/src/wallet-auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +42,9 @@ export async function POST(request: Request) {
 
     const session = await loadPreviewSession(sessionId);
     if (!session) throw new Error("Unknown Reclaim session");
+    // The caller must own the wallet the session was opened for. Without this, anyone who learns a session
+    // id could poll it to completion and bank the proof against that wallet.
+    requireWalletAuthSession(request, session.walletAddress);
 
     const status = await fetchStatusUrl(sessionId);
     const proofs = (status?.session?.proofs || []) as Proof[];
@@ -69,8 +78,15 @@ export async function POST(request: Request) {
       },
     });
 
+    // Burn the session before recording anything: a verified proof settles this session exactly once, so a
+    // second successful poll cannot overwrite a later baseline or double-count a final.
+    if (!(await consumePreviewSession(sessionId))) {
+      throw new Error("This proof has already been recorded");
+    }
+
     if (session.phase === "baseline") {
-      const targetXp = Number(body.targetXp);
+      // The target came from the session, fixed at creation, so polling could not have lowered it.
+      const targetXp = session.targetXp;
       if (!Number.isSafeInteger(targetXp) || targetXp <= 0) throw new Error("Choose an XP target");
       await savePreviewRun({
         walletAddress: session.walletAddress,
@@ -121,8 +137,11 @@ export async function POST(request: Request) {
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     // The reason is the product here: "no" without a reason is what makes people distrust a proof system.
+    const authStatus = walletAuthErrorStatus(error);
     return NextResponse.json({
-      error: error instanceof Error ? error.message : "The Duolingo proof was rejected",
-    }, { status: 400, headers: { "Cache-Control": "no-store" } });
+      error: authStatus
+        ? walletAuthPublicMessage(error)
+        : error instanceof Error ? error.message : "The Duolingo proof was rejected",
+    }, { status: authStatus || 400, headers: { "Cache-Control": "no-store" } });
   }
 }
