@@ -210,3 +210,38 @@ export const erc20Abi = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint8" }] },
   { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "string" }] },
 ] as const;
+
+/**
+ * Reclaim proof shapes, restored for the Duolingo zkTLS feasibility sprint.
+ *
+ * These describe a Reclaim proof, not the escrow. Escrow A has no verifier and no Duolingo mission, so
+ * nothing here is wired to it: they exist so the proof pipeline and its TEE gate can be exercised without
+ * an escrow B, which is explicitly out of scope until the four gates pass.
+ */
+export const reclaimClaimInfoComponents = [
+  { name: "provider", type: "string" },
+  { name: "parameters", type: "string" },
+  { name: "context", type: "string" },
+] as const;
+
+export const reclaimCompleteClaimComponents = [
+  { name: "identifier", type: "bytes32" },
+  { name: "owner", type: "address" },
+  { name: "timestampS", type: "uint32" },
+  { name: "epoch", type: "uint32" },
+] as const;
+
+export const reclaimSignedClaimComponents = [
+  { name: "claim", type: "tuple", components: reclaimCompleteClaimComponents },
+  { name: "signatures", type: "bytes[]" },
+] as const;
+
+export const reclaimProofComponents = [
+  { name: "claimInfo", type: "tuple", components: reclaimClaimInfoComponents },
+  { name: "signedClaim", type: "tuple", components: reclaimSignedClaimComponents },
+] as const;
+
+export const directProofBundleComponents = [
+  { name: "sessionId", type: "string" },
+  { name: "proofs", type: "tuple[]", components: reclaimProofComponents },
+] as const;
