@@ -26,7 +26,10 @@ import { ensureWalletSession, hasWalletSession } from "@/src/wallet-auth-client"
  * gathers the two facts it needs and renders the answer.
  */
 
-export function StravaConnect({ onViewChange }: { onViewChange?: (kind: StravaView["kind"]) => void }) {
+export function StravaConnect({ onViewChange, compact = false }: {
+  onViewChange?: (kind: StravaView["kind"]) => void;
+  compact?: boolean;
+}) {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const [walletSession, setWalletSession] = useState<boolean | "unknown">("unknown");
@@ -134,6 +137,28 @@ export function StravaConnect({ onViewChange }: { onViewChange?: (kind: StravaVi
   }
 
   if (!address) return null;
+
+  // Compact is the Lock page: VERIFY TODAY restores the session and refreshes tokens on its own, so the
+  // only state worth a permanent block there is a genuinely missing grant. Everything else stays silent,
+  // including "status locked", which used to push athletes to re-authorise for nothing.
+  if (compact) {
+    if (view.kind !== "strava_not_connected") return null;
+    return (
+      <div className="strava-connect" aria-live="polite">
+        <div className="strava-connect-body">
+          <span className="strava-dot off" aria-hidden="true" />
+          <div>
+            <b>Connect Strava once to verify your runs.</b>
+            <small>You authorise Lock In on Strava. After that, checking in is a single tap.</small>
+          </div>
+        </div>
+        <button type="button" className="lock-button" disabled={busy} onClick={() => void connect()}>
+          {busy ? "OPENING STRAVA…" : "CONNECT STRAVA"}
+        </button>
+        {message && <p className="form-status">{message}</p>}
+      </div>
+    );
+  }
 
   const title = view.kind === "strava_connected"
     ? "Strava connected"
