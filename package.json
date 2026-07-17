@@ -17,6 +17,7 @@
     "test:policy": "tsx --test test/*.test.ts",
     "test:solidity": "forge test -vvv",
     "deploy:escrow": "tsx scripts/deploy-escrow.ts",
+    "deploy:duolingo": "tsx scripts/deploy-duolingo-escrow.ts",
     "incident:cancel-pact": "tsx scripts/cancel-pact.ts",
     "incident:cancel-pact:snapshot": "tsx scripts/cancel-pact.ts --snapshot",
     "incident:cancel-pact:verify": "tsx scripts/cancel-pact.ts --verify",
