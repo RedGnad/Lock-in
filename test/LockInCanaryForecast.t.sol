@@ -90,15 +90,22 @@ contract LockInCanaryForecastTest {
         uint256 escrowHolds = usdc.balanceOf(address(ESCROW));
         require(escrowHolds >= uint256(stake) * 2, "the escrow does not hold both stakes");
 
-        // Wallet A runs every day and checks in. Wallet B never does.
+        // Wallet A runs every day and checks in. Wallet B never does. Days already checked in on the real
+        // chain are skipped: after D1 the live bitmap already has day 0 set, and resubmitting it reverts
+        // DayAlreadyCompleted. Skipping them makes this a forecast from wherever the canary actually is.
+        uint256 liveBitmap = ESCROW.completionBitmap(PACT_ID, WALLET_A);
+        // A's identity is bound to the Lock by D1 already; the escrow reverts IdentityMismatch if a later
+        // day uses a different one. Reuse the real bound identity so the forecast is faithful.
+        bytes32 identity = ESCROW.participantIdentity(PACT_ID, WALLET_A);
+        require(identity != bytes32(0), "D1 has not bound an identity yet");
         for (uint8 day = 0; day < durationDays; ++day) {
+            if (liveBitmap & (uint256(1) << day) != 0) continue;
             uint64 dayStart = startsAt + uint64(day) * 1 days;
             VM.warp(dayStart + 2 hours);
-            _submit(day, dayStart + 1 hours);
-            require(ESCROW.completionCount(PACT_ID, WALLET_A) == day + 1, "a check-in was not counted");
+            _submit(day, dayStart + 1 hours, identity);
         }
+        require(ESCROW.completionCount(PACT_ID, WALLET_A) == requiredCompletions, "A did not reach the target");
 
-        require(ESCROW.completionCount(PACT_ID, WALLET_A) == requiredCompletions, "A did not meet the target");
         require(ESCROW.isFinisher(PACT_ID, WALLET_A), "A ran every day and is not a finisher");
         require(!ESCROW.isFinisher(PACT_ID, WALLET_B), "B never ran and is a finisher");
 
@@ -122,14 +129,14 @@ contract LockInCanaryForecastTest {
         require(!bobClaimed, "the wallet that never ran claimed");
     }
 
-    function _submit(uint8 dayIndex, uint64 occurredAt) private {
+    function _submit(uint8 dayIndex, uint64 occurredAt, bytes32 identity) private {
         uint64 issuedAt = uint64(VM.getBlockTimestamp());
         LockInEscrow.CompletionEvidence memory evidence;
         evidence.missionType = STRAVA_RUN;
         evidence.policyHash = ESCROW.missionPolicyHash(STRAVA_RUN);
         // Distinct per day, exactly as the server derives them: one run can never settle twice.
         evidence.sessionIdHash = keccak256(abi.encode("forecast:session", dayIndex));
-        evidence.identityHash = keccak256("forecast:athlete:a");
+        evidence.identityHash = identity;
         evidence.eventNullifier = keccak256(abi.encode("forecast:activity", dayIndex));
         evidence.metric = 1_100;
         evidence.proofSetHash = keccak256(abi.encode("forecast:run", dayIndex));
