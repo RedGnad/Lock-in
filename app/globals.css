@@ -420,6 +420,9 @@ a { color: inherit; }
 .pact-actions .lock-button { width: auto; }
 .pact-actions .consent-row { flex: 0 0 100%; }
 .pact-actions p { font: italic 14px/1.4 Georgia, serif; }
+.invite-block { flex: 0 0 100%; display: grid; gap: 8px; }
+.invite-link { width: 100%; padding: 10px 12px; border: 1px solid var(--ink); background: var(--surface); color: var(--ink); font: 13px/1.3 Arial, sans-serif; text-overflow: ellipsis; }
+
 .proof-prep { flex: 0 0 100%; padding: 18px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--ink); background: var(--lime); }
 .proof-prep > div { min-width: 0; display: grid; gap: 7px; }
 .proof-prep span { font-size: 10px; font-weight: 950; letter-spacing: .12em; }
