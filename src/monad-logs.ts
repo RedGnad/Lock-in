@@ -29,6 +29,23 @@ export async function readEventsInChunks<const TAbi extends Abi>(
     toBlock: bigint;
   },
 ): Promise<unknown[]> {
+  // Ask for the whole range first. The documented block caps are not the only limit and often not the
+  // binding one: rpc1.monad.xyz served 41,596 blocks in one call because the result was a single log,
+  // while the same range split into 40 sequential calls was rate-limited and failed outright. Paging is
+  // the fallback for ranges that are genuinely too big, not the default.
+  try {
+    return [...await client.getContractEvents({
+      address: input.address,
+      abi: input.abi,
+      eventName: input.eventName,
+      args: input.args,
+      fromBlock: input.fromBlock,
+      toBlock: input.toBlock,
+    } as never)];
+  } catch {
+    // Fall through to paging.
+  }
+
   const logs: unknown[] = [];
   for (let from = input.fromBlock; from <= input.toBlock; from += MONAD_LOG_BLOCK_RANGE) {
     const to = from + MONAD_LOG_BLOCK_RANGE - 1n > input.toBlock ? input.toBlock : from + MONAD_LOG_BLOCK_RANGE - 1n;
