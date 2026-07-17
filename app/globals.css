@@ -337,7 +337,9 @@ a { color: inherit; }
 .profile-form label { grid-column: 1 / -1; margin-bottom: 7px; font-size: 9px; font-weight: 950; letter-spacing: .1em; text-transform: uppercase; }
 .profile-form > div { min-width: 0; height: 48px; padding-left: 12px; display: flex; align-items: center; border: 2px solid var(--ink); border-right: 0; background: var(--paper); font-weight: 900; }
 .profile-form input { width: 100%; min-width: 0; height: 100%; padding: 0 10px 0 2px; border: 0; outline: 0; background: transparent; }
-.profile-form .secondary-button { min-height: 48px; padding: 0 15px; background: var(--surface); white-space: nowrap; }
+.profile-form .secondary-button { min-height: 48px; padding: 0 15px; background: var(--surface); white-space: nowrap; box-shadow: none; }
+/* Glued to the input, so it must not slide away on hover; give feedback with colour instead of motion. */
+.profile-form .secondary-button:not(:disabled):hover { transform: none; box-shadow: none; background: var(--lime); }
 .profile-remove { grid-column: 1 / -1; width: max-content; margin-top: 9px; padding: 3px 0; border: 0; border-bottom: 1px solid currentColor; color: var(--muted); background: transparent; cursor: pointer; font-size: 8px; font-weight: 950; letter-spacing: .08em; transition: color .15s ease, transform .15s ease; }
 .profile-remove:not(:disabled):hover { color: var(--acid); transform: translateX(3px); }
 .profile-remove:disabled { cursor: not-allowed; opacity: .45; }
