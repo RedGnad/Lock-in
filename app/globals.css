@@ -604,3 +604,14 @@ footer div { display: flex; gap: 22px; }
   .orbit-one, .orbit-two { animation: none; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+.duo-preview { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 18px; }
+.duo-step { display: grid; gap: 8px; }
+.duo-step small { color: var(--muted); font: 13px/1.4 Georgia, serif; }
+.duo-baseline { padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; border: 1px solid var(--ink); background: var(--lime); }
+.duo-baseline span { display: block; font-size: 10px; font-weight: 950; letter-spacing: .12em; }
+.duo-baseline b { font-size: 19px; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.duo-result { padding: 18px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 6px 6px 0 var(--acid); }
+.duo-result strong { display: block; margin-bottom: 6px; font-size: 22px; text-transform: uppercase; letter-spacing: -.03em; }
+.duo-result p { margin: 0; color: var(--muted); font: 15px/1.5 Georgia, serif; }
+.duo-error { color: white; background: var(--acid); padding: 10px 12px; }
