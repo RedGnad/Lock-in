@@ -82,7 +82,8 @@ if (allowlist.length === 0 || allowlist.some((v) => !isAddress(v))) throw new Er
 if (required("SESSION_SIGNING_SECRET").length < 32) throw new Error("SESSION_SIGNING_SECRET must be at least 32 chars");
 if (Buffer.from(required("DUOLINGO_IDENTITY_HMAC_KEY"), "base64").length !== 32) throw new Error("DUOLINGO_IDENTITY_HMAC_KEY must be 32 bytes base64");
 const reclaimConfigured = Boolean(process.env.ID?.trim() && process.env.SECRET?.trim());
-const escrowDbConfigured = Boolean((process.env.DUOLINGO_ESCROW_DATABASE_URL || process.env.DATABASE_URL || "").trim());
+// The financial runtime has no DATABASE_URL fallback, so the gate requires the dedicated variable too.
+const escrowDbConfigured = Boolean(process.env.DUOLINGO_ESCROW_DATABASE_URL?.trim());
 
 const chain = defineChain({ id: CHAIN_ID, name: "Monad", nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } });
 const client = createPublicClient({ chain, transport: http(rpcUrl) });

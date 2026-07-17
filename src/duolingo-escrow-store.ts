@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS duolingo_escrow_baselines (
   target_xp integer NOT NULL,
   baseline_xp integer NOT NULL,
   baseline_observed_at bigint NOT NULL,
-  duolingo_profile_id text NOT NULL,
   baseline_session_id text NOT NULL,
   nullifier text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -62,11 +61,20 @@ CREATE TABLE IF NOT EXISTS duolingo_escrow_finals (
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (wallet_address, pact_id)
 );
+
+-- Durable rows keep only the HMAC identity, never a raw Duolingo profile id. Idempotent: a no-op once the
+-- column is gone. The raw id lives only transiently on an unconsumed session and is nulled on consumption.
+ALTER TABLE duolingo_escrow_baselines DROP COLUMN IF EXISTS duolingo_profile_id;
 `;
 
+/**
+ * The financial database, which must be the DEDICATED Duolingo escrow Neon and nothing else. There is no
+ * DATABASE_URL fallback on purpose: locally DATABASE_URL is the Strava production database, and a real-USDC
+ * runtime must never be one misconfiguration away from it. Absent the variable, the routes fail closed.
+ */
 function sql() {
-  const url = process.env.DUOLINGO_ESCROW_DATABASE_URL?.trim() || process.env.DATABASE_URL?.trim();
-  if (!url) throw new Error("DUOLINGO_ESCROW_DATABASE_URL (or DATABASE_URL) is not configured");
+  const url = process.env.DUOLINGO_ESCROW_DATABASE_URL?.trim();
+  if (!url) throw new Error("DUOLINGO_ESCROW_DATABASE_URL is not configured");
   return neon(url);
 }
 
@@ -135,7 +143,6 @@ export type EscrowBaselineRow = Readonly<{
   targetXp: number;
   baselineXp: number;
   baselineObservedAt: number;
-  duolingoProfileId: string;
   nullifier: string;
 }>;
 
@@ -157,21 +164,21 @@ export async function consumeAndSaveBaseline(input: {
   targetXp: number;
   baselineXp: number;
   baselineObservedAt: number;
-  duolingoProfileId: string;
   nullifier: Hex;
 }): Promise<boolean> {
+  // Consuming the session also nulls its raw profile id: after this point only the HMAC identity remains.
   const rows = (await sql()`
     WITH consumed AS (
-      UPDATE duolingo_escrow_sessions SET consumed_at = now()
+      UPDATE duolingo_escrow_sessions SET consumed_at = now(), duolingo_profile_id = ''
       WHERE session_id = ${input.sessionId} AND consumed_at IS NULL
       RETURNING session_id
     )
     INSERT INTO duolingo_escrow_baselines
       (wallet_address, config_hash, intent, pact_id, create_nonce, identity_hash, target_xp, baseline_xp,
-       baseline_observed_at, duolingo_profile_id, baseline_session_id, nullifier)
+       baseline_observed_at, baseline_session_id, nullifier)
     SELECT ${input.walletAddress.toLowerCase()}, ${input.configHash}, ${input.intent}, ${input.pactId},
            ${input.createNonce}, ${input.identityHash}, ${input.targetXp}, ${input.baselineXp},
-           ${input.baselineObservedAt}, ${input.duolingoProfileId}, ${input.sessionId}, ${input.nullifier}
+           ${input.baselineObservedAt}, ${input.sessionId}, ${input.nullifier}
     FROM consumed
     ON CONFLICT (wallet_address, config_hash) DO NOTHING
     RETURNING wallet_address`
@@ -185,7 +192,7 @@ export async function loadEscrowBaseline(
 ): Promise<EscrowBaselineRow | null> {
   const rows = (await sql()`
     SELECT wallet_address, config_hash, intent, pact_id, identity_hash, target_xp, baseline_xp,
-           baseline_observed_at, duolingo_profile_id, nullifier
+           baseline_observed_at, nullifier
       FROM duolingo_escrow_baselines
       WHERE wallet_address = ${walletAddress.toLowerCase()} AND config_hash = ${configHash}`
   ) as Record<string, string | number | null>[];
@@ -200,7 +207,6 @@ export async function loadEscrowBaseline(
     targetXp: Number(row.target_xp),
     baselineXp: Number(row.baseline_xp),
     baselineObservedAt: Number(row.baseline_observed_at),
-    duolingoProfileId: String(row.duolingo_profile_id),
     nullifier: String(row.nullifier),
   };
 }
@@ -224,7 +230,7 @@ export async function consumeAndSaveFinal(input: {
 }): Promise<boolean> {
   const rows = (await sql()`
     WITH consumed AS (
-      UPDATE duolingo_escrow_sessions SET consumed_at = now()
+      UPDATE duolingo_escrow_sessions SET consumed_at = now(), duolingo_profile_id = ''
       WHERE session_id = ${input.sessionId} AND consumed_at IS NULL
       RETURNING session_id
     )

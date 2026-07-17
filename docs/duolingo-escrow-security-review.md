@@ -51,6 +51,14 @@ compromise and provider error remain possible. We never claim otherwise.
 - Attestations expire in 5 minutes (`ESCROW_ATTESTATION_TTL_SECONDS`), inside the
   contract's `MAX_ATTESTATION_AGE` of 10 minutes; the UI re-checks freshness after
   the approve and refuses to send a doomed transaction.
+- **Identifier minimisation.** The durable rows (`duolingo_escrow_baselines`,
+  `duolingo_escrow_finals`) keep only the HMAC `identity_hash`, never a raw profile
+  id; the baseline↔final account check runs entirely over the HMAC. The raw id
+  lives only on an unconsumed session and is blanked when the session is consumed.
+- **Dedicated database.** The financial runtime requires `DUOLINGO_ESCROW_DATABASE_URL`
+  and has no `DATABASE_URL` fallback, so a real-USDC path is never one
+  misconfiguration away from the Strava production database; the gate requires the
+  same variable.
 
 ## Scenario review (each maps to a test)
 

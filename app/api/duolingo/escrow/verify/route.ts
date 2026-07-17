@@ -136,7 +136,6 @@ export async function POST(request: Request) {
         targetXp: session.targetXp,
         baselineXp: evidence.totalXp,
         baselineObservedAt: evidence.observedAt,
-        duolingoProfileId: evidence.profileId,
         nullifier: attestation.nullifier,
       }))) {
         throw new Error("This baseline has already been recorded. Start a new one to try again.");
@@ -166,11 +165,11 @@ export async function POST(request: Request) {
 
     // The final proof must be the SAME Duolingo account that was bound on-chain: its HMAC identity has to
     // equal both the stored baseline identity and the identity the contract holds for this participant.
+    // No raw profile id is stored, so this account check is purely over the HMAC pseudonym.
     const finalIdentity = duolingoIdentityHash(evidence.profileId);
     if (
       finalIdentity !== (baseline.identityHash as Hex)
         || pact.participantIdentity !== (baseline.identityHash as Hex)
-        || baseline.duolingoProfileId !== evidence.profileId
     ) {
       throw new Error("The final proof is a different Duolingo account than the baseline");
     }
@@ -184,7 +183,9 @@ export async function POST(request: Request) {
 
     const delta = validateDuolingoDelta({
       baseline: {
-        profileId: baseline.duolingoProfileId,
+        // Same account as the final, already proven above via the HMAC identity; the delta validator only
+        // uses totalXp, observedAt and the identity/nullifier, never a raw profile id.
+        profileId: evidence.profileId,
         totalXp: baseline.baselineXp,
         identityHash: evidence.identityHash,
         eventNullifier: ZERO_HASH,

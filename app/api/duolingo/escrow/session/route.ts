@@ -5,7 +5,7 @@ import type { Hex } from "viem";
 import { readJsonBody } from "@/src/api-guard";
 import { DUOLINGO_PROVIDER_ID, DUOLINGO_PROVIDER_VERSION } from "@/src/duolingo-proof-policy";
 import { resolvePublicDuolingoProfile } from "@/src/duolingo-profile";
-import { hashDuolingoConfiguration } from "@/src/duolingo-attestation";
+import { duolingoIdentityHash, hashDuolingoConfiguration } from "@/src/duolingo-attestation";
 import {
   escrowContextMessage,
   escrowVerifyingContract,
@@ -104,10 +104,11 @@ export async function POST(request: Request) {
       if (!pact) throw new Error("That Lock does not exist");
       // Refuse before spending a proof if the Lock cannot take a fresh final right now.
       assertEscrowFinalOpen(pact, "capture");
-      // The baseline must already exist for this exact Lock, keyed by its on-chain configHash.
+      // The baseline must already exist for this exact Lock, keyed by its on-chain configHash. The account
+      // is checked against the stored HMAC identity, since no raw profile id is kept.
       const baseline = await loadEscrowBaseline(wallet, pact.configHash);
       if (!baseline) throw new Error("Verify your starting XP before your final XP");
-      if (baseline.duolingoProfileId !== profile.id) {
+      if (duolingoIdentityHash(profile.id) !== (baseline.identityHash as Hex)) {
         throw new Error("This is a different Duolingo account than the one you started with");
       }
       configHash = pact.configHash;
