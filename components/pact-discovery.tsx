@@ -115,7 +115,10 @@ export function PactDiscovery() {
     query: { enabled: Boolean(escrowAddress && myPactIds.length), refetchInterval: 10_000 },
   });
 
-  const pactReadData = pactReads.data as unknown as readonly { result?: unknown }[] | undefined;
+  const pactReadData = pactReads.data as unknown as readonly { result?: unknown; status?: string }[] | undefined;
+  // A multicall can come back "successful" with individual calls failed. Treating those as "this Lock is
+  // not open" is how a live Lock turns into "No open challenges right now" whenever the RPC hiccups.
+  const someReadFailed = Boolean(pactReadData?.some((entry) => entry?.status === "failure"));
   const openPacts: OpenPact[] = nowSeconds === null ? [] : recentPactIds.flatMap((id, index) => {
       const pact = pactReadData?.[index]?.result as PactTuple | undefined;
       if (
@@ -151,7 +154,10 @@ export function PactDiscovery() {
   }
 
   const loading = nowSeconds === null || nextPact.isPending || (recentPactIds.length > 0 && pactReads.isPending);
-  const failed = Boolean(nextPact.error || pactReads.error);
+  // "We could not read" and "there is nothing" are different claims, and only one is true when the RPC
+  // drops a call. Locks that did load are still shown; the error replaces the empty state only when a
+  // failure is the reason the list is empty.
+  const failed = Boolean(nextPact.error || pactReads.error || (someReadFailed && openPacts.length === 0));
 
   return (
     <section className="pact-discovery" id="join" aria-labelledby="pact-discovery-title">
