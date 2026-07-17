@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "chainId": "143",
+  "createdAt": 1784243421696,
+  "meta": {
+    "name": "3. setCreationPaused(false)",
+    "description": "Open creation. LAST: admission is still gated server-side by CANARY_ALLOWED_WALLETS.",
+    "txBuilderVersion": "1.17.1"
+  },
+  "transactions": [
+    {
+      "to": "0xD37121112F240fE03a18D754B2fdB9dC750034d4",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          {
+            "name": "paused",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "name": "setCreationPaused",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "paused": "false"
+      }
+    }
+  ]
+}

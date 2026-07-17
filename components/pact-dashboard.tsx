@@ -88,6 +88,10 @@ export function PactDashboard({ id }: { id: string }) {
   const { writeContractAsync } = useWriteContract();
   const pactId = /^\d+$/.test(id) ? BigInt(id) : 0n;
   const inviteCode = pactId > 0n ? encodeLockInviteCode(pactId) : "";
+  const [inviteUrl, setInviteUrl] = useState("");
+  useEffect(() => {
+    if (inviteCode) setInviteUrl(`${window.location.origin}/l/${inviteCode}`);
+  }, [inviteCode]);
   const contract = escrowAddress || zeroAddress;
   const [message, setMessage] = useState("");
   const [txHash, setTxHash] = useState<Hash | null>(null);
@@ -135,7 +139,12 @@ export function PactDashboard({ id }: { id: string }) {
     ],
     query: { enabled: Boolean(escrowAddress && pactId > 0n), refetchInterval: 10_000 },
   });
-  const pact = reads.data?.[0]?.result as PactTuple | undefined;
+  // A per-call failure inside the multicall leaves `result` undefined while reads.isError stays false, so
+  // reading "no result" as "no Lock" turns any RPC hiccup into "this Lock does not exist" on a Lock that
+  // holds real stakes. Only the contract answering with a zero creator means absent.
+  const pactRead = reads.data?.[0];
+  const pactReadFailed = pactRead?.status === "failure" || (reads.data !== undefined && pactRead === undefined);
+  const pact = pactRead?.result as PactTuple | undefined;
   const isJoined = Boolean(reads.data?.[1]?.result);
   const bitmap = BigInt(reads.data?.[2]?.result || 0);
   const completed = Number(reads.data?.[3]?.result || 0);
@@ -322,18 +331,24 @@ export function PactDashboard({ id }: { id: string }) {
   }
 
   async function sharePact() {
-    const url = `${window.location.origin}/l/${inviteCode}`;
+    const url = inviteUrl;
     const text = pact
       ? `Join my ${missionByType(pact[11]).name} Lock In (${inviteCode}): ${formatMissionTarget(pact[11], pact[3])}, ${pact[8]} wins in ${pact[7]} days, ${formatUnits(pact[2], decimals)} ${symbol} each. Finishers split the pool.`
       : `Join my Lock In challenge (${inviteCode}).`;
+    // navigator.share exists on desktops where it then refuses, and clipboard access can be denied without
+    // warning. Either way the link is rendered next to this button, so the invite never depends on this
+    // succeeding.
     try {
-      const usedShareSheet = typeof navigator.share === "function";
-      if (usedShareSheet) await navigator.share({ title: `Lock In · ${inviteCode}`, text, url });
-      else await navigator.clipboard.writeText(url);
-      setMessage(usedShareSheet ? "Invite ready to share." : `${inviteCode} invite link copied.`);
+      if (navigator.canShare?.({ title: `Lock In · ${inviteCode}`, text, url })) {
+        await navigator.share({ title: `Lock In · ${inviteCode}`, text, url });
+        setMessage("Invite shared.");
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setMessage(`Invite link copied: ${url}`);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setMessage(`Share ${inviteCode} or ${url} to invite a friend.`);
+      setMessage(`Copy this invite link: ${url}`);
     }
   }
 
@@ -350,7 +365,9 @@ export function PactDashboard({ id }: { id: string }) {
   if (pactId <= 0n) return <main className="pact-shell"><div className="empty-state"><strong>That Lock ID is not valid.</strong><Link href="/#join">Find a lock</Link></div></main>;
   if (reads.isPending) return <main className="pact-shell"><div className="empty-state"><strong>Reading Lock #{id} from Monad…</strong></div></main>;
   if (reads.isError) return <main className="pact-shell"><div className="empty-state"><strong>Monad is not responding.</strong><button className="secondary-button" onClick={() => reads.refetch()}>TRY AGAIN</button></div></main>;
-  if (!pact || pact[0] === zeroAddress) return <main className="pact-shell"><div className="empty-state"><strong>Lock #{id} does not exist.</strong><Link href="/#join">Find a lock</Link></div></main>;
+  if (!pact && pactReadFailed) return <main className="pact-shell"><div className="empty-state"><strong>Monad did not answer for Lock #{id}.</strong><p>The Lock is unaffected: this is a read failure, not a change on chain.</p><button className="secondary-button" onClick={() => reads.refetch()}>TRY AGAIN</button></div></main>;
+  if (!pact) return <main className="pact-shell"><div className="empty-state"><strong>Reading Lock #{id} from Monad…</strong></div></main>;
+  if (pact[0] === zeroAddress) return <main className="pact-shell"><div className="empty-state"><strong>Lock #{id} does not exist.</strong><Link href="/#join">Find a lock</Link></div></main>;
 
   const startsAt = pact[1];
   const durationDays = pact[7];
@@ -404,7 +421,7 @@ export function PactDashboard({ id }: { id: string }) {
           {registration ? <p>{full ? "This lock is full." : `Registration closes ${formatDate(startsAt)}.`}</p> : (active || proofGraceOpen) && !actions.checkIns ? <p>Verification is currently paused. Lock refund rules still apply.</p> : active ? <p>Verify through {mission.name} before {formatDate(startsAt + BigInt((currentDay + 1) * 86_400))}.</p> : proofGraceOpen ? <p>Only a run completed on the final lock day counts. Proof closes {formatDate(submissionDeadline)}.</p> : graceOpen ? <p>The lock can settle after {formatDate(submissionDeadline)}.</p> : <p>{pact[15] && pact[16] ? "Refunds are ready." : pact[15] ? "Payouts are ready." : `Program ended ${formatDate(endsAt)}.`}</p>}
         </div>
         <div className="pact-now-actions">
-          {registration && isJoined && !full && <button className="lock-button" type="button" onClick={sharePact}>INVITE A PLAYER</button>}
+          {registration && isJoined && !full && <div className="invite-block"><button className="lock-button" type="button" onClick={sharePact}>INVITE A PLAYER</button><input className="invite-link" readOnly value={inviteUrl} onFocus={(event) => event.target.select()} aria-label="Invite link" /></div>}
           {registration && !isJoined && !full && <a className="primary-link" href="#join-pact">JOIN THIS LOCK</a>}
           {canCheckIn && latestOpenDay !== null && <button className="lock-button" type="button" onClick={() => void checkIn(latestOpenDay)}>{latestOpenDay === currentDay ? "VERIFY TODAY" : `VERIFY DAY ${latestOpenDay + 1}`}</button>}
           {!registration && isJoined && !canCheckIn && actions.checkIns && <button className="secondary-button" type="button" onClick={sharePact}>SHARE PROGRESS</button>}

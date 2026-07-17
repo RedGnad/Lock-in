@@ -103,7 +103,31 @@ function respond(input: {
   }, { status: ok ? 200 : 503, headers: { "Cache-Control": "no-store" } });
 }
 
+/**
+ * One chain read per window, shared by every caller.
+ *
+ * A health check costs ~16 RPC calls, every browser tab polls it every 15s, and a single failed call
+ * turns the whole answer red, which closes the UI mid-flow. Without this, the endpoint was the heaviest
+ * RPC consumer we have and it rate-limited itself into flapping. The window is short enough that a pause
+ * change, which only a multisig can make, still surfaces within seconds.
+ */
+const HEALTH_TTL_MS = 10_000;
+let cachedHealth: { expiresAt: number; response: NextResponse } | null = null;
+let healthInFlight: Promise<NextResponse> | null = null;
+
 export async function GET() {
+  if (cachedHealth && cachedHealth.expiresAt > Date.now()) return cachedHealth.response.clone();
+  healthInFlight ||= readHealth().finally(() => {
+    healthInFlight = null;
+  });
+  const response = await healthInFlight;
+  // Only a green answer is worth holding: a red one must be allowed to recover on the next call rather
+  // than keeping the UI shut for the rest of the window.
+  if (response.status === 200) cachedHealth = { expiresAt: Date.now() + HEALTH_TTL_MS, response };
+  return response.clone();
+}
+
+async function readHealth(): Promise<NextResponse> {
   const product = readProductFlagState();
   const configured = escrowAddress && isAddress(escrowAddress) ? getAddress(escrowAddress) : null;
   const encryptionKey = process.env.STRAVA_TOKEN_ENCRYPTION_KEY?.trim();

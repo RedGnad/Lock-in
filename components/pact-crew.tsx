@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { zeroAddress, type Address } from "viem";
-import { usePublicClient, useReadContracts } from "wagmi";
-import { escrowAddress, escrowDeploymentBlock } from "@/src/chain";
+import { useReadContracts } from "wagmi";
+import { escrowAddress } from "@/src/chain";
 import { lockInAbi } from "@/src/lock-in-abi";
 
 function compactAddress(address: Address) {
@@ -28,7 +28,6 @@ type PactCrewProps = {
 type HighFive = { from: Address; to: Address; dayIndex: number };
 
 export function PactCrew({ pactId, participantCount, durationDays, requiredCompletions, currentDay, currentAddress, highFiveBusy = false, onHighFive }: PactCrewProps) {
-  const publicClient = usePublicClient();
   const [members, setMembers] = useState<Address[]>([]);
   const [highFives, setHighFives] = useState<HighFive[]>([]);
   const [loadError, setLoadError] = useState(false);
@@ -36,38 +35,20 @@ export function PactCrew({ pactId, participantCount, durationDays, requiredCompl
   useEffect(() => {
     let alive = true;
     async function loadCrew() {
-      if (!publicClient || !escrowAddress) return;
+      if (!escrowAddress) return;
       try {
-        const [joinLogs, highFiveLogs] = await Promise.all([
-          publicClient.getContractEvents({
-            address: escrowAddress,
-            abi: lockInAbi,
-            eventName: "PactJoined",
-            args: { pactId },
-            fromBlock: escrowDeploymentBlock,
-            toBlock: "latest",
-          }),
-          publicClient.getContractEvents({
-            address: escrowAddress,
-            abi: lockInAbi,
-            eventName: "HighFiveSent",
-            args: { pactId },
-            fromBlock: escrowDeploymentBlock,
-            toBlock: "latest",
-          }),
-        ]);
-        const unique = Array.from(new Set(joinLogs.map((log) => log.args.account).filter(Boolean))) as Address[];
-        const reactions = highFiveLogs.flatMap((log) => {
-          const from = log.args.from;
-          const to = log.args.to;
-          const dayIndex = log.args.dayIndex;
-          return from && to && dayIndex !== undefined ? [{ from, to, dayIndex: Number(dayIndex) }] : [];
-        });
-        if (alive) {
-          setMembers(unique);
-          setHighFives(reactions);
-          setLoadError(false);
+        // The server holds the log scan: doing it here was ~80 RPC round trips per page load, growing
+        // daily with the chain, and the public endpoint refused it.
+        const response = await fetch(`/api/pact/${pactId}/crew`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!alive) return;
+        if (!response.ok || payload?.ok !== true) {
+          setLoadError(true);
+          return;
         }
+        setMembers(payload.members as Address[]);
+        setHighFives(payload.highFives as HighFive[]);
+        setLoadError(false);
       } catch {
         if (alive) setLoadError(true);
       }
@@ -78,7 +59,7 @@ export function PactCrew({ pactId, participantCount, durationDays, requiredCompl
       alive = false;
       window.clearInterval(timer);
     };
-  }, [pactId, publicClient]);
+  }, [pactId]);
 
   const progressContracts = useMemo(() => members.flatMap((member) => [
     { address: escrowAddress || zeroAddress, abi: lockInAbi, functionName: "completionBitmap" as const, args: [pactId, member] as const },

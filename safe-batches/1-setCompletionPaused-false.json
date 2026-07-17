@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "chainId": "143",
+  "createdAt": 1784243421696,
+  "meta": {
+    "name": "1. setCompletionPaused(false)",
+    "description": "Open check-ins. Opens FIRST and must stay open until the Lock settles: a completion pause overlapping a live Lock refunds everyone, finishers included.",
+    "txBuilderVersion": "1.17.1"
+  },
+  "transactions": [
+    {
+      "to": "0xD37121112F240fE03a18D754B2fdB9dC750034d4",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          {
+            "name": "paused",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "name": "setCompletionPaused",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "paused": "false"
+      }
+    }
+  ]
+}
