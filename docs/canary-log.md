@@ -41,3 +41,18 @@ Window: Sun 19 Jul 05:00 → Mon 20 Jul 05:00 Paris.
 ## Settlement — pending
 Lock ends Mon 20 Jul 05:00. Submission deadline and first `finalizePact` at Tue 21 Jul 05:00.
 Expected: A reaches 3/3 and is the sole finisher, claims 0.2 USDC; B claims nothing.
+
+## Duolingo Live Proof Beta — first public E2E, 17 July 2026
+
+Run by wallet A on https://lock-in-duolingo-preview.vercel.app/duolingo with a real Duolingo account. No
+raw profile id or proof object recorded here; those stay server-side.
+
+- baseline: 8219 XP · target: +50 XP
+- first final, no XP earned yet: rejected, "Earned 0 XP of the 50 this Lock requires"
+- second final, after real XP: 8271 XP · delta +52 · **Challenge complete ✓**
+
+Neon (preview DB) confirmed: baseline 8219, final 8271, earned 52, passed true. The rejected 0-XP final
+did NOT consume its session (validation refused it before the atomic consume+save), the successful final
+did, and the result survives a page reload. It proves, on real infrastructure: wallet auth, allowlist,
+Reclaim portal, real TEE baseline, server-side baseline, refusal of an unmet target, a retry after that
+refusal, identity continuity, exact delta, and success at the target. No mock, no hand-entered XP.
