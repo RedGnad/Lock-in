@@ -16,6 +16,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { erc20Abi } from "../src/lock-in-abi.js";
 import { lockInDuolingoAbi } from "../src/lock-in-duolingo-abi.js";
 import { DUOLINGO_XP_SCHEME, missionPolicyHash } from "../src/duolingo-attestation.js";
+import { PINNED_DUOLINGO_EVIDENCE_SIGNER } from "../src/duolingo-escrow-client.js";
 
 /**
  * The release gate for LockInDuolingoEscrow (contract B, real USDC).
@@ -56,15 +57,23 @@ function requiredHash(name: string): Hash {
   return value.toLowerCase() as Hash;
 }
 
-/** The expected evidence signer: derived from the private key if present, else the pinned public address. */
+/**
+ * The expected evidence signer is the address pinned in source. If a private key or an address is also
+ * configured locally, it MUST derive to / equal the pinned address, catching a wrong key or a typo.
+ */
 function expectedEvidenceSigner(): Address {
+  const pinned = getAddress(PINNED_DUOLINGO_EVIDENCE_SIGNER);
   const key = process.env.DUOLINGO_EVIDENCE_SIGNER_PRIVATE_KEY?.trim();
   if (key) {
     const value = (key.startsWith("0x") ? key : `0x${key}`) as Hex;
     if (!/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error("DUOLINGO_EVIDENCE_SIGNER_PRIVATE_KEY is invalid");
-    return privateKeyToAccount(value).address;
+    if (privateKeyToAccount(value).address !== pinned) throw new Error("The signer key does not derive to the pinned signer address");
   }
-  return requiredAddress("DUOLINGO_EVIDENCE_SIGNER_ADDRESS");
+  const envAddr = process.env.DUOLINGO_EVIDENCE_SIGNER_ADDRESS?.trim();
+  if (envAddr && (!isAddress(envAddr) || getAddress(envAddr) !== pinned)) {
+    throw new Error("DUOLINGO_EVIDENCE_SIGNER_ADDRESS does not match the pinned signer address");
+  }
+  return pinned;
 }
 
 const rpcUrl = process.env.MONAD_RPC_URL?.trim() || "https://rpc.monad.xyz";

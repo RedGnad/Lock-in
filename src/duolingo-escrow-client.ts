@@ -12,6 +12,13 @@ const BYTES32 = /^0x[0-9a-fA-F]{64}$/;
 const SIGNATURE = /^0x[0-9a-fA-F]{130}$/;
 const UINT_STRING = /^(?:0|[1-9]\d*)$/;
 
+/**
+ * The Duolingo evidence signer's PUBLIC address, pinned in source. The gate asserts the deployed contract's
+ * evidenceSigner equals this, and the UI only shows "live with USDC" when the on-chain signer matches it.
+ * Safe to commit (a public address). If the signer key is ever rotated, update this and redeploy.
+ */
+export const PINNED_DUOLINGO_EVIDENCE_SIGNER = "0x57E81089f6DC6c68291b78F90b626c1AA546eAC7";
+
 export type DuolingoModeStatus = "live-proof" | "canary-paused" | "live-usdc";
 export type DuolingoMode = Readonly<{ status: DuolingoModeStatus; badge: string; canTransact: boolean }>;
 

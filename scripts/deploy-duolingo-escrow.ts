@@ -15,6 +15,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { addMonadGasBuffer } from "../src/monad-gas.js";
+import { PINNED_DUOLINGO_EVIDENCE_SIGNER } from "../src/duolingo-escrow-client.js";
 
 /**
  * Deploys LockInDuolingoEscrow (contract B) PAUSED, then transfers ownership to the Safe.
@@ -55,6 +56,9 @@ if (token !== EXPECTED_USDC) throw new Error("STAKE_TOKEN_ADDRESS must be canoni
 const deployer = privateKeyToAccount(localPrivateKey(["DUOLINGO_DEPLOYER_PRIVATE_KEY", "DEPLOYER_PRIVATE_KEY", "PRIVATE_KEY"]));
 const finalOwner = requiredAddress("LOCK_IN_OWNER_ADDRESS");
 const evidenceSigner = privateKeyToAccount(localPrivateKey(["DUOLINGO_EVIDENCE_SIGNER_PRIVATE_KEY"])).address;
+if (evidenceSigner !== getAddress(PINNED_DUOLINGO_EVIDENCE_SIGNER)) {
+  throw new Error("The signer key does not derive to the pinned evidence signer address; wrong key");
+}
 if (deployer.address === evidenceSigner) throw new Error("The funded deployer must not be the evidence signer");
 if (finalOwner === deployer.address || finalOwner === evidenceSigner) {
   throw new Error("LOCK_IN_OWNER_ADDRESS must differ from the deployer and the evidence signer");

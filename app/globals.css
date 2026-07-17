@@ -337,7 +337,10 @@ a { color: inherit; }
 .profile-form label { grid-column: 1 / -1; margin-bottom: 7px; font-size: 9px; font-weight: 950; letter-spacing: .1em; text-transform: uppercase; }
 .profile-form > div { min-width: 0; height: 48px; padding-left: 12px; display: flex; align-items: center; border: 2px solid var(--ink); border-right: 0; background: var(--paper); font-weight: 900; }
 .profile-form input { width: 100%; min-width: 0; height: 100%; padding: 0 10px 0 2px; border: 0; outline: 0; background: transparent; }
-.profile-form .secondary-button { min-height: 48px; padding: 0 15px; background: var(--surface); white-space: nowrap; }
+/* Fused to the handle input, so no drop shadow and no hover slide: it is one input+button unit. */
+.profile-form .secondary-button { min-height: 48px; padding: 0 15px; background: var(--surface); white-space: nowrap; box-shadow: none; transition: color .15s ease, background .15s ease; }
+.profile-form .secondary-button:not(:disabled):hover,
+.profile-form .secondary-button:not(:disabled):active { transform: none; box-shadow: none; }
 .profile-remove { grid-column: 1 / -1; width: max-content; margin-top: 9px; padding: 3px 0; border: 0; border-bottom: 1px solid currentColor; color: var(--muted); background: transparent; cursor: pointer; font-size: 8px; font-weight: 950; letter-spacing: .08em; transition: color .15s ease, transform .15s ease; }
 .profile-remove:not(:disabled):hover { color: var(--acid); transform: translateX(3px); }
 .profile-remove:disabled { cursor: not-allowed; opacity: .45; }
@@ -622,6 +625,10 @@ footer div { display: flex; gap: 22px; }
 .duo-mode-badge[data-mode="canary-paused"] { color: white; background: var(--ink); }
 .join-by-id { display: flex; gap: 8px; align-items: stretch; }
 .join-by-id .invite-link { flex: 1; }
+/* OPEN sits against the Lock-number input, so it drops the shadow and the hover slide too. */
+.join-by-id .secondary-button { box-shadow: none; white-space: nowrap; transition: color .15s ease, background .15s ease; }
+.join-by-id .secondary-button:not(:disabled):hover,
+.join-by-id .secondary-button:not(:disabled):active { transform: none; box-shadow: none; }
 .share-control { position: relative; display: inline-block; }
 .share-menu { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: min(300px, 82vw); padding: 8px; display: grid; gap: 4px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 6px 6px 0 var(--ink); }
 .share-item { width: 100%; min-height: 44px; padding: 10px 12px; display: flex; align-items: center; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font: 900 11px/1 Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }
