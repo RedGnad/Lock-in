@@ -8,6 +8,7 @@
     "build": "next build",
     "build:contracts": "forge build",
     "db:migrate": "tsx scripts/migrate-strava-tokens.ts",
+    "db:migrate:duolingo": "tsx scripts/migrate-duolingo-preview.ts",
     "strava:connections": "tsx scripts/inspect-strava-connections.ts",
     "check:contract-sizes": "tsx scripts/check-contract-sizes.ts",
     "start": "next start",
