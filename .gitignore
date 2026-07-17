@@ -44,3 +44,6 @@ release-artifacts/
 # Real captured proofs: they bind a personal wallet to a personal Strava/Duolingo account
 private-fixtures/
 secrets/
+
+# Generated Duolingo Safe batches (built post-deploy from the pinned B address)
+safe-batches/duolingo/
