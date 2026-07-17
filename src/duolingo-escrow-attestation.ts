@@ -50,7 +50,7 @@ export function isCreateNonce(value: string): value is Hex {
  * Until the contract is deployed and pinned, this is unset and the backend refuses to sign: an attestation
  * bound to no address, or to the wrong one, is worthless. The value must be a real checksummed address.
  */
-export function escrowVerifyingContract(environment: NodeJS.ProcessEnv = process.env): Hex {
+export function escrowVerifyingContract(environment: Record<string, string | undefined> = process.env): Hex {
   const value = environment.DUOLINGO_ESCROW_ADDRESS?.trim();
   if (!value || !isAddress(value)) throw new Error("DUOLINGO_ESCROW_ADDRESS is not configured");
   return getAddress(value);
@@ -141,7 +141,7 @@ export async function buildBaselineAttestation(
   input:
     | { account: Hex; profileId: string; configHash: Hex; intent: "create"; createNonce: Hex; now?: number }
     | { account: Hex; profileId: string; configHash: Hex; intent: "join"; pactId: bigint; now?: number },
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: Record<string, string | undefined> = process.env,
 ): Promise<BaselineAttestation> {
   const verifyingContract = escrowVerifyingContract(environment);
   const identityHash = duolingoIdentityHash(input.profileId);
@@ -176,7 +176,7 @@ export async function buildFinalAttestation(
     occurredAt: number;
     now?: number;
   },
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: Record<string, string | undefined> = process.env,
 ): Promise<FinalAttestation> {
   const verifyingContract = escrowVerifyingContract(environment);
   const identityHash = duolingoIdentityHash(input.profileId);

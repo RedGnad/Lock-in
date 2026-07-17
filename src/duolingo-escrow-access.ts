@@ -18,7 +18,10 @@ export class EscrowAccessError extends Error {
   }
 }
 
-export function assertEscrowWalletAllowed(walletAddress: string, environment = process.env): void {
+export function assertEscrowWalletAllowed(
+  walletAddress: string,
+  environment: Record<string, string | undefined> = process.env,
+): void {
   const configured = environment.DUOLINGO_ESCROW_ALLOWED_WALLETS?.trim();
   if (!configured) throw new EscrowAccessError("The Duolingo escrow is not open yet", 403);
   const allowed = configured.split(",").map((value) => value.trim()).filter(Boolean);

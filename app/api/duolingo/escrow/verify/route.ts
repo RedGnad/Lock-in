@@ -16,7 +16,7 @@ import {
   escrowVerifyingContract,
 } from "@/src/duolingo-escrow-attestation";
 import { assertEscrowWalletAllowed, EscrowAccessError } from "@/src/duolingo-escrow-access";
-import { EscrowChainUnavailableError, readEscrowPact } from "@/src/duolingo-escrow-chain";
+import { assertEscrowFinalOpen, EscrowChainUnavailableError, readEscrowPact } from "@/src/duolingo-escrow-chain";
 import {
   consumeAndSaveBaseline,
   consumeAndSaveFinal,
@@ -59,7 +59,11 @@ export async function POST(request: Request) {
     if (!session) throw new Error("Unknown Reclaim session");
     requireWalletAuthSession(request, session.walletAddress);
     assertEscrowWalletAllowed(session.walletAddress);
-    escrowVerifyingContract();
+    try {
+      escrowVerifyingContract();
+    } catch {
+      throw new EscrowChainUnavailableError("The Duolingo escrow is not available yet");
+    }
     const rate = checkRateLimit("verify", request, session.walletAddress);
     if (!rate.allowed) {
       return NextResponse.json({ error: "Too many attempts. Try again shortly." }, {
@@ -153,9 +157,9 @@ export async function POST(request: Request) {
     const pactId = BigInt(session.pactId as string);
     const pact = await readEscrowPact(pactId, session.walletAddress);
     if (!pact) throw new Error("That Lock does not exist");
-    if (!pact.joined) throw new Error("You are not a participant in this Lock");
-    if (pact.completed) throw new Error("You have already completed this Lock");
-    if (pact.cancelled || pact.finalized) throw new Error("That Lock is closed");
+    // Refuse anything the contract's submitFinal would already reject: not joined, already completed,
+    // closed, underfilled, or past the submission deadline.
+    assertEscrowFinalOpen(pact, "submit");
 
     const baseline = await loadEscrowBaseline(session.walletAddress, pact.configHash);
     if (!baseline) throw new Error("Verify your starting XP before your final XP");

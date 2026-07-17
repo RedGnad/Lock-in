@@ -13,21 +13,39 @@ import { DUOLINGO_ESCROW_SCHEMA } from "../src/duolingo-escrow-store.js";
  * behind PgBouncer in transaction mode, the wrong place for schema changes. The statements are idempotent.
  *
  * Usage: pnpm db:migrate:escrow
- * Env:   DUOLINGO_ESCROW_DATABASE_URL_UNPOOLED (preferred) or DATABASE_URL_UNPOOLED, falling back to the
- *        pooled DUOLINGO_ESCROW_DATABASE_URL / DATABASE_URL with a warning.
+ * Env:   DUOLINGO_ESCROW_DATABASE_URL_UNPOOLED (preferred) or DATABASE_URL_UNPOOLED2 (the local Duolingo
+ *        Neon), then the pooled DUOLINGO_ESCROW_DATABASE_URL / DATABASE_URL2.
+ *
+ * It DELIBERATELY never falls back to DATABASE_URL / DATABASE_URL_UNPOOLED: locally those point at the
+ * Strava production database, which this migration must never touch. As a second line of defence it aborts
+ * if the target database contains any Strava table.
  */
 
 const url =
   process.env.DUOLINGO_ESCROW_DATABASE_URL_UNPOOLED?.trim() ||
-  process.env.DATABASE_URL_UNPOOLED?.trim() ||
+  process.env.DATABASE_URL_UNPOOLED2?.trim() ||
   process.env.DUOLINGO_ESCROW_DATABASE_URL?.trim() ||
-  process.env.DATABASE_URL?.trim();
-if (!url) throw new Error("DUOLINGO_ESCROW_DATABASE_URL_UNPOOLED (or DATABASE_URL_UNPOOLED) is required to migrate");
-if (!process.env.DUOLINGO_ESCROW_DATABASE_URL_UNPOOLED?.trim() && !process.env.DATABASE_URL_UNPOOLED?.trim()) {
-  console.warn("No unpooled URL set; running DDL over a pooled endpoint.");
+  process.env.DATABASE_URL2?.trim();
+if (!url) {
+  throw new Error(
+    "Set DUOLINGO_ESCROW_DATABASE_URL_UNPOOLED (or DATABASE_URL_UNPOOLED2) to the Duolingo Neon. " +
+      "Refusing to guess, and never using DATABASE_URL (Strava production).",
+  );
 }
 
 const sql = neon(url);
+
+// Defence in depth: if this database holds any Strava table, it is the wrong one. Abort before any DDL.
+const stravaTables = (await sql.query(
+  `SELECT table_name FROM information_schema.tables
+   WHERE table_schema = 'public' AND table_name IN ('strava_connections', 'strava_tokens')`,
+)) as { table_name: string }[];
+if (stravaTables.length > 0) {
+  throw new Error(
+    `Refusing to migrate: this database contains Strava tables (${stravaTables.map((t) => t.table_name).join(", ")}). ` +
+      "Point at the separate Duolingo Neon, never the Strava production database.",
+  );
+}
 const statements = DUOLINGO_ESCROW_SCHEMA
   .split("\n")
   .map((line) => line.replace(/--.*$/, ""))

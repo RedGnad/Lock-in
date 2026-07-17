@@ -6,11 +6,11 @@ const A = "0x79C53151315FaD9163f75a65A8Bd4D04a10e1e45";
 const B = "0x344412229B3b581C19572f9BF1F5d08d4Ae897E6";
 const OUTSIDER = "0x000000000000000000000000000000000000dEaD";
 
-function env(value?: string): NodeJS.ProcessEnv {
-  return (value === undefined ? {} : { DUOLINGO_ESCROW_ALLOWED_WALLETS: value }) as NodeJS.ProcessEnv;
+function env(value?: string): Record<string, string | undefined> {
+  return value === undefined ? {} : { DUOLINGO_ESCROW_ALLOWED_WALLETS: value };
 }
 
-function statusOf(wallet: string, environment: NodeJS.ProcessEnv): number {
+function statusOf(wallet: string, environment: Record<string, string | undefined>): number {
   try {
     assertEscrowWalletAllowed(wallet, environment);
   } catch (error) {
@@ -41,6 +41,6 @@ test("a wallet outside the list is refused with a 403", () => {
 
 test("the escrow allowlist is independent of the preview and canary lists", () => {
   // Being enabled elsewhere grants nothing here: only DUOLINGO_ESCROW_ALLOWED_WALLETS is read.
-  const environment = { DUOLINGO_PREVIEW_ALLOWED_WALLETS: A, CANARY_ALLOWED_WALLETS: A } as NodeJS.ProcessEnv;
+  const environment = { DUOLINGO_PREVIEW_ALLOWED_WALLETS: A, CANARY_ALLOWED_WALLETS: A };
   assert.throws(() => assertEscrowWalletAllowed(A, environment), EscrowAccessError);
 });

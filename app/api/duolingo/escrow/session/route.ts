@@ -14,9 +14,9 @@ import {
 import { EscrowConfigError, parseEscrowCreateTerms } from "@/src/duolingo-escrow-config";
 import { assertEscrowWalletAllowed, EscrowAccessError } from "@/src/duolingo-escrow-access";
 import {
+  assertEscrowFinalOpen,
   EscrowChainUnavailableError,
   readEscrowPact,
-  readEscrowPactConfigHash,
 } from "@/src/duolingo-escrow-chain";
 import { loadEscrowBaseline, pruneExpiredEscrowSessions, saveEscrowSession } from "@/src/duolingo-escrow-store";
 import { checkRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
@@ -52,8 +52,13 @@ export async function POST(request: Request) {
     const authed = requireWalletAuthSession(request, String(body.walletAddress || ""));
     const wallet = authed.walletAddress;
     assertEscrowWalletAllowed(wallet);
-    // Refuse before spending a proof if the escrow is not deployed and pinned yet.
-    escrowVerifyingContract();
+    // Refuse before spending a proof if the escrow is not deployed and pinned yet, without leaking which
+    // variable is missing.
+    try {
+      escrowVerifyingContract();
+    } catch {
+      throw new EscrowChainUnavailableError("The Duolingo escrow is not available yet");
+    }
     const rate = checkRateLimit("session", request, wallet);
     if (!rate.allowed) {
       return NextResponse.json({ error: "Too many attempts. Try again shortly." }, {
@@ -97,9 +102,8 @@ export async function POST(request: Request) {
       pactId = parsePactId(body.pactId);
       const pact = await readEscrowPact(pactId, wallet);
       if (!pact) throw new Error("That Lock does not exist");
-      if (!pact.joined) throw new Error("You are not a participant in this Lock");
-      if (pact.completed) throw new Error("You have already completed this Lock");
-      if (pact.cancelled || pact.finalized) throw new Error("That Lock is closed");
+      // Refuse before spending a proof if the Lock cannot take a fresh final right now.
+      assertEscrowFinalOpen(pact, "capture");
       // The baseline must already exist for this exact Lock, keyed by its on-chain configHash.
       const baseline = await loadEscrowBaseline(wallet, pact.configHash);
       if (!baseline) throw new Error("Verify your starting XP before your final XP");

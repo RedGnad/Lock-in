@@ -38,8 +38,8 @@ const identity = duolingoIdentityHash(PROFILE);
 
 test("the verifying contract is the pinned escrow, and an unset address is refused", () => {
   assert.equal(escrowVerifyingContract(), getAddress(CONTRACT));
-  assert.throws(() => escrowVerifyingContract({} as NodeJS.ProcessEnv), /not configured/);
-  assert.throws(() => escrowVerifyingContract({ DUOLINGO_ESCROW_ADDRESS: "nope" } as NodeJS.ProcessEnv), /not configured/);
+  assert.throws(() => escrowVerifyingContract({}), /not configured/);
+  assert.throws(() => escrowVerifyingContract({ DUOLINGO_ESCROW_ADDRESS: "nope" }), /not configured/);
 });
 
 test("context messages are phase and lock scoped", () => {
@@ -115,7 +115,7 @@ test("without a configured escrow address, nothing can be signed", async () => {
   await assert.rejects(
     buildBaselineAttestation(
       { account: ACCOUNT, profileId: PROFILE, configHash: CONFIG, intent: "create", createNonce: NONCE_A },
-      {} as NodeJS.ProcessEnv,
+      {},
     ),
     /not configured/,
   );
