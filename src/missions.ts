@@ -34,16 +34,25 @@ export const MISSIONS: readonly Mission[] = [
 export type PactTemplate = {
   id: string;
   name: string;
-  durationDays: 3 | 7 | 14 | 30;
+  durationDays: 3 | 7 | 15 | 30;
   requiredCompletions: number;
   description: string;
 };
 
+/**
+ * Every template leaves room to miss a day.
+ *
+ * The escrow only requires 3 <= durationDays <= 30 and 1 <= requiredCompletions <= durationDays, so these
+ * are a product choice, not a constraint. Demanding a perfect streak punished one bad day as harshly as
+ * quitting, which is the opposite of what an accountability product should do. The trade is deliberate:
+ * an easier target means everyone finishing more often, and a Lock where everyone finishes just returns
+ * each stake.
+ */
 export const PACT_TEMPLATES: readonly PactTemplate[] = [
-  { id: "quickfire", name: "Quickfire", durationDays: 3, requiredCompletions: 3, description: "Three days. No misses." },
-  { id: "momentum", name: "Momentum", durationDays: 7, requiredCompletions: 5, description: "Five wins in seven days." },
-  { id: "discipline", name: "Discipline", durationDays: 14, requiredCompletions: 10, description: "Ten wins across two weeks." },
-  { id: "long-game", name: "Long Game", durationDays: 30, requiredCompletions: 20, description: "Twenty wins across a month." },
+  { id: "quickfire", name: "Quickfire", durationDays: 3, requiredCompletions: 2, description: "Two wins in three days." },
+  { id: "momentum", name: "Momentum", durationDays: 7, requiredCompletions: 4, description: "Four wins in a week." },
+  { id: "discipline", name: "Discipline", durationDays: 15, requiredCompletions: 8, description: "Eight wins in a fortnight." },
+  { id: "long-game", name: "Long Game", durationDays: 30, requiredCompletions: 15, description: "Fifteen wins in a month." },
 ] as const;
 
 export function pactTemplate(durationDays: number): PactTemplate {
