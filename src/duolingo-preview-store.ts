@@ -14,6 +14,9 @@ import type { Hex } from "viem";
  * No stake and no escrow are involved here. This is the proof engine with a real user journey around it.
  */
 
+export const PREVIEW_SESSION_TTL_SECONDS = 30 * 60;
+export const PREVIEW_SESSION_PRUNE_SECONDS = 24 * 60 * 60;
+
 export const DUOLINGO_PREVIEW_SCHEMA = `
 CREATE TABLE IF NOT EXISTS duolingo_preview_sessions (
   session_id text PRIMARY KEY,
@@ -34,6 +37,10 @@ CREATE TABLE IF NOT EXISTS duolingo_preview_runs (
   baseline_observed_at bigint NOT NULL,
   baseline_session_id text NOT NULL,
   duolingo_profile_id text NOT NULL,
+  final_xp integer,
+  earned_xp integer,
+  final_observed_at bigint,
+  passed boolean,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `;
@@ -56,11 +63,13 @@ export type PreviewSession = Readonly<{
 export type PreviewRun = Readonly<{
   walletAddress: string;
   targetXp: number;
-  identityHash: Hex;
   baselineXp: number;
   baselineObservedAt: number;
-  baselineSessionId: string;
   duolingoProfileId: string;
+  finalXp: number | null;
+  earnedXp: number | null;
+  finalObservedAt: number | null;
+  passed: boolean | null;
 }>;
 
 export async function savePreviewSession(session: PreviewSession): Promise<void> {
@@ -73,15 +82,21 @@ export async function savePreviewSession(session: PreviewSession): Promise<void>
 }
 
 /**
- * The session is the ONLY thing that says which wallet, phase and target a Reclaim session belongs to.
- * Taking any of them from the request body would let anyone claim someone else's proof, replay a baseline
- * as a final, or lower the target mid-flight. The target is fixed here, at creation, so the polling that
- * follows cannot change it.
+ * The live session, or null if it does not exist, is already consumed, or has aged out.
+ *
+ * A Reclaim session is short-lived on purpose: an old session id that leaks should not stay usable, and a
+ * baseline captured hours ago should not silently pair with a fresh final. Expiry is enforced in SQL so a
+ * clock the client controls can never widen the window. The session is the ONLY source of the wallet,
+ * phase and target: taking any of them from the request body would let anyone claim someone else's proof,
+ * replay a baseline as a final, or lower the target mid-flight.
  */
 export async function loadPreviewSession(sessionId: string): Promise<PreviewSession | null> {
   const rows = (await sql()`
     SELECT session_id, wallet_address, phase, target_xp, duolingo_username, duolingo_profile_id
-      FROM duolingo_preview_sessions WHERE session_id = ${sessionId}`
+      FROM duolingo_preview_sessions
+      WHERE session_id = ${sessionId}
+        AND consumed_at IS NULL
+        AND created_at > now() - make_interval(secs => ${PREVIEW_SESSION_TTL_SECONDS})`
   ) as Record<string, string | number>[];
   const row = rows[0];
   if (!row) return null;
@@ -95,30 +110,45 @@ export async function loadPreviewSession(sessionId: string): Promise<PreviewSess
   };
 }
 
-/**
- * Marks a session used, and returns false if it already was.
- *
- * A Reclaim session that has produced a verified proof must never be accepted a second time: without this
- * a single baseline capture could be replayed to overwrite a later baseline, or a final could be counted
- * twice. The UPDATE ... WHERE consumed_at IS NULL is the lock: exactly one caller sees a row affected.
- */
-export async function consumePreviewSession(sessionId: string): Promise<boolean> {
-  const rows = (await sql()`
-    UPDATE duolingo_preview_sessions SET consumed_at = now()
-    WHERE session_id = ${sessionId} AND consumed_at IS NULL
-    RETURNING session_id`
-  ) as Record<string, string>[];
-  return rows.length === 1;
+/** Deletes sessions old enough that neither their outcome nor a replay attempt matters any more. */
+export async function pruneExpiredSessions(): Promise<void> {
+  await sql()`
+    DELETE FROM duolingo_preview_sessions
+    WHERE created_at < now() - make_interval(secs => ${PREVIEW_SESSION_PRUNE_SECONDS})`;
 }
 
-/** A new baseline replaces the old one: starting over is legitimate, and there is no stake to protect. */
-export async function savePreviewRun(run: PreviewRun): Promise<void> {
-  await sql()`
+/**
+ * Consumes the session and writes the baseline in ONE statement, so the two can never come apart.
+ *
+ * The failure that this closes: mark consumed, then the baseline write fails, and the athlete is left with
+ * a burned session and no baseline. The CTE consumes first and the INSERT reads FROM that CTE, so the
+ * insert happens only if the consume did, and both commit together or neither does. A replay finds the
+ * session already consumed, the CTE is empty, nothing is written, and the caller sees no row back.
+ *
+ * A new baseline replaces the old one on purpose: starting over is legitimate, there is no stake.
+ */
+export async function consumeAndSaveBaseline(input: {
+  sessionId: string;
+  walletAddress: string;
+  targetXp: number;
+  identityHash: Hex;
+  baselineXp: number;
+  baselineObservedAt: number;
+  duolingoProfileId: string;
+}): Promise<boolean> {
+  const rows = (await sql()`
+    WITH consumed AS (
+      UPDATE duolingo_preview_sessions SET consumed_at = now()
+      WHERE session_id = ${input.sessionId} AND consumed_at IS NULL
+      RETURNING session_id
+    )
     INSERT INTO duolingo_preview_runs
       (wallet_address, target_xp, identity_hash, baseline_xp, baseline_observed_at,
-       baseline_session_id, duolingo_profile_id)
-    VALUES (${run.walletAddress.toLowerCase()}, ${run.targetXp}, ${run.identityHash}, ${run.baselineXp},
-            ${run.baselineObservedAt}, ${run.baselineSessionId}, ${run.duolingoProfileId})
+       baseline_session_id, duolingo_profile_id, final_xp, earned_xp, final_observed_at, passed)
+    SELECT ${input.walletAddress.toLowerCase()}, ${input.targetXp}, ${input.identityHash},
+           ${input.baselineXp}, ${input.baselineObservedAt}, ${input.sessionId}, ${input.duolingoProfileId},
+           NULL, NULL, NULL, NULL
+    FROM consumed
     ON CONFLICT (wallet_address) DO UPDATE SET
       target_xp = EXCLUDED.target_xp,
       identity_hash = EXCLUDED.identity_hash,
@@ -126,28 +156,77 @@ export async function savePreviewRun(run: PreviewRun): Promise<void> {
       baseline_observed_at = EXCLUDED.baseline_observed_at,
       baseline_session_id = EXCLUDED.baseline_session_id,
       duolingo_profile_id = EXCLUDED.duolingo_profile_id,
-      created_at = now()`;
+      final_xp = NULL, earned_xp = NULL, final_observed_at = NULL, passed = NULL,
+      created_at = now()
+    RETURNING wallet_address`
+  ) as Record<string, string>[];
+  return rows.length === 1;
+}
+
+/** Consumes the session and records the final result in one statement, same guarantee as the baseline. */
+export async function consumeAndSaveFinal(input: {
+  sessionId: string;
+  walletAddress: string;
+  finalXp: number;
+  earnedXp: number;
+  finalObservedAt: number;
+}): Promise<boolean> {
+  const rows = (await sql()`
+    WITH consumed AS (
+      UPDATE duolingo_preview_sessions SET consumed_at = now()
+      WHERE session_id = ${input.sessionId} AND consumed_at IS NULL
+      RETURNING session_id
+    )
+    UPDATE duolingo_preview_runs SET
+      final_xp = ${input.finalXp},
+      earned_xp = ${input.earnedXp},
+      final_observed_at = ${input.finalObservedAt},
+      passed = true
+    WHERE wallet_address = ${input.walletAddress.toLowerCase()}
+      AND EXISTS (SELECT 1 FROM consumed)
+    RETURNING wallet_address`
+  ) as Record<string, string>[];
+  return rows.length === 1;
 }
 
 export async function loadPreviewRun(walletAddress: string): Promise<PreviewRun | null> {
   const rows = (await sql()`
-    SELECT wallet_address, target_xp, identity_hash, baseline_xp, baseline_observed_at,
-           baseline_session_id, duolingo_profile_id
+    SELECT wallet_address, target_xp, baseline_xp, baseline_observed_at, duolingo_profile_id,
+           final_xp, earned_xp, final_observed_at, passed
       FROM duolingo_preview_runs WHERE wallet_address = ${walletAddress.toLowerCase()}`
-  ) as Record<string, string | number>[];
+  ) as Record<string, string | number | boolean | null>[];
   const row = rows[0];
   if (!row) return null;
   return {
     walletAddress: String(row.wallet_address),
     targetXp: Number(row.target_xp),
-    identityHash: String(row.identity_hash) as Hex,
     baselineXp: Number(row.baseline_xp),
     baselineObservedAt: Number(row.baseline_observed_at),
-    baselineSessionId: String(row.baseline_session_id),
     duolingoProfileId: String(row.duolingo_profile_id),
+    finalXp: row.final_xp === null ? null : Number(row.final_xp),
+    earnedXp: row.earned_xp === null ? null : Number(row.earned_xp),
+    finalObservedAt: row.final_observed_at === null ? null : Number(row.final_observed_at),
+    passed: row.passed === null ? null : Boolean(row.passed),
   };
+}
+
+/** The bound identity, kept server-side only. It never leaves this module, and never reaches a response. */
+export async function loadPreviewIdentity(walletAddress: string): Promise<Hex | null> {
+  const rows = (await sql()`
+    SELECT identity_hash FROM duolingo_preview_runs WHERE wallet_address = ${walletAddress.toLowerCase()}`
+  ) as Record<string, string>[];
+  return rows[0] ? (String(rows[0].identity_hash) as Hex) : null;
 }
 
 export async function clearPreviewRun(walletAddress: string): Promise<void> {
   await sql()`DELETE FROM duolingo_preview_runs WHERE wallet_address = ${walletAddress.toLowerCase()}`;
+}
+
+export async function previewStorageReachable(): Promise<boolean> {
+  try {
+    await sql()`SELECT 1 FROM duolingo_preview_sessions LIMIT 1`;
+    return true;
+  } catch {
+    return false;
+  }
 }

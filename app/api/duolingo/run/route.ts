@@ -29,13 +29,18 @@ export async function GET(request: Request) {
     const wallet = new URL(request.url).searchParams.get("wallet") || "";
     const session = requireWalletAuthSession(request, wallet);
     const run = await loadPreviewRun(session.walletAddress);
+    // No identity hash: the account is verified, and its pseudonym stays on the server. The final result
+    // is included so a page reload after a passing final still shows success rather than only the baseline.
     return NextResponse.json({
       run: run
         ? {
             targetXp: run.targetXp,
             baselineXp: run.baselineXp,
             baselineObservedAt: run.baselineObservedAt,
-            identityHash: run.identityHash,
+            finalXp: run.finalXp,
+            earnedXp: run.earnedXp,
+            finalObservedAt: run.finalObservedAt,
+            passed: run.passed,
           }
         : null,
     }, { headers: { "Cache-Control": "no-store" } });

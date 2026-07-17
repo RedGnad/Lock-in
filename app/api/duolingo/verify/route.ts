@@ -8,10 +8,11 @@ import {
   validateDuolingoEvidence,
 } from "@/src/duolingo-proof-policy";
 import {
-  consumePreviewSession,
+  consumeAndSaveBaseline,
+  consumeAndSaveFinal,
+  loadPreviewIdentity,
   loadPreviewRun,
   loadPreviewSession,
-  savePreviewRun,
 } from "@/src/duolingo-preview-store";
 import { assertSdkProofSet } from "@/src/reclaim-onchain";
 import type { ReclaimTrustedData } from "@/src/strava-proof-policy";
@@ -78,52 +79,63 @@ export async function POST(request: Request) {
       },
     });
 
-    // Burn the session before recording anything: a verified proof settles this session exactly once, so a
-    // second successful poll cannot overwrite a later baseline or double-count a final.
-    if (!(await consumePreviewSession(sessionId))) {
-      throw new Error("This proof has already been recorded");
-    }
-
     if (session.phase === "baseline") {
-      // The target came from the session, fixed at creation, so polling could not have lowered it.
+      // The target came from the session, fixed at creation, so polling could not have lowered it. The
+      // consume and the write happen in one statement, so a burned session can never leave a missing
+      // baseline; a replay finds it already consumed and is refused.
       const targetXp = session.targetXp;
       if (!Number.isSafeInteger(targetXp) || targetXp <= 0) throw new Error("Choose an XP target");
-      await savePreviewRun({
+      if (!(await consumeAndSaveBaseline({
+        sessionId,
         walletAddress: session.walletAddress,
         targetXp,
         identityHash: evidence.identityHash,
         baselineXp: evidence.totalXp,
         baselineObservedAt: evidence.observedAt,
-        baselineSessionId: sessionId,
         duolingoProfileId: evidence.profileId,
-      });
+      }))) {
+        throw new Error("This proof has already been recorded");
+      }
       return NextResponse.json({
         phase: "baseline",
         targetXp,
         baselineXp: evidence.totalXp,
         observedAt: evidence.observedAt,
-        // Pseudonymous: the raw Duolingo id never leaves the server.
-        identityHash: evidence.identityHash,
+        // The account is verified; its pseudonymous identity stays on the server and never reaches here.
+        account: "verified",
       }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const run = await loadPreviewRun(session.walletAddress);
-    if (!run) throw new Error("Verify your starting XP before your final XP");
+    const identity = await loadPreviewIdentity(session.walletAddress);
+    if (!run || !identity) throw new Error("Verify your starting XP before your final XP");
 
     // Every pairwise rule lives here: identity swapped, proof reused, XP gone backwards, final not newer.
+    // The baseline identity comes from the server-held row, so a final on a different account is caught.
     const delta = validateDuolingoDelta({
       baseline: {
         profileId: run.duolingoProfileId,
         totalXp: run.baselineXp,
-        identityHash: run.identityHash,
+        identityHash: identity,
         eventNullifier: `0x${"0".repeat(64)}`,
         observedAt: run.baselineObservedAt,
-        sessionId: run.baselineSessionId,
+        sessionId,
         phase: "baseline",
       },
       final: evidence,
       targetXp: run.targetXp,
     });
+
+    // Validation passed; commit the result and consume the session together.
+    if (!(await consumeAndSaveFinal({
+      sessionId,
+      walletAddress: session.walletAddress,
+      finalXp: delta.finalXp,
+      earnedXp: delta.earnedXp,
+      finalObservedAt: evidence.observedAt,
+    }))) {
+      throw new Error("This proof has already been recorded");
+    }
 
     return NextResponse.json({
       phase: "final",
@@ -133,7 +145,6 @@ export async function POST(request: Request) {
       earnedXp: delta.earnedXp,
       passed: true,
       observedAt: evidence.observedAt,
-      identityHash: delta.identityHash,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     // The reason is the product here: "no" without a reason is what makes people distrust a proof system.

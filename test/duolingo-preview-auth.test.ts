@@ -69,3 +69,15 @@ test("POST /session with a cookie for a different wallet than the body is refuse
   }));
   assert.equal(response.status, 401);
 });
+
+test("an authenticated wallet is still refused when the preview allowlist is closed", async () => {
+  // Valid cookie for A, but DUOLINGO_PREVIEW_ALLOWED_WALLETS is unset, so the beta is closed to everyone.
+  delete process.env.DUOLINGO_PREVIEW_ALLOWED_WALLETS;
+  const cookie = await cookieFor(A);
+  const response = await sessionPost(request(`${ORIGIN}/api/duolingo/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ walletAddress: A.address, phase: "baseline", username: "x", targetXp: 100 }),
+  }));
+  assert.equal(response.status, 403);
+});

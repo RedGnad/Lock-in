@@ -3,7 +3,9 @@ import { ReclaimProofRequest } from "@reclaimprotocol/js-sdk";
 import { readJsonBody } from "@/src/api-guard";
 import { DUOLINGO_PROVIDER_ID, DUOLINGO_PROVIDER_VERSION } from "@/src/duolingo-proof-policy";
 import { resolvePublicDuolingoProfile } from "@/src/duolingo-profile";
-import { loadPreviewRun, savePreviewSession } from "@/src/duolingo-preview-store";
+import { loadPreviewRun, pruneExpiredSessions, savePreviewSession } from "@/src/duolingo-preview-store";
+import { assertPreviewWalletAllowed, PreviewAccessError } from "@/src/duolingo-preview-access";
+import { checkRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
 import {
   requireWalletAuthSession,
   walletAuthErrorStatus,
@@ -31,6 +33,19 @@ export async function POST(request: Request) {
     // proof session bound to someone else's wallet.
     const session = requireWalletAuthSession(request, String(body.walletAddress || ""));
     const wallet = session.walletAddress;
+    // The Preview is open only to its own allowlist, and only at a bounded rate: opening a Reclaim session
+    // is not free, and this is an unaudited beta.
+    assertPreviewWalletAllowed(wallet);
+    const rate = checkRateLimit("session", request, wallet);
+    if (!rate.allowed) {
+      return NextResponse.json({ error: "Too many attempts. Try again shortly." }, {
+        status: 429,
+        headers: rateLimitResponseHeaders(rate),
+      });
+    }
+    // Cheap opportunistic cleanup so aged sessions never accumulate; failure here must not block a proof.
+    void pruneExpiredSessions().catch(() => {});
+
     const phase = body.phase === "final" ? "final" : "baseline";
     const username = String(body.username || "").trim();
     if (!username) throw new Error("Enter your Duolingo username");
@@ -78,6 +93,9 @@ export async function POST(request: Request) {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
+    if (error instanceof PreviewAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status, headers: { "Cache-Control": "no-store" } });
+    }
     const authStatus = walletAuthErrorStatus(error);
     return NextResponse.json({
       error: authStatus

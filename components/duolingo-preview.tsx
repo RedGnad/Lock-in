@@ -22,7 +22,10 @@ const XP_TARGETS = [50, 100, 300, 500] as const;
 const POLL_MS = 4_000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 
-type Run = { targetXp: number; baselineXp: number; baselineObservedAt: number; identityHash: string };
+type Run = {
+  targetXp: number; baselineXp: number; baselineObservedAt: number;
+  finalXp: number | null; earnedXp: number | null; finalObservedAt: number | null; passed: boolean | null;
+};
 type Result = { baselineXp: number; finalXp: number; earnedXp: number; targetXp: number };
 
 function formatTime(seconds: number) {
@@ -47,7 +50,12 @@ export function DuolingoPreview() {
     try {
       const response = await fetch(`/api/duolingo/run?wallet=${wallet}`, { cache: "no-store", credentials: "same-origin" });
       const payload = await response.json();
-      setRun(response.ok ? payload.run : null);
+      const loaded = response.ok ? payload.run : null;
+      setRun(loaded);
+      // A passing final is durable: coming back to the page shows the win, not just the baseline.
+      if (loaded && loaded.passed) {
+        setResult({ baselineXp: loaded.baselineXp, finalXp: loaded.finalXp, earnedXp: loaded.earnedXp, targetXp: loaded.targetXp });
+      }
     } catch {
       setRun(null);
     } finally {
@@ -186,7 +194,7 @@ export function DuolingoPreview() {
           <div><span>STARTING XP</span><b>{run.baselineXp}</b></div>
           <div><span>TARGET</span><b>+{run.targetXp} XP</b></div>
           <div><span>PROVED AT</span><b>{formatTime(run.baselineObservedAt)}</b></div>
-          <div><span>ATHLETE</span><b title={run.identityHash}>{run.identityHash.slice(0, 10)}…</b></div>
+          <div><span>ACCOUNT</span><b>Duolingo verified ✓</b></div>
         </div>
       )}
 
