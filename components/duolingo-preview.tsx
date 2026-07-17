@@ -162,7 +162,7 @@ export function DuolingoPreview() {
           onChange={(event) => setUsername(event.target.value)}
           disabled={Boolean(busy)}
         />
-        <small>We look up your public profile. We never ask for your Duolingo password.</small>
+        <small>We look up your public profile. Lock In never receives your password. Reclaim may ask you to sign in securely.</small>
       </div>
 
       {!run && !loadingRun && (

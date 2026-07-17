@@ -1,9 +1,14 @@
+import { redirect } from "next/navigation";
+import { isDuolingoPreviewMode } from "@/src/preview-mode";
 import { PactHub } from "@/components/pact-hub";
 import { ReleaseActions } from "@/components/release-actions";
 import { SocialLeaderboard } from "@/components/social-leaderboard";
 import { StravaConnect } from "@/components/strava-connect";
 
 export default function Home() {
+  // On the Duolingo preview deployment the root is the XP flow, not the Strava home.
+  if (isDuolingoPreviewMode()) redirect("/duolingo");
+
   return (
     <main>
       <section className="hero">
