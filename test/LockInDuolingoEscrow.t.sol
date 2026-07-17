@@ -131,7 +131,7 @@ contract LockInDuolingoEscrowTest {
     function testOneProfileCannotBackTwoWallets() public {
         uint256 pactId = _create(ALICE, ALICE_ID, STAKE);
         // Bob tries to join the same Lock with Alice's Duolingo identity.
-        bytes32 config = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START));
+        bytes32 config = escrow.pactConfigHash(pactId);
         LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(BOB, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.IdentityAlreadyUsed.selector);
         VM.prank(BOB);
@@ -139,16 +139,17 @@ contract LockInDuolingoEscrowTest {
     }
 
     function testBaselineNullifierCannotReplay() public {
-        bytes32 config = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START));
+        bytes32 nonce = keccak256("dup-nonce");
+        bytes32 config = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), nonce);
         bytes32 nullifier = keccak256("dup-baseline");
         LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, nullifier, EVIDENCE_KEY);
         VM.prank(ALICE);
-        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), b);
+        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), nonce, b);
         // Reusing the same baseline nullifier on a second create must fail.
         LockInDuolingoEscrow.BaselineEvidence memory b2 = _baseline(ALICE, config, ALICE_ID, nullifier, EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.NullifierAlreadyUsed.selector);
         VM.prank(ALICE);
-        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), b2);
+        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), nonce, b2);
     }
 
     function testFinalNullifierCannotReplayAcrossWallets() public {
@@ -207,21 +208,63 @@ contract LockInDuolingoEscrowTest {
     }
 
     function testMaxStakeExceededRejected() public {
-        bytes32 config = escrow.hashConfiguration(2_000_000, TARGET, DURATION, 2, 2, uint64(START));
+        bytes32 nonce = keccak256("max-stake-nonce");
+        bytes32 config = escrow.hashConfiguration(2_000_000, TARGET, DURATION, 2, 2, uint64(START), nonce);
         LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, keccak256("x"), EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.InvalidStake.selector);
         VM.prank(ALICE);
-        escrow.createPact(2_000_000, TARGET, DURATION, 2, 2, uint64(START), b);
+        escrow.createPact(2_000_000, TARGET, DURATION, 2, 2, uint64(START), nonce, b);
     }
 
     function testCreateRejectsForgedBaseline() public {
-        bytes32 config = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START));
+        bytes32 nonce = keccak256("forged-nonce");
+        bytes32 config = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), nonce);
         LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, keccak256("y"), WRONG_KEY);
         uint256 before = token.balanceOf(ALICE);
         VM.expectRevert(LockInDuolingoEscrow.InvalidEvidenceSigner.selector);
         VM.prank(ALICE);
-        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), b);
+        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), nonce, b);
         require(token.balanceOf(ALICE) == before, "forged baseline still moved funds");
+    }
+
+    // --- createNonce binding ---------------------------------------------------------------------------
+
+    function testZeroCreateNonceRejected() public {
+        bytes32 config = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), bytes32(0));
+        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
+        VM.expectRevert(LockInDuolingoEscrow.InvalidCreateNonce.selector);
+        VM.prank(ALICE);
+        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), bytes32(0), b);
+    }
+
+    function testNonceMakesIdenticalTermsDistinct() public view {
+        bytes32 configA = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), keccak256("A"));
+        bytes32 configB = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), keccak256("B"));
+        require(configA != configB, "same terms, different nonce collided");
+    }
+
+    // A baseline signed for nonce A cannot be spent on a create that declares nonce B: the contract
+    // recomputes the configHash from the submitted nonce and the bound configHash no longer matches.
+    function testBaselineForOtherNonceRejected() public {
+        bytes32 nonceA = keccak256("nonce-A");
+        bytes32 configA = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), nonceA);
+        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, configA, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
+        VM.expectRevert(LockInDuolingoEscrow.InvalidConfigurationHash.selector);
+        VM.prank(ALICE);
+        escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), keccak256("nonce-B"), b);
+    }
+
+    // A baseline bound to one pact's configHash cannot join a second, identical-terms pact: its stored
+    // configHash carries a different creator nonce.
+    function testJoinBaselineBoundToOnePact() public {
+        uint256 pactOne = _create(ALICE, ALICE_ID, STAKE);
+        // A second, identical-terms Lock by the same creator gets a different nonce, so a different config.
+        uint256 pactTwo = _create(ALICE, ALICE_ID, STAKE);
+        bytes32 configOne = escrow.pactConfigHash(pactOne);
+        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(BOB, configOne, BOB_ID, _nextNullifier(), EVIDENCE_KEY);
+        VM.expectRevert(LockInDuolingoEscrow.InvalidConfigurationHash.selector);
+        VM.prank(BOB);
+        escrow.joinPact(pactTwo, b);
     }
 
     function testPauseDuringLiveLockRefundsEveryone() public {
@@ -231,8 +274,8 @@ contract LockInDuolingoEscrowTest {
         escrow.setCompletionPaused(true); // overlaps the live Lock
         VM.warp(START + DURATION + escrow.SUBMISSION_GRACE_PERIOD() + 1);
         escrow.finalizePact(pactId);
-        (,,,,,,,,,,,, , bool finalized, bool cancelled) = escrow.pacts(pactId);
-        require(finalized && cancelled, "pause did not cancel");
+        LockInDuolingoEscrow.DuoPact memory p = escrow.getPact(pactId);
+        require(p.finalized && p.cancelled, "pause did not cancel");
         VM.prank(ALICE);
         require(escrow.claim(pactId) == STAKE, "finisher not refunded own stake");
         VM.prank(BOB);
@@ -261,14 +304,16 @@ contract LockInDuolingoEscrowTest {
     }
 
     function _create(address who, bytes32 identity, uint96 stake) private returns (uint256 pactId) {
-        bytes32 config = escrow.hashConfiguration(stake, TARGET, DURATION, 2, 2, uint64(START));
+        bytes32 nonce = keccak256(abi.encode("create-nonce", ++nonceSeed));
+        bytes32 config = escrow.hashConfiguration(stake, TARGET, DURATION, 2, 2, uint64(START), nonce);
         LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(who, config, identity, _nextNullifier(), EVIDENCE_KEY);
         VM.prank(who);
-        pactId = escrow.createPact(stake, TARGET, DURATION, 2, 2, uint64(START), b);
+        pactId = escrow.createPact(stake, TARGET, DURATION, 2, 2, uint64(START), nonce, b);
     }
 
+    // The joiner binds to the pact's STORED configHash, which already carries the creator's nonce.
     function _joinRaw(uint256 pactId, address who, bytes32 identity, uint96 stake, uint256 key) private {
-        bytes32 config = escrow.hashConfiguration(stake, TARGET, DURATION, 2, 2, uint64(START));
+        bytes32 config = escrow.pactConfigHash(pactId);
         LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(who, config, identity, _nextNullifier(), key);
         VM.prank(who);
         escrow.joinPact(pactId, b);

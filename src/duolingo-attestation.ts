@@ -66,12 +66,19 @@ export type DuolingoConfig = Readonly<{
   minParticipants: number;
   maxParticipants: number;
   startsAt: bigint;
+  createNonce: Hex;
 }>;
 
-/** The escrow's `_hashConfiguration(...)`, the value a baseline is bound to. */
+/**
+ * The escrow's `_hashConfiguration(...)`, the value a baseline is bound to.
+ *
+ * The `createNonce` sits between startsAt and the mission policy, exactly as the contract encodes it. It
+ * makes two Locks with identical terms hash differently, so a stored baseline keyed by (wallet, configHash)
+ * points at exactly one future pact.
+ */
 export function hashDuolingoConfiguration(config: DuolingoConfig): Hex {
   return keccak256(encodeAbiParameters(
-    parseAbiParameters("uint96, uint32, uint32, uint8, uint8, uint64, bytes32"),
+    parseAbiParameters("uint96, uint32, uint32, uint8, uint8, uint64, bytes32, bytes32"),
     [
       config.stake,
       config.targetXp,
@@ -79,6 +86,7 @@ export function hashDuolingoConfiguration(config: DuolingoConfig): Hex {
       config.minParticipants,
       config.maxParticipants,
       config.startsAt,
+      config.createNonce,
       missionPolicyHash(),
     ],
   ));

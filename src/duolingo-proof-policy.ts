@@ -30,6 +30,12 @@ export type DuolingoPolicy = {
   phase: DuolingoPhase;
   expectedSessionId: string;
   expectedProfileId: string;
+  /**
+   * The exact signed `contextMessage` the proof must carry. The Preview leaves this unset and the default
+   * `${pactId}:${phase}` applies. The financial escrow flow sets it explicitly, because a create baseline
+   * is bound to a server createNonce rather than a pactId that does not exist yet.
+   */
+  expectedContextMessage?: string;
 };
 
 export type DuolingoEvidence = {
@@ -110,8 +116,9 @@ export function validateDuolingoEvidence(input: {
 
   const expectedAddress = getAddress(policy.walletAddress).toLowerCase();
   // The phase is inside the SIGNED context, so a baseline can never be replayed as a final, nor a proof
-  // from one Lock be presented to another.
-  const expectedMessage = `${policy.pactId}:${policy.phase}`;
+  // from one Lock be presented to another. The escrow flow overrides the message with a create-nonce or
+  // pact-scoped binding; the Preview uses the default pactId:phase.
+  const expectedMessage = policy.expectedContextMessage ?? `${policy.pactId}:${policy.phase}`;
   const providerHashes = new Set<string>();
   for (const item of data) {
     if (contextString(item.context, "contextAddress").toLowerCase() !== expectedAddress) {

@@ -57,14 +57,16 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint8 maxParticipants;
         uint64 completionPauseGenerationAtCreation;
         bytes32 missionPolicyHash;
+        bytes32 configHash;
         uint256 remainingPool;
         bool finalized;
         bool cancelled;
     }
 
     /// @dev The baseline attestation, presented at create and at join. `configHash` binds the exact Lock
-    ///      terms (at create) or the existing Lock's terms (at join), so a baseline for one Lock cannot be
-    ///      replayed into another. `identityHash` is the HMAC pseudonym, never the raw profile id.
+    ///      terms AND the creator's `createNonce` (at create) or the existing Lock's stored configHash (at
+    ///      join), so a baseline for one Lock cannot be replayed into another even when two Locks share
+    ///      identical terms. `identityHash` is the HMAC pseudonym, never the raw profile id.
     struct BaselineEvidence {
         bytes32 configHash;
         bytes32 identityHash;
@@ -115,6 +117,7 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint8 minParticipants,
         uint8 maxParticipants,
         uint64 startsAt,
+        bytes32 configHash,
         bytes32 missionPolicyHash
     );
     event PactJoined(uint256 indexed pactId, address indexed account);
@@ -134,6 +137,7 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
     error InvalidStake();
     error InvalidGoal();
     error InvalidSchedule();
+    error InvalidCreateNonce();
     error PactNotFound();
     error CreationIsPaused();
     error JoiningIsPaused();
@@ -186,12 +190,16 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint8 minParticipants,
         uint8 maxParticipants,
         uint64 startsAt,
+        bytes32 createNonce,
         BaselineEvidence calldata baseline
     ) external nonReentrant returns (uint256 pactId) {
         if (creationPaused) revert CreationIsPaused();
+        // The nonce disambiguates two Locks with identical terms, so their configHashes differ and the
+        // backend can key a baseline to exactly one future pact. Zero would collapse that back to terms.
+        if (createNonce == bytes32(0)) revert InvalidCreateNonce();
         _validateConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt);
         bytes32 configHash =
-            _hashConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt);
+            _hashConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce);
         _consumeBaseline(msg.sender, configHash, baseline);
 
         pactId = nextPactId++;
@@ -205,6 +213,7 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         pact.minParticipants = minParticipants;
         pact.maxParticipants = maxParticipants;
         pact.missionPolicyHash = _missionPolicyHash();
+        pact.configHash = configHash;
         pact.completionPauseGenerationAtCreation = completionPauseGeneration;
 
         joined[pactId][msg.sender] = true;
@@ -212,7 +221,7 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         _pullStake(msg.sender, stake);
 
         emit PactCreated(
-            pactId, msg.sender, stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, pact.missionPolicyHash
+            pactId, msg.sender, stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, configHash, pact.missionPolicyHash
         );
         emit PactJoined(pactId, msg.sender);
     }
@@ -224,7 +233,7 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (pact.cancelled || pact.finalized || block.timestamp >= pact.startsAt) revert JoinClosed();
         if (joined[pactId][msg.sender]) revert AlreadyJoined();
         if (pact.participantCount >= pact.maxParticipants) revert PactFull();
-        _consumeBaseline(msg.sender, _pactConfigHash(pact), baseline);
+        _consumeBaseline(msg.sender, pact.configHash, baseline);
 
         joined[pactId][msg.sender] = true;
         ++pact.participantCount;
@@ -345,7 +354,7 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
     }
 
     function pactConfigHash(uint256 pactId) external view returns (bytes32) {
-        return _pactConfigHash(_pact(pactId));
+        return _pact(pactId).configHash;
     }
 
     function hashConfiguration(
@@ -354,9 +363,10 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint32 durationSeconds,
         uint8 minParticipants,
         uint8 maxParticipants,
-        uint64 startsAt
+        uint64 startsAt,
+        bytes32 createNonce
     ) external view returns (bytes32) {
-        return _hashConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt);
+        return _hashConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce);
     }
 
     function missionPolicyHash() external view returns (bytes32) {
@@ -502,16 +512,11 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint32 durationSeconds,
         uint8 minParticipants,
         uint8 maxParticipants,
-        uint64 startsAt
+        uint64 startsAt,
+        bytes32 createNonce
     ) private view returns (bytes32) {
         return keccak256(
-            abi.encode(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, _missionPolicyHash())
-        );
-    }
-
-    function _pactConfigHash(DuoPact storage pact) private view returns (bytes32) {
-        return _hashConfiguration(
-            pact.stake, pact.targetXp, pact.durationSeconds, pact.minParticipants, pact.maxParticipants, pact.startsAt
+            abi.encode(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce, _missionPolicyHash())
         );
     }
 

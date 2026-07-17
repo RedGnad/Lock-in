@@ -26,16 +26,18 @@ import {
 // The exact hex the contract produces (see DuolingoParity.t.sol).
 const PIN_SCHEME = "0xd62e6c7e75cd26ab2580957b7b625c3001b336738da6de4d1065b51885d00a6a";
 const PIN_POLICY = "0xf0d329a0efb712f1b2a10ba741f1e5b798a1af0a2df26b841e6189f7f2d96031";
-const PIN_CONFIG = "0x280761f45e46a9f37f3e765ca3acf823b11fe1b8addd8db74f11471abbd2a019";
+const PIN_NONCE = "0x02996131f59c2ed6027ae65cb865a53a83bafa76c7c153a62659c29633b9eeb3";
+const PIN_CONFIG = "0xd39ff3c0c85051052a830c8ef34df949c8cbace5d602fff7940aa4dc68d6f884";
 const PIN_BASELINE_TH = "0xadfa0bea0f85d7560d7483cd6d56c4b46a1607cf4612d9f590e7807a3242b135";
 const PIN_FINAL_TH = "0xb8e1333e6eab8d6a2a3cfcc5894a8ec6c7711c2efb3ff8ea055eadc836e4a6c3";
 
 const CONTRACT = "0xD37121112F240fE03a18D754B2fdB9dC750034d4" as const;
-const CONFIG = { stake: 100_000n, targetXp: 50, durationSeconds: 3_600, minParticipants: 2, maxParticipants: 2, startsAt: 1_800_000_000n };
+const CONFIG = { stake: 100_000n, targetXp: 50, durationSeconds: 3_600, minParticipants: 2, maxParticipants: 2, startsAt: 1_800_000_000n, createNonce: PIN_NONCE as `0x${string}` };
 
 test("scheme, policy and config hash match the Solidity pin", () => {
   assert.equal(DUOLINGO_XP_SCHEME, PIN_SCHEME);
   assert.equal(missionPolicyHash(), PIN_POLICY);
+  assert.equal(keccak256(stringToHex("LOCK_IN_DUOLINGO_PARITY_NONCE")), PIN_NONCE);
   assert.equal(hashDuolingoConfiguration(CONFIG), PIN_CONFIG);
 });
 

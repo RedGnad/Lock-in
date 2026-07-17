@@ -4,6 +4,7 @@ const MONAD_MAX_RUNTIME_BYTES = 128 * 1024;
 
 const productionArtifacts = [
   ["LockInEscrow", "out/LockInEscrow.sol/LockInEscrow.json"],
+  ["LockInDuolingoEscrow", "out/LockInDuolingoEscrow.sol/LockInDuolingoEscrow.json"],
   ["LockInStravaClaimParser", "out/LockInStravaReclaimVerifier.sol/LockInStravaClaimParser.json"],
   ["LockInStravaReclaimVerifier", "out/LockInStravaReclaimVerifier.sol/LockInStravaReclaimVerifier.json"],
   ["LockInReclaimVerifier", "out/LockInReclaimVerifier.sol/LockInReclaimVerifier.json"],

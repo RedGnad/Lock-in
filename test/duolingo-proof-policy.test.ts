@@ -96,6 +96,19 @@ test("binds both proofs to wallet, lock phase, session and exact request schemas
   }
 });
 
+test("honours an explicit expectedContextMessage for the escrow create flow", () => {
+  // A create baseline is bound to a server nonce, not a pactId that does not exist yet.
+  const ctx = `escrow:create:0x${"ab".repeat(32)}:baseline`;
+  const data = trusted({ ownershipContext: { contextMessage: ctx }, xpContext: { contextMessage: ctx } });
+  const escrowPolicy = { ...policy, pactId: "0", expectedContextMessage: ctx };
+  const result = validateDuolingoEvidence({ data, timestamps: [1, 2], providerId: DUOLINGO_PROVIDER_ID, policy: escrowPolicy });
+  assert.equal(result.totalXp, 1000);
+  // A proof carrying the default `pactId:phase` message is refused when an override is in force.
+  assert.throws(() => validateDuolingoEvidence({
+    data: trusted(), timestamps: [1, 2], providerId: DUOLINGO_PROVIDER_ID, policy: escrowPolicy,
+  }), (e: unknown) => e instanceof DuolingoPolicyError && e.code === "WRONG_PACT_PHASE");
+});
+
 test("same profile and XP produce a stable global snapshot nullifier", () => {
   const first = validateDuolingoEvidence({ data: trusted(), timestamps: [1, 2], providerId: DUOLINGO_PROVIDER_ID, policy });
   const second = validateDuolingoEvidence({ data: trusted(), timestamps: [3, 4], providerId: DUOLINGO_PROVIDER_ID, policy });
