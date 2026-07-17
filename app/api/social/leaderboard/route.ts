@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Address, PublicClient } from "viem";
-import { escrowAddress, escrowDeploymentBlock, lockInPublicClient } from "@/src/chain";
+import { escrowAddress, escrowDeploymentBlock, lockInLogsClient } from "@/src/chain";
 import { lockInAbi } from "@/src/lock-in-abi";
 import {
   buildSocialLeaderboards,
@@ -92,7 +92,8 @@ async function readAllEvents(client: PublicClient, address: Address, latestBlock
 }
 
 async function loadLeaderboard(address: Address): Promise<LeaderboardResponse> {
-  const client = lockInPublicClient();
+  // Logs, not state: this must use the endpoint chosen for its block-range cap, not the keyed one.
+  const client = lockInLogsClient();
   const latestBlock = await client.getBlockNumber();
   const events = await readAllEvents(client, address, latestBlock);
   return {
