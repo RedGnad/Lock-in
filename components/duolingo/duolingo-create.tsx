@@ -13,6 +13,8 @@ import {
 import {
   escrowAbi,
   friendlyEscrowError,
+  isRateLimited,
+  RATE_LIMIT_MESSAGE,
   RECLAIM_NOTICE,
   runEscrowProof,
   stakeOptions,
@@ -52,6 +54,7 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
 
   const amount = useMemoStake(stakeInput, chain.decimals);
   const canTransact = chain.mode.canTransact;
@@ -59,17 +62,19 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
   async function create() {
     if (busy) return;
     setError(null);
+    setRateLimited(false);
     if (!address || !duolingoEscrowAddress || !publicClient) return setError("Connect your wallet first.");
-    if (!canTransact) return setError("The financial canary is not open yet.");
+    if (!canTransact) return setError("Duolingo staking is not open right now. Please try again later.");
     if (!chain.chainOk) return setError("Switch your wallet to Monad mainnet.");
     if (!username.trim()) return setError("Enter your Duolingo username.");
     if ((chain.minStake !== undefined && amount < chain.minStake) || (chain.maxStake !== undefined && amount > chain.maxStake)) {
-      return setError("Choose a stake from 0.1 to 1 USDC.");
+      return setError("Choose a stake of 0.1, 0.5 or 1 USDC.");
     }
     if (chain.balance < amount) return setError(`You need ${stakeInput} ${chain.symbol} to create this Lock.`);
 
     setBusy(true);
     const portal = window.open("", "_blank");
+    let staked = false;
     try {
       const startsAt = await scheduledStart(publicClient);
       const terms = {
@@ -108,6 +113,7 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
         baseline,
       );
       const hash = await writeWithGas({ address: duolingoEscrowAddress, abi: escrowAbi, functionName: "createPact", args }, "create");
+      staked = true; // the stake has moved on-chain from here on
       const receipt = await publicClient.getTransactionReceipt({ hash });
       const logs = parseEventLogs({ abi: escrowAbi, eventName: "PactCreated", logs: receipt.logs });
       const id = logs[0]?.args.pactId;
@@ -117,7 +123,8 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
     } catch (caught) {
       portal?.close();
       setStatus(null);
-      setError(friendlyEscrowError(caught));
+      if (isRateLimited(caught)) setRateLimited(true);
+      else setError(friendlyEscrowError(caught) + (staked ? "" : " No USDC has moved."));
     } finally {
       setBusy(false);
     }
@@ -184,6 +191,13 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
         <p className="form-status safety-status" role="status">The financial canary is paused. Terms are visible; transactions are blocked.</p>
       )}
       {status && busy && <p className="form-status" aria-live="polite">{status}</p>}
+      {rateLimited && (
+        <div className="duo-notice" role="status">
+          <strong>Just a moment</strong>
+          <p>{RATE_LIMIT_MESSAGE} No USDC has moved, and your choices are kept.</p>
+          <button className="secondary-button" type="button" onClick={() => setRateLimited(false)}>TRY AGAIN LATER</button>
+        </div>
+      )}
       {error && <p className="form-status duo-error" role="alert">{error}</p>}
     </div>
   );

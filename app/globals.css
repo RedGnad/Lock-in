@@ -618,6 +618,9 @@ footer div { display: flex; gap: 22px; }
 .duo-result strong { display: block; margin-bottom: 6px; font-size: 22px; text-transform: uppercase; letter-spacing: -.03em; }
 .duo-result p { margin: 0; color: var(--muted); font: 15px/1.5 Georgia, serif; }
 .duo-error { color: white; background: var(--acid); padding: 10px 12px; }
+.duo-notice { padding: 14px 16px; display: grid; gap: 8px; justify-items: start; border: 2px solid var(--ink); background: var(--surface); }
+.duo-notice strong { font-size: 13px; font-weight: 950; letter-spacing: .04em; text-transform: uppercase; }
+.duo-notice p { margin: 0; color: var(--muted); font: 14px/1.5 Georgia, serif; }
 .duo-experience { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 18px; }
 .duo-financial { display: grid; gap: 18px; }
 .duo-mode-badge { justify-self: start; padding: 6px 10px; border: 2px solid var(--ink); background: var(--surface); font: 900 10px/1 Arial, sans-serif; letter-spacing: .14em; text-transform: uppercase; }

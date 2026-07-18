@@ -15,16 +15,42 @@ const POLL_MS = 4_000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 const pinnedSigner = (process.env.NEXT_PUBLIC_DUOLINGO_EVIDENCE_SIGNER || PINNED_DUOLINGO_EVIDENCE_SIGNER).toLowerCase();
 
+export const RATE_LIMIT_MESSAGE =
+  "Duolingo's secure proof is busy right now. This is a temporary limit, not an error with your Lock. Wait a minute, then try again.";
+
+/** A temporary rate limit, from our own API or from Reclaim. The UI treats it separately from a real error. */
+export function isRateLimited(error: unknown): boolean {
+  const m = error instanceof Error ? error.message : String(error);
+  return /too many attempts|too many requests|rate ?limit|\b429\b/i.test(m);
+}
+
+/**
+ * Turns any raw error into one calm, user-facing sentence. Users must never see a stack, an env var name, a
+ * contract selector, or an internal note, so anything not explicitly recognised falls back to a generic line
+ * rather than echoing the raw message.
+ */
 export function friendlyEscrowError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/user rejected|user denied|rejected the request/i.test(message)) return "Transaction cancelled.";
-  if (/insufficient funds|exceeds balance/i.test(message)) return "You need more MON for network gas.";
-  if (/CreationIsPaused|JoiningIsPaused|CompletionIsPaused/i.test(message)) return "The financial canary is paused.";
-  if (/InvalidStake/i.test(message)) return "Choose a stake from 0.1 to 1 USDC.";
-  if (/AttestationExpired|InvalidAttestationWindow/i.test(message)) return "Your proof expired. Prove your XP again.";
-  if (/InvalidConfigurationHash|InvalidMissionPolicy/i.test(message)) return "The Lock terms changed. Start again.";
-  if (/popup/i.test(message)) return message;
-  return message.length < 180 ? message : "The transaction did not complete. Check your wallet and try again.";
+  const m = error instanceof Error ? error.message : String(error);
+  if (isRateLimited(error)) return RATE_LIMIT_MESSAGE;
+  if (/user rejected|user denied|rejected the request/i.test(m)) return "You cancelled the transaction.";
+  if (/insufficient funds|exceeds balance|more MON/i.test(m)) return "You need a little more MON for network gas.";
+  if (/CreationIsPaused|JoiningIsPaused|CompletionIsPaused|canary is paused|not open yet|not available|not configured/i.test(m)) {
+    return "Duolingo staking is not open right now. Please try again later.";
+  }
+  if (/InvalidStake|stake from 0\.1|stake of/i.test(m)) return "Choose a stake of 0.1, 0.5 or 1 USDC.";
+  if (/expired|AttestationExpired|InvalidAttestationWindow/i.test(m)) return "That proof expired before it was used. Prove your XP again.";
+  if (/InvalidConfigurationHash|InvalidMissionPolicy|terms changed/i.test(m)) return "The Lock's terms changed. Please start again.";
+  if (/already been recorded|already recorded|NullifierAlreadyUsed|AlreadyCompleted/i.test(m)) return "That proof was already used. Start a new one to try again.";
+  if (/different Duolingo account|IdentityMismatch|not the one you started/i.test(m)) return "This is a different Duolingo account than the one you started with.";
+  if (/challenge window|OutsideChallengeWindow|submission window|not started/i.test(m)) return "This Lock isn't open for that step right now.";
+  if (/did not fill|UnderfilledPact/i.test(m)) return "This Lock didn't fill, so it can't be completed.";
+  if (/not a participant|NotParticipant/i.test(m)) return "You haven't joined this Lock.";
+  if (/starting xp/i.test(m)) return "Verify your starting XP before your final XP.";
+  if (/duolingo username|enter your duolingo/i.test(m)) return "Enter your Duolingo username.";
+  if (/pop-?up|proof window|blocked/i.test(m)) return "Your browser blocked the proof window. Allow pop-ups, then try again.";
+  if (/timed out/i.test(m)) return "The proof timed out. Please try again.";
+  // Anything else, including any technical detail, collapses to one calm line.
+  return "Something went wrong. Please try again.";
 }
 
 /** The verify-route payload, plus the createNonce the session assigned (needed to call createPact). */

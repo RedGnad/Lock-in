@@ -15,6 +15,8 @@ import {
 import {
   escrowAbi,
   friendlyEscrowError,
+  isRateLimited,
+  RATE_LIMIT_MESSAGE,
   RECLAIM_NOTICE,
   runEscrowProof,
   useEscrowChain,
@@ -40,6 +42,7 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
   const [status, setStatus] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rateLimited, setRateLimited] = useState(false);
   const [passed, setPassed] = useState<{ earnedXp: number; targetXp: number } | null>(null);
 
   const id = /^[1-9]\d{0,29}$/.test(pactId) ? BigInt(pactId) : 0n;
@@ -74,12 +77,13 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
 
   async function prove(intent: "join" | "final") {
     if (busy) return;
-    setError(null); setNotice(null);
+    setError(null); setNotice(null); setRateLimited(false);
     if (!address || !duolingoEscrowAddress) return setError("Connect your wallet first.");
-    if (!canTransact) return setError("The financial canary is not open yet.");
+    if (!canTransact) return setError("Duolingo staking is not open right now. Please try again later.");
     if (!username.trim()) return setError("Enter your Duolingo username.");
     setBusy(intent);
     const portal = window.open("", "_blank");
+    let staked = false;
     try {
       const result = await runEscrowProof({
         address, signMessage: (message) => signMessageAsync({ message }), portal,
@@ -99,6 +103,7 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
         if (!attestationIsFresh(baseline.expiresAt)) throw new Error("Your proof expired during approval. Prove your starting XP again.");
         setStatus("JOINING YOUR LOCK…");
         await writeWithGas({ address: duolingoEscrowAddress, abi: escrowAbi, functionName: "joinPact", args: joinPactArgs(id, baseline) }, "join");
+        staked = true; // the stake has moved on-chain from here on
       } else {
         if (result.phase !== "final" || !result.attestation) throw new Error("The final proof did not complete.");
         setStatus("PUBLISHING YOUR RESULT…");
@@ -114,8 +119,10 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
       setStatus(null);
       const message = caught instanceof Error ? caught.message : String(caught);
       // A short final is not an error the athlete caused: show the shortfall factually and let them retry.
-      if (/Earned \d+ XP of the \d+/.test(message)) setNotice(message);
-      else setError(friendlyEscrowError(caught));
+      if (/Earned \d+ XP of the \d+/.test(message)) setNotice(`You earned ${message.match(/Earned (\d+) XP of the (\d+)/)?.[1]} of ${message.match(/of the (\d+)/)?.[1]} XP. Keep going and verify again before the deadline.`);
+      else if (isRateLimited(caught)) setRateLimited(true);
+      // The stake only moves once joinPact succeeds; before that, reassure that nothing was staked.
+      else setError(friendlyEscrowError(caught) + (intent === "join" && !staked ? " No USDC has moved." : ""));
     } finally {
       setBusy(null);
     }
@@ -212,7 +219,14 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
       )}
 
       {status && busy && <p className="form-status" aria-live="polite">{status}</p>}
-      {notice && <p className="form-status" role="status">{notice} You can try another proof before the deadline.</p>}
+      {notice && <p className="form-status" role="status">{notice}</p>}
+      {rateLimited && (
+        <div className="duo-notice" role="status">
+          <strong>Just a moment</strong>
+          <p>{RATE_LIMIT_MESSAGE} No USDC has moved, and your Lock is unchanged.</p>
+          <button className="secondary-button" type="button" onClick={() => setRateLimited(false)}>TRY AGAIN LATER</button>
+        </div>
+      )}
       {error && <p className="form-status duo-error" role="alert">{error}</p>}
 
       <button className="secondary-button" disabled={Boolean(busy)} onClick={onLeave}>BACK TO DUOLINGO XP</button>
