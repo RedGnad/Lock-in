@@ -64,7 +64,11 @@ export async function POST(request: Request) {
     } catch {
       throw new EscrowChainUnavailableError("The Duolingo escrow is not available yet");
     }
-    const rate = checkRateLimit("verify", request, session.walletAddress);
+    // This route is POLLED every few seconds while Reclaim finishes, so it uses the polling budget, not the
+    // tight one-shot `verify` budget: a slow Duolingo login must never trip our own limiter mid-proof. The
+    // real cost (verifyProof + the on-chain read) only runs on the poll that finds a completed proof, and the
+    // single-use session bounds how often that can happen.
+    const rate = checkRateLimit("status", request, session.walletAddress);
     if (!rate.allowed) {
       return NextResponse.json({ error: "Too many attempts. Try again shortly." }, {
         status: 429,

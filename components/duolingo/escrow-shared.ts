@@ -11,7 +11,7 @@ import { addMonadGasBuffer } from "@/src/monad-gas";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 import { PINNED_DUOLINGO_EVIDENCE_SIGNER, resolveDuolingoMode, type DuolingoMode } from "@/src/duolingo-escrow-client";
 
-const POLL_MS = 4_000;
+const POLL_MS = 5_000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1_000;
 const pinnedSigner = (process.env.NEXT_PUBLIC_DUOLINGO_EVIDENCE_SIGNER || PINNED_DUOLINGO_EVIDENCE_SIGNER).toLowerCase();
 
