@@ -165,13 +165,15 @@ export function StravaConnect({ onViewChange, compact = false }: {
   }
 
   const title = view.kind === "strava_connected"
-    ? "Strava connected"
+    ? "Strava ready"
     : view.kind === "wallet_session_required" || view.kind === "strava_not_connected"
       ? "Connect Strava"
       : "Checking Strava…";
 
+  // No athlete id: it is technical, reads as a privacy leak, and adds nothing. A connected athlete only needs
+  // to know the connection is active; we read only the run they check in, never their route or other data.
   const detail = view.kind === "strava_connected"
-    ? `Athlete ${view.athleteId ?? "linked"}. We read only the run you check in, never your route.`
+    ? "Your connection is active. We read only the run you check in."
     : view.kind === "wallet_session_required"
       ? "One signature to check in your runs. Your Strava authorization is untouched."
       : view.kind === "strava_not_connected"
@@ -201,8 +203,8 @@ export function StravaConnect({ onViewChange, compact = false }: {
       )}
 
       {view.kind === "strava_connected" && !confirmingDisconnect && (
-        <button type="button" className="secondary-button" disabled={busy} onClick={() => setConfirmingDisconnect(true)}>
-          DISCONNECT
+        <button type="button" className="link-button" disabled={busy} onClick={() => setConfirmingDisconnect(true)}>
+          MANAGE CONNECTION
         </button>
       )}
 

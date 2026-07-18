@@ -242,6 +242,9 @@ a { color: inherit; }
 .secondary-button:not(:disabled):hover { background: var(--lime); }
 .lock-button:not(:disabled):active, .secondary-button:not(:disabled):active { transform: translate(4px, 4px); box-shadow: none; }
 .lock-button:disabled, .secondary-button:disabled { cursor: not-allowed; filter: grayscale(1); opacity: .45; }
+.link-button { align-self: start; margin-top: 4px; padding: 3px 0; border: 0; border-bottom: 1px solid currentColor; color: var(--muted); background: transparent; cursor: pointer; font: 950 9px/1 Arial, sans-serif; letter-spacing: .09em; text-transform: uppercase; transition: color .15s ease; }
+.link-button:not(:disabled):hover { color: var(--acid); }
+.link-button:disabled { opacity: .5; cursor: not-allowed; }
 .form-status { margin: 18px 0 0; font: italic 14px/1.4 Georgia, serif; }
 .consent-row { display: flex; align-items: flex-start; gap: 11px; color: var(--muted); font: 14px/1.45 Georgia, serif; cursor: pointer; }
 .consent-row input { width: 18px; height: 18px; margin: 1px 0 0; flex: 0 0 auto; accent-color: var(--acid); }
@@ -629,6 +632,9 @@ footer div { display: flex; gap: 22px; }
 .duo-notice { padding: 14px 16px; display: grid; gap: 8px; justify-items: start; border: 2px solid var(--ink); background: var(--surface); }
 .duo-notice strong { font-size: 13px; font-weight: 950; letter-spacing: .04em; text-transform: uppercase; }
 .duo-notice p { margin: 0; color: var(--muted); font: 14px/1.5 Georgia, serif; }
+.duo-proof-note { padding: 12px 14px; display: grid; gap: 4px; border-left: 4px solid var(--ink); background: var(--surface); }
+.duo-proof-note strong { font: 950 10px/1 Arial, sans-serif; letter-spacing: .1em; text-transform: uppercase; }
+.duo-proof-note span { color: var(--muted); font: 13px/1.4 Georgia, serif; }
 .duo-experience { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 18px; }
 .duo-financial { display: grid; gap: 18px; }
 .duo-mode-badge { justify-self: start; padding: 6px 10px; border: 2px solid var(--ink); background: var(--surface); font: 900 10px/1 Arial, sans-serif; letter-spacing: .14em; text-transform: uppercase; }

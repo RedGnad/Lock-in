@@ -132,6 +132,10 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
 
   return (
     <div className="duo-financial">
+      <div className="duo-proof-note">
+        <strong>Secure proof required</strong>
+        <span>Verify your XP at the start and finish. No permanent connection, and never your password.</span>
+      </div>
       <div className="duo-step">
         <label htmlFor="duo-fin-username"><b>Your Duolingo username</b></label>
         <input id="duo-fin-username" className="invite-link" value={username} placeholder="RedGnad"
