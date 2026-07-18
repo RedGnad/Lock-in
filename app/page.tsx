@@ -13,17 +13,18 @@ export default function Home() {
     <main>
       <section className="hero">
         <div className="hero-copy">
-          <div className="eyebrow"><span>01</span> Accountability with real stakes</div>
+          <div className="eyebrow"><span>01</span> Accountability that pays</div>
           <h1>Put money behind<br/><em>your goals.</em></h1>
           <p>Create a challenge with friends, stake up to 1 USDC, prove real progress with Strava or Duolingo, and let finishers split the pool.</p>
           <ReleaseActions />
         </div>
         <div className="hero-mark" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="lock-core"><span>NO</span><strong>EXCUSES</strong></div></div>
-        <div className="proof-strip"><span>STRAVA · LIVE</span><b>DUOLINGO · BETA</b><i>SETTLED ON MONAD</i></div>
+        <div className="proof-strip"><span>VERIFIED VIA STRAVA + DUOLINGO</span><b>PVP PAYOUTS</b><i>SETTLED ON MONAD</i></div>
       </section>
-      {/* Strava sends the athlete back to this page, so the outcome of the authorization is read here.
-          The card hides itself until a wallet is connected. */}
-      <section className="home-strava"><StravaConnect /></section>
+      {/* Strava sends the athlete back to this page, so the OAuth outcome is acknowledged here with a
+          transient notice only. There is no permanent connection card: connecting and disconnecting are
+          contextual, inside a Strava Lock. */}
+      <StravaConnect noticeOnly />
       <PactHub />
       <SocialLeaderboard />
       <section className="mechanic">

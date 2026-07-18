@@ -26,9 +26,10 @@ import { ensureWalletSession, hasWalletSession } from "@/src/wallet-auth-client"
  * gathers the two facts it needs and renders the answer.
  */
 
-export function StravaConnect({ onViewChange, compact = false }: {
+export function StravaConnect({ onViewChange, compact = false, noticeOnly = false }: {
   onViewChange?: (kind: StravaView["kind"]) => void;
   compact?: boolean;
+  noticeOnly?: boolean;
 }) {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
@@ -55,6 +56,13 @@ export function StravaConnect({ onViewChange, compact = false }: {
     url.searchParams.delete("strava");
     window.history.replaceState(null, "", url.toString());
   }, []);
+
+  // On the home there is no permanent card: the OAuth return shows a transient notice that then clears itself.
+  useEffect(() => {
+    if (!noticeOnly || !message) return;
+    const timer = setTimeout(() => setMessage(null), 6_000);
+    return () => clearTimeout(timer);
+  }, [noticeOnly, message]);
 
   const readConnection = useCallback(async (wallet: string) => {
     try {
@@ -140,28 +148,67 @@ export function StravaConnect({ onViewChange, compact = false }: {
     }
   }
 
-  if (!address) return null;
-
-  // Compact is the Lock page: VERIFY TODAY restores the session and refreshes tokens on its own, so the
-  // only state worth a permanent block there is a genuinely missing grant. Everything else stays silent,
-  // including "status locked", which used to push athletes to re-authorise for nothing.
-  if (compact) {
-    if (view.kind !== "strava_not_connected") return null;
+  // The home carries no connection card: it only acknowledges the OAuth return with a transient notice and
+  // otherwise renders nothing. Connecting and disconnecting are contextual, inside a Strava Lock.
+  if (noticeOnly) {
+    if (!message) return null;
     return (
-      <div className="strava-connect" aria-live="polite">
-        <div className="strava-connect-body">
-          <span className="strava-dot off" aria-hidden="true" />
-          <div>
-            <b>Connect Strava once to verify your runs.</b>
-            <small>You authorise Lock In on Strava. After that, checking in is a single tap.</small>
-          </div>
-        </div>
-        <button type="button" className="lock-button" disabled={busy} onClick={() => void connect()}>
-          {busy ? "OPENING STRAVA…" : "CONNECT STRAVA"}
-        </button>
-        {message && <p className="form-status">{message}</p>}
+      <div className="strava-connect strava-notice" aria-live="polite">
+        <p className="form-status">{message}</p>
       </div>
     );
+  }
+
+  if (!address) return null;
+
+  // Compact is the Lock page: VERIFY TODAY restores the session and refreshes tokens on its own. A genuinely
+  // missing grant shows the connect prompt; a live grant stays silent except for a secondary MANAGE
+  // CONNECTION link, so disconnection lives in the Strava context instead of a permanent block on the home.
+  if (compact) {
+    if (view.kind === "strava_not_connected") {
+      return (
+        <div className="strava-connect" aria-live="polite">
+          <div className="strava-connect-body">
+            <span className="strava-dot off" aria-hidden="true" />
+            <div>
+              <b>Connect Strava once to verify your runs.</b>
+              <small>You authorise Lock In on Strava. After that, checking in is a single tap.</small>
+            </div>
+          </div>
+          <button type="button" className="lock-button" disabled={busy} onClick={() => void connect()}>
+            {busy ? "OPENING STRAVA…" : "CONNECT STRAVA"}
+          </button>
+          {message && <p className="form-status">{message}</p>}
+        </div>
+      );
+    }
+    if (view.kind === "strava_connected") {
+      if (!confirmingDisconnect) {
+        return (
+          <div className="strava-connect strava-manage" aria-live="polite">
+            <button type="button" className="link-button" disabled={busy} onClick={() => setConfirmingDisconnect(true)}>
+              MANAGE CONNECTION
+            </button>
+            {message && <p className="form-status">{message}</p>}
+          </div>
+        );
+      }
+      return (
+        <div className="strava-connect strava-manage" aria-live="polite">
+          <div className="strava-confirm">
+            <p>Disconnecting revokes Lock In at Strava and deletes your tokens. You cannot check in until you reconnect.</p>
+            <button type="button" className="secondary-button" disabled={busy} onClick={() => void disconnect()}>
+              {busy ? "DISCONNECTING…" : "CONFIRM DISCONNECT"}
+            </button>
+            <button type="button" className="secondary-button" disabled={busy} onClick={() => setConfirmingDisconnect(false)}>
+              KEEP CONNECTED
+            </button>
+          </div>
+          {message && <p className="form-status">{message}</p>}
+        </div>
+      );
+    }
+    return null;
   }
 
   const title = view.kind === "strava_connected"
