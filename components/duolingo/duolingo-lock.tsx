@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { formatUnits, zeroAddress, type Address } from "viem";
 import { useAccount, useReadContract, useSignMessage } from "wagmi";
 import { erc20Abi } from "@/src/lock-in-abi";
@@ -155,85 +156,113 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
   const refundMode = pact.cancelled || pact.finisherCount === 0;
   const eligibleToClaim = pact.finalized && !claimedAlready && (refundMode ? Boolean(joined) : Boolean(completed));
 
+  const durationSecondsNum = Number(pact.durationSeconds);
+  const durLabel = durationSecondsNum % 86_400 === 0
+    ? `${durationSecondsNum / 86_400} day${durationSecondsNum / 86_400 > 1 ? "s" : ""}`
+    : `${Math.round(durationSecondsNum / 60)} min`;
+  const statusPill = pact.cancelled ? "REFUND READY"
+    : pact.finalized ? (refundMode ? "REFUND READY" : "SETTLED")
+    : beforeStart ? (pact.participantCount >= pact.maxParticipants ? "FULL" : "REGISTRATION")
+    : duringChallenge ? "ACTIVE"
+    : pastDeadline ? "SETTLEMENT READY" : "SETTLEMENT PENDING";
+  const heroLine = joined
+    ? (completed ? "Target reached." : "You are locked in.")
+    : beforeStart ? `Registration closes ${formatTime(startsAt)}.` : `Program ended ${formatTime(endsAt)}.`;
+  const showUsernameInput = (beforeStart && !joined) || (duringChallenge && joined && !completed);
+  const canJoin = beforeStart && !joined && !pact.cancelled && !pact.finalized && pact.participantCount < pact.maxParticipants;
+
   return (
-    <div className="duo-financial">
+    <div className="pact-lock">
+      <div className="pact-topline"><Link href="/">← Home</Link><span>DUOLINGO XP / #{pactId}</span><ShareSheet url={invite} text={`I put ${formatUnits(pact.stake, chain.decimals)} USDC behind a ${pact.targetXp} XP Duolingo goal. Join my Lock.`} title={`Lock In · Duolingo #${pactId}`} /></div>
+
+      <section className="pact-hero">
+        <div><div className="live-pill"><i /> {statusPill}</div><h1>+{pact.targetXp} XP<br/><em>in {durLabel}</em></h1><p>{heroLine}</p></div>
+        <div className="pot"><span>{pact.finalized ? "UNCLAIMED POOL" : "TOTAL POOL"}</span><strong>{formatUnits(pool, chain.decimals)}</strong><b>{chain.symbol}</b><small>{pact.participantCount}/{pact.maxParticipants} players · 2 needed</small></div>
+      </section>
+
       <div className="duo-baseline">
         <div><span>TARGET</span><b>+{pact.targetXp} XP</b></div>
         <div><span>STAKE</span><b>{stakeText}</b></div>
-        <div><span>POOL</span><b>{formatUnits(pool, chain.decimals)} {chain.symbol}</b></div>
         <div><span>CREW</span><b>{pact.participantCount} / {pact.maxParticipants}</b></div>
         <div><span>{beforeStart ? "STARTS" : "ENDS"}</span><b>{formatTime(beforeStart ? startsAt : endsAt)}</b></div>
         <div><span>YOU</span><b>{completed ? "Finished ✓" : joined ? "Joined" : "Not in"}</b></div>
       </div>
 
-      {(beforeStart && !joined) || (duringChallenge && joined && !completed) ? (
-        <div className="duo-step">
-          <label htmlFor="duo-lock-username"><b>Your Duolingo username</b></label>
-          <input id="duo-lock-username" className="invite-link" value={username} placeholder="RedGnad"
-            onChange={(event) => setUsername(event.target.value)} disabled={Boolean(busy)} />
-          <small>{RECLAIM_NOTICE}</small>
-        </div>
-      ) : null}
-
-      {beforeStart && !joined && !pact.cancelled && !pact.finalized && pact.participantCount < pact.maxParticipants && (
-        <button className="lock-button" disabled={Boolean(busy) || !canTransact} onClick={() => void prove("join")}>
-          {busy === "join" ? (status ?? "WORKING…") : `PROVE XP & JOIN · ${stakeText}`}
-        </button>
-      )}
-
-      {beforeStart && (
-        <div className="duo-step">
-          <div className="duo-invite-head">
-            <b>Invite your crew</b>
-            <ShareSheet url={invite} text={`I put ${formatUnits(pact.stake, chain.decimals)} USDC behind a ${pact.targetXp} XP Duolingo goal. Join my Lock.`} title={`Lock In · Duolingo #${pactId}`} />
+      <div className="pact-actions">
+        {showUsernameInput && (
+          <div className="duo-step">
+            <label htmlFor="duo-lock-username"><b>Your Duolingo username</b></label>
+            <input id="duo-lock-username" className="invite-link" value={username} placeholder="RedGnad"
+              onChange={(event) => setUsername(event.target.value)} disabled={Boolean(busy)} />
+            <small>{RECLAIM_NOTICE}</small>
           </div>
-          <input className="invite-link" readOnly value={invite} onFocus={(event) => event.currentTarget.select()} />
-          <small>They open this link, prove their starting XP, and stake the same {stakeText}.</small>
-        </div>
-      )}
+        )}
 
-      {duringChallenge && joined && !completed && (
-        <>
-          <p className="proof-disclosure">Earn {pact.targetXp} XP, then verify your final XP before {formatTime(endsAt)}.</p>
-          <button className="lock-button" disabled={Boolean(busy) || !canTransact} onClick={() => void prove("final")}>
-            {busy === "final" ? (status ?? "CHECKING YOUR PROGRESS…") : "VERIFY FINAL XP"}
+        {canJoin && (
+          <button className="lock-button" disabled={Boolean(busy) || !canTransact} onClick={() => void prove("join")}>
+            {busy === "join" ? (status ?? "WORKING…") : `PROVE XP & JOIN · ${stakeText}`}
           </button>
-        </>
-      )}
+        )}
 
-      {(completed || passed) && (
-        <div className="duo-result"><strong>TARGET REACHED ✓</strong>
-          {passed && <p>You earned <b>{passed.earnedXp} XP</b> against a target of {passed.targetXp}.</p>}</div>
-      )}
+        {beforeStart && (
+          <div className="duo-step">
+            <div className="duo-invite-head">
+              <b>Invite your crew</b>
+              <ShareSheet url={invite} text={`I put ${formatUnits(pact.stake, chain.decimals)} USDC behind a ${pact.targetXp} XP Duolingo goal. Join my Lock.`} title={`Lock In · Duolingo #${pactId}`} />
+            </div>
+            <input className="invite-link" readOnly value={invite} onFocus={(event) => event.currentTarget.select()} />
+            <small>They open this link, prove their starting XP, and stake the same {stakeText}.</small>
+          </div>
+        )}
 
-      {now >= endsAt && !pact.finalized && (
-        pastDeadline
-          ? <button className="lock-button" disabled={Boolean(busy)} onClick={() => void settle()}>{busy === "settle" ? "SETTLING…" : "SETTLE LOCK"}</button>
-          : <p className="form-status" role="status">The challenge has ended. Settlement opens at {formatTime(deadline)}.</p>
-      )}
+        {duringChallenge && joined && !completed && (
+          <>
+            <p className="proof-disclosure">Earn {pact.targetXp} XP, then verify your final XP before {formatTime(endsAt)}.</p>
+            <button className="lock-button" disabled={Boolean(busy) || !canTransact} onClick={() => void prove("final")}>
+              {busy === "final" ? (status ?? "CHECKING YOUR PROGRESS…") : "VERIFY FINAL XP"}
+            </button>
+          </>
+        )}
 
-      {pact.finalized && (
-        claimedAlready
-          ? <p className="form-status" role="status">You have claimed this Lock.</p>
-          : eligibleToClaim
-            ? <button className="lock-button" disabled={Boolean(busy)} onClick={() => void claim()}>{busy === "claim" ? "CLAIMING…" : refundMode ? "CLAIM REFUND" : "CLAIM PAYOUT"}</button>
-            : joined
-              ? <p className="form-status" role="status">This Lock is settled. You did not reach the target, so there is nothing to claim.</p>
-              : <p className="form-status" role="status">This Lock is settled.</p>
-      )}
+        {(completed || passed) && (
+          <div className="duo-result"><strong>TARGET REACHED ✓</strong>
+            {passed && <p>You earned <b>{passed.earnedXp} XP</b> against a target of {passed.targetXp}.</p>}</div>
+        )}
 
-      {status && busy && <p className="form-status" aria-live="polite">{status}</p>}
-      {notice && <p className="form-status" role="status">{notice}</p>}
-      {rateLimited && (
-        <div className="duo-notice" role="status">
-          <strong>Just a moment</strong>
-          <p>{RATE_LIMIT_MESSAGE} No USDC has moved, and your Lock is unchanged.</p>
-          <button className="secondary-button" type="button" onClick={() => setRateLimited(false)}>TRY AGAIN LATER</button>
-        </div>
-      )}
-      {error && <p className="form-status duo-error" role="alert">{error}</p>}
+        {now >= endsAt && !pact.finalized && (
+          pastDeadline
+            ? <button className="lock-button" disabled={Boolean(busy)} onClick={() => void settle()}>{busy === "settle" ? "SETTLING…" : "SETTLE LOCK"}</button>
+            : <p className="form-status" role="status">The challenge has ended. Settlement opens at {formatTime(deadline)}.</p>
+        )}
 
-      <button className="secondary-button" disabled={Boolean(busy)} onClick={onLeave}>BACK TO DUOLINGO XP</button>
+        {pact.finalized && (
+          claimedAlready
+            ? <p className="form-status" role="status">You have claimed this Lock.</p>
+            : eligibleToClaim
+              ? <button className="lock-button" disabled={Boolean(busy)} onClick={() => void claim()}>{busy === "claim" ? "CLAIMING…" : refundMode ? "CLAIM REFUND" : "CLAIM PAYOUT"}</button>
+              : joined
+                ? <p className="form-status" role="status">This Lock is settled. You did not reach the target, so there is nothing to claim.</p>
+                : <p className="form-status" role="status">This Lock is settled.</p>
+        )}
+
+        {status && busy && <p className="form-status" aria-live="polite">{status}</p>}
+        {notice && <p className="form-status" role="status">{notice}</p>}
+        {rateLimited && (
+          <div className="duo-notice" role="status">
+            <strong>Just a moment</strong>
+            <p>{RATE_LIMIT_MESSAGE} No USDC has moved, and your Lock is unchanged.</p>
+            <button className="secondary-button" type="button" onClick={() => setRateLimited(false)}>TRY AGAIN LATER</button>
+          </div>
+        )}
+        {error && <p className="form-status duo-error" role="alert">{error}</p>}
+      </div>
+
+      <details className="pact-details"><summary>HOW THE PROOF WORKS <span aria-hidden="true">+</span></summary><div className="details-body">
+        <p>Reclaim opens Duolingo in a secure browser you sign into yourself. It returns a proof, signed inside a trusted execution environment, that your account really shows that XP. Lock In never sees your Duolingo password.</p>
+        <p>Your starting XP is held by Lock In, not by your browser, so it cannot be edited to make the challenge easier. Both proofs must come from the same Duolingo account. This mission counts a total, not a daily streak.</p>
+      </div></details>
+
+      <button className="secondary-button" disabled={Boolean(busy)} onClick={onLeave}>BACK</button>
     </div>
   );
 }

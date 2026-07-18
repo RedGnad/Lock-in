@@ -40,12 +40,22 @@ async function scheduledStart(client: PublicClient): Promise<bigint> {
   return ((earliest + five - 1n) / five) * five;
 }
 
-export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => void }) {
+/**
+ * Native Duolingo creation, inside the shared "Build your lock" wizard. Mission is step 1 (chosen by the
+ * host); this component owns step 2 (SET YOUR GOAL) and step 3 (STAKE & REVIEW). The proof, approve and
+ * createPact logic in create() is unchanged from the standalone flow: only the layout is the wizard shell.
+ */
+export function DuolingoCreate({ onCreated, onBackToMission }: {
+  onCreated: (pactId: string) => void;
+  onBackToMission?: () => void;
+}) {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const chain = useEscrowChain();
   const { writeWithGas, publicClient } = useEscrowWrite();
 
+  // step 0 = SET YOUR GOAL, step 1 = STAKE & REVIEW. Mission is the host's step, shown done in the track.
+  const [step, setStep] = useState(0);
   const [username, setUsername] = useState("");
   const [targetXp, setTargetXp] = useState<number>(100);
   const [durationSeconds, setDurationSeconds] = useState<number>(DURATIONS[0].seconds);
@@ -58,6 +68,7 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
 
   const amount = useMemoStake(stakeInput, chain.decimals);
   const canTransact = chain.mode.canTransact;
+  const durationLabel = DURATIONS.find((option) => option.seconds === durationSeconds)?.label ?? "";
 
   async function create() {
     if (busy) return;
@@ -130,66 +141,79 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
     }
   }
 
+  const goalReady = Boolean(targetXp && durationSeconds && maxParticipants);
+
   return (
-    <div className="duo-financial">
-      <div className="duo-proof-note">
-        <strong>Secure proof required</strong>
-        <span>Verify your XP at the start and finish. No permanent connection, and never your password.</span>
+    <section className="create-card" id="create">
+      <div className="create-heading">
+        <div><span className="card-kicker">DUOLINGO XP · BETA</span><h2>Build your lock</h2></div>
+        <span className="step-count">{step + 2} / 3</span>
       </div>
-      <div className="duo-step">
-        <label htmlFor="duo-fin-username"><b>Your Duolingo username</b></label>
-        <input id="duo-fin-username" className="invite-link" value={username} placeholder="RedGnad"
-          onChange={(event) => setUsername(event.target.value)} disabled={busy} />
-        <small>{RECLAIM_NOTICE}</small>
-      </div>
-
-      <div className="duo-step">
-        <b>How much XP will you earn?</b>
-        <div className="segmented">
-          {XP_TARGETS.map((value) => (
-            <button type="button" key={value} className={targetXp === value ? "active" : ""} aria-pressed={targetXp === value}
-              disabled={busy} onClick={() => setTargetXp(value)}>{value}<small>XP</small></button>
-          ))}
-        </div>
-        <small>Earn this much new XP before the deadline. It is a total, not a daily streak.</small>
+      <div className="step-track" aria-label={`Step ${step + 2} of 3`}>
+        {[0, 1, 2].map((index) => (
+          <button type="button" key={index} className={index <= step + 1 ? "active" : ""} disabled={busy || index > step + 1}
+            onClick={() => { if (index === 0) onBackToMission?.(); else setStep(index - 1); }}
+            aria-label={`Go to step ${index + 1}`} aria-current={index === step + 1 ? "step" : undefined} />
+        ))}
       </div>
 
-      <div className="duo-step">
-        <b>How long?</b>
-        <div className="segmented">
-          {DURATIONS.map((option) => (
-            <button type="button" key={option.seconds} className={durationSeconds === option.seconds ? "active" : ""}
-              aria-pressed={durationSeconds === option.seconds} disabled={busy} onClick={() => setDurationSeconds(option.seconds)}>{option.label}</button>
-          ))}
-        </div>
-      </div>
+      <div className="form-stage">
+        {step === 0 && (
+          <fieldset className="form-field">
+            <legend><b>Set your goal</b><span>Duolingo XP · pick a target, a window, and your crew.</span></legend>
+            <div className="segmented target-options">
+              {XP_TARGETS.map((value) => (
+                <button type="button" key={value} className={targetXp === value ? "active" : ""} aria-pressed={targetXp === value}
+                  disabled={busy} onClick={() => setTargetXp(value)}>{value}<small>XP</small></button>
+              ))}
+            </div>
+            <div className="segmented schedule-options">
+              {DURATIONS.map((option) => (
+                <button type="button" key={option.seconds} className={durationSeconds === option.seconds ? "active" : ""}
+                  aria-pressed={durationSeconds === option.seconds} disabled={busy} onClick={() => setDurationSeconds(option.seconds)}>{option.label}</button>
+              ))}
+            </div>
+            <div className="segmented crew-options" aria-label="Maximum crew size">
+              {CREWS.map((size) => (
+                <button type="button" key={size} className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size}
+                  disabled={busy} onClick={() => setMaxParticipants(size)}>{size}<small>PLAYERS MAX</small></button>
+              ))}
+            </div>
+            <small>Earn this much new XP before the deadline. It is a total, not a daily streak.</small>
+          </fieldset>
+        )}
 
-      <div className="duo-step">
-        <b>Crew size</b>
-        <div className="segmented">
-          {CREWS.map((size) => (
-            <button type="button" key={size} className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size}
-              disabled={busy} onClick={() => setMaxParticipants(size)}>{size}<small>MAX</small></button>
-          ))}
-        </div>
-      </div>
-
-      <div className="duo-step">
-        <b>Your stake</b>
-        <div className="segmented">
-          {stakeOptions().map((value) => (
-            <button type="button" key={value} className={stakeInput === value ? "active" : ""} aria-pressed={stakeInput === value}
-              disabled={busy || !canTransact} onClick={() => setStakeInput(value)}>{value}<small>{chain.symbol}</small></button>
-          ))}
-        </div>
-        {chain.minStake !== undefined && chain.maxStake !== undefined && (
-          <small>From {formatUnits(chain.minStake, chain.decimals)} to {formatUnits(chain.maxStake, chain.decimals)} {chain.symbol}. Every player stakes the same.</small>
+        {step === 1 && (
+          <fieldset className="form-field">
+            <legend><b>Stake &amp; review</b><span>Every player stakes the same amount.</span></legend>
+            <div className="segmented stake-options">
+              {stakeOptions().map((value) => (
+                <button type="button" key={value} className={stakeInput === value ? "active" : ""} aria-pressed={stakeInput === value}
+                  disabled={busy || !canTransact} onClick={() => setStakeInput(value)}>{value}<small>{chain.symbol}</small></button>
+              ))}
+            </div>
+            <label htmlFor="duo-fin-username"><b>Your Duolingo username</b></label>
+            <input id="duo-fin-username" className="invite-link" value={username} placeholder="RedGnad"
+              onChange={(event) => setUsername(event.target.value)} disabled={busy} />
+            <div className="duo-proof-note">
+              <strong>Secure proof required</strong>
+              <span>{RECLAIM_NOTICE}</span>
+            </div>
+          </fieldset>
         )}
       </div>
 
-      <button className="lock-button" disabled={busy || !canTransact} onClick={() => void create()}>
-        {busy ? (status ?? "WORKING…") : `PROVE XP & CREATE · ${stakeInput} ${chain.symbol}`}
-      </button>
+      <div className="pact-summary">
+        <strong>Duolingo XP · +{targetXp} XP in {durationLabel}</strong>
+        <span>up to {maxParticipants} players · {stakeInput} {chain.symbol} each</span>
+      </div>
+
+      <div className="stage-actions">
+        <button className="secondary-button" type="button" disabled={busy} onClick={() => { if (step === 0) onBackToMission?.(); else setStep(0); }}>BACK</button>
+        {step === 0
+          ? <button className="lock-button" type="button" disabled={!goalReady} onClick={() => setStep(1)}>CONTINUE</button>
+          : <button className="lock-button" type="button" disabled={busy || !canTransact} onClick={() => void create()}>{busy ? (status ?? "WORKING…") : `PROVE XP & CREATE · ${stakeInput} ${chain.symbol}`}</button>}
+      </div>
 
       {!canTransact && chain.mode.status === "canary-paused" && (
         <p className="form-status safety-status" role="status">The financial canary is paused. Terms are visible; transactions are blocked.</p>
@@ -203,6 +227,6 @@ export function DuolingoCreate({ onCreated }: { onCreated: (pactId: string) => v
         </div>
       )}
       {error && <p className="form-status duo-error" role="alert">{error}</p>}
-    </div>
+    </section>
   );
 }

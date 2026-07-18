@@ -208,7 +208,7 @@ a { color: inherit; }
 .segmented button.active:not(:disabled):hover { color: var(--paper); background: var(--ink); }
 .segmented button:disabled { cursor: not-allowed; opacity: .38; }
 .distance-options, .schedule-options { grid-template-columns: repeat(4, 1fr); }
-.stake-options { grid-template-columns: repeat(3, 1fr); }
+.stake-options, .crew-options { grid-template-columns: repeat(3, 1fr); }
 .target-options { margin-bottom: 12px; grid-template-columns: repeat(4, 1fr); }
 .mission-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .mission-options button { position: relative; min-height: 126px; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 22px; border: 2px solid var(--ink); color: var(--ink); background: var(--paper); box-shadow: 5px 5px 0 var(--ink); cursor: pointer; text-align: left; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease; }
@@ -226,8 +226,8 @@ a { color: inherit; }
 /* Specific enough to beat the generic `.mission-options span` rule, which otherwise forces color:inherit
    and opacity .75 onto the badge and makes the BETA label invisible on its dark chip. */
 .mission-options .mission-beta { padding: 3px 6px; font: 900 9px/1 Arial, sans-serif; letter-spacing: .1em; color: var(--paper); background: var(--ink); opacity: 1; max-width: none; }
-.distance-options button, .schedule-options button, .stake-options button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
-.distance-options button small, .schedule-options button small, .stake-options button small { color: inherit; font-size: 10px; letter-spacing: .06em; }
+.distance-options button, .schedule-options button, .stake-options button, .crew-options button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.distance-options button small, .schedule-options button small, .stake-options button small, .crew-options button small { color: inherit; font-size: 10px; letter-spacing: .06em; }
 .pact-summary { margin: 30px 0 20px; padding: 18px 20px; display: flex; justify-content: space-between; gap: 22px; border-left: 4px solid var(--acid); background: var(--paper); }
 .pact-summary strong { font-size: 13px; text-transform: uppercase; }
 .pact-summary span { color: var(--muted); font: 14px/1.35 Georgia, serif; text-align: right; }
@@ -626,7 +626,7 @@ footer div { display: flex; gap: 22px; }
 .duo-preview { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 18px; }
 .duo-step { display: grid; gap: 8px; }
 .duo-step small { color: var(--muted); font: 13px/1.4 Georgia, serif; }
-.duo-baseline { padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; border: 1px solid var(--ink); background: var(--lime); }
+.duo-baseline { margin-top: 24px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; border: 1px solid var(--ink); background: var(--lime); }
 .duo-baseline span { display: block; font-size: 10px; font-weight: 950; letter-spacing: .12em; }
 .duo-baseline b { font-size: 19px; letter-spacing: -.02em; overflow-wrap: anywhere; }
 .duo-result { padding: 18px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 6px 6px 0 var(--acid); }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { duolingoEscrowAddress } from "@/src/chain";
 import { DuolingoPreview } from "@/components/duolingo-preview";
@@ -14,12 +15,16 @@ import { useEscrowChain } from "@/components/duolingo/escrow-shared";
  * - address present but paused, or the signer unverified: the financial canary, terms visible, writes off;
  * - address present, nothing paused, signer verified: live with USDC.
  *
- * A ?lock=<id> query (the invite link) opens straight into that Lock.
+ * A ?lock=<id> invite opens straight into that Lock, rendered with the same shell as a Strava Lock. When a
+ * Lock is open there is no separate Beta chrome: leaving it returns to the home wizard, not a Duolingo page.
  */
-export function DuolingoExperience() {
+export function DuolingoExperience({ initialLock }: { initialLock?: string }) {
+  const router = useRouter();
   const { address } = useAccount();
   const chain = useEscrowChain();
-  const [pactId, setPactId] = useState<string | null>(null);
+  const [pactId, setPactId] = useState<string | null>(
+    initialLock && /^[1-9]\d{0,29}$/.test(initialLock) ? initialLock : null,
+  );
   const [openById, setOpenById] = useState("");
 
   useEffect(() => {
@@ -28,12 +33,11 @@ export function DuolingoExperience() {
     if (lock && /^[1-9]\d{0,29}$/.test(lock)) setPactId(lock);
   }, []);
 
-  const badge = chain.mode.badge;
   const financial = Boolean(duolingoEscrowAddress);
 
   return (
     <div className="duo-experience">
-      <div className="duo-mode-badge" data-mode={chain.mode.status}>{badge}</div>
+      {!pactId && <div className="duo-mode-badge" data-mode={chain.mode.status}>{chain.mode.badge}</div>}
 
       {!financial && (
         <>
@@ -56,12 +60,12 @@ export function DuolingoExperience() {
       )}
 
       {financial && address && pactId && (
-        <DuolingoLock pactId={pactId} onLeave={() => { setPactId(null); if (typeof window !== "undefined") window.history.replaceState(null, "", "/duolingo"); }} />
+        <DuolingoLock pactId={pactId} onLeave={() => router.push("/")} />
       )}
 
       {financial && address && !pactId && (
         <>
-          <DuolingoCreate onCreated={(id) => setPactId(id)} />
+          <DuolingoCreate onCreated={(id) => router.push(`/duolingo?lock=${id}`)} />
           <div className="duo-step">
             <b>Have an invite?</b>
             <div className="join-by-id">
