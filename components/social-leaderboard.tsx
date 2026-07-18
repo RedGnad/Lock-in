@@ -113,10 +113,7 @@ export function SocialLeaderboard({ full = false }: { full?: boolean }) {
         })}
       </div>
 
-      <div className="social-footer">
-        <span>All-time Lock Score never resets. Category totals are independently deduplicated.</span>
-        {!full && <Link href="/leaderboard">FULL LEADERBOARD ↗</Link>}
-      </div>
+      {!full && <div className="social-footer"><Link href="/leaderboard">FULL LEADERBOARD ↗</Link></div>}
     </section>
   );
 }
