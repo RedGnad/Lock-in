@@ -103,15 +103,25 @@ export async function runEscrowProof(opts: {
       credentials: "same-origin",
       body: JSON.stringify({ sessionId: session.sessionId }),
     });
-    const payload = await response.json();
+    // 202 = Reclaim has not returned the proof yet. Keep polling calmly until the global timeout.
+    if (response.status === 202) {
+      if (Date.now() > deadline) throw new Error("The proof timed out. Try again.");
+      continue;
+    }
+    // 429 = a transient limit. Respect Retry-After and keep waiting rather than aborting the whole flow.
+    if (response.status === 429) {
+      const retryMs = Math.max(1_000, (Number(response.headers.get("Retry-After")) || 5) * 1_000);
+      if (Date.now() + retryMs > deadline) throw new Error("The proof timed out. Try again.");
+      await new Promise((resolve) => setTimeout(resolve, retryMs));
+      continue;
+    }
+    const payload = await response.json().catch(() => ({}));
     if (response.ok) {
       portal?.close();
       return { ...payload, createNonce: session.createNonce } as ProofResult;
     }
-    if (!/has not returned a proof yet/i.test(String(payload.error))) {
-      throw new Error(payload.error || "The proof was rejected");
-    }
-    if (Date.now() > deadline) throw new Error("The proof timed out. Try again.");
+    // Anything else is terminal: surface the reason and stop.
+    throw new Error(payload.error || "The proof was rejected");
   }
 }
 

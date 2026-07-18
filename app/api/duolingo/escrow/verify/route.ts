@@ -64,21 +64,30 @@ export async function POST(request: Request) {
     } catch {
       throw new EscrowChainUnavailableError("The Duolingo escrow is not available yet");
     }
-    // This route is POLLED every few seconds while Reclaim finishes, so it uses the polling budget, not the
-    // tight one-shot `verify` budget: a slow Duolingo login must never trip our own limiter mid-proof. The
-    // real cost (verifyProof + the on-chain read) only runs on the poll that finds a completed proof, and the
-    // single-use session bounds how often that can happen.
-    const rate = checkRateLimit("status", request, session.walletAddress);
-    if (!rate.allowed) {
+    // The polling budget bounds every poll while Reclaim works, so a slow Duolingo login can never trip our
+    // own limiter mid-proof. The tight `verify` budget is applied later, only when a real verification runs.
+    const pollRate = checkRateLimit("status", request, session.walletAddress);
+    if (!pollRate.allowed) {
       return NextResponse.json({ error: "Too many attempts. Try again shortly." }, {
         status: 429,
-        headers: rateLimitResponseHeaders(rate),
+        headers: rateLimitResponseHeaders(pollRate),
       });
     }
 
     const status = await fetchStatusUrl(sessionId);
     const proofs = (status?.session?.proofs || []) as Proof[];
-    if (proofs.length === 0) throw new Error("Reclaim has not returned a proof yet");
+    // No proof yet is the normal waiting state, not a failure: answer 202 so the client keeps polling calmly.
+    if (proofs.length === 0) {
+      return NextResponse.json({ pending: true }, { status: 202, headers: { "Cache-Control": "no-store" } });
+    }
+    // The expensive path begins here. Only now does the tight `verify` budget apply.
+    const verifyRate = checkRateLimit("verify", request, session.walletAddress);
+    if (!verifyRate.allowed) {
+      return NextResponse.json({ error: "Too many attempts. Try again shortly." }, {
+        status: 429,
+        headers: rateLimitResponseHeaders(verifyRate),
+      });
+    }
     // Shape first: a proof with no teeAttestation is the AI fallback, and it stops here.
     assertSdkProofSet(proofs, { expectedCount: 2, maxSignedJsonBytes: 20_000 } as never);
 
