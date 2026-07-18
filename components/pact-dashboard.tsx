@@ -388,7 +388,9 @@ export function PactDashboard({ id }: { id: string }) {
     : status;
 
   const shareText = pact
-    ? `I'm ${completed}/${requiredCompletions} on my ${mission.name} Lock In challenge on Monad. Would you keep the commitment?`
+    ? registration
+      ? `I put ${Number(pact[2]) / 1_000_000} USDC behind a ${mission.name} goal. Join my Lock.`
+      : `Day ${completed} verified. ${completed}/${requiredCompletions} on my Lock In challenge on Monad.`
     : "Join my Lock In challenge on Monad.";
 
   return (

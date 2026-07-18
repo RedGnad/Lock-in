@@ -5,6 +5,7 @@ import { formatUnits, zeroAddress, type Address } from "viem";
 import { useAccount, useReadContract, useSignMessage } from "wagmi";
 import { erc20Abi } from "@/src/lock-in-abi";
 import { duolingoEscrowAddress } from "@/src/chain";
+import { ShareSheet } from "@/components/share-sheet";
 import {
   attestationIsFresh,
   joinPactArgs,
@@ -182,7 +183,10 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
 
       {beforeStart && (
         <div className="duo-step">
-          <b>Invite your crew</b>
+          <div className="duo-invite-head">
+            <b>Invite your crew</b>
+            <ShareSheet url={invite} text={`I put ${formatUnits(pact.stake, chain.decimals)} USDC behind a ${pact.targetXp} XP Duolingo goal. Join my Lock.`} title={`Lock In · Duolingo #${pactId}`} />
+          </div>
           <input className="invite-link" readOnly value={invite} onFocus={(event) => event.currentTarget.select()} />
           <small>They open this link, prove their starting XP, and stake the same {stakeText}.</small>
         </div>

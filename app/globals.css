@@ -635,6 +635,7 @@ footer div { display: flex; gap: 22px; }
 .duo-proof-note { padding: 12px 14px; display: grid; gap: 4px; border-left: 4px solid var(--ink); background: var(--surface); }
 .duo-proof-note strong { font: 950 10px/1 Arial, sans-serif; letter-spacing: .1em; text-transform: uppercase; }
 .duo-proof-note span { color: var(--muted); font: 13px/1.4 Georgia, serif; }
+.duo-invite-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .duo-experience { width: min(760px, 100%); margin: 0 auto; display: grid; gap: 18px; }
 .duo-financial { display: grid; gap: 18px; }
 .duo-mode-badge { justify-self: start; padding: 6px 10px; border: 2px solid var(--ink); background: var(--surface); font: 900 10px/1 Arial, sans-serif; letter-spacing: .14em; text-transform: uppercase; }

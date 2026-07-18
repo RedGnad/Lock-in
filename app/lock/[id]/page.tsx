@@ -17,7 +17,12 @@ export async function generateMetadata({ params }: LockPageProps): Promise<Metad
     const title = `${mission.name}: ${lock[8]} ${mission.verb} in ${lock[7]} days — Lock In`;
     const description = `Join Lock #${id}: ${formatMissionTarget(lock[11], lock[3])}, complete ${lock[8]} of ${lock[7]} days, with ${Number(lock[2]) / 1_000_000} USDC staked per player.`;
     const url = `/lock/${id}`;
-    return { title, description, alternates: { canonical: url }, openGraph: { title, description, type: "website", url } };
+    const image = `/api/og/lock?m=strava&id=${id}`;
+    return {
+      title, description, alternates: { canonical: url },
+      openGraph: { title, description, type: "website", url, images: [{ url: image, width: 1200, height: 630, alt: title }] },
+      twitter: { card: "summary_large_image", title, description, images: [image] },
+    };
   } catch {
     const url = `/lock/${id}`;
     return { title: `Lock #${id} — Lock In`, description: "Join this verified challenge on Monad.", alternates: { canonical: url }, openGraph: { url } };

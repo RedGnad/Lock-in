@@ -1,11 +1,27 @@
 import type { Metadata } from "next";
 import { DuolingoExperience } from "@/components/duolingo-experience";
 
-export const metadata: Metadata = {
-  title: "Duolingo XP — Beta — Lock In",
+const base: Metadata = {
+  title: "Duolingo XP - Beta - Lock In",
   description: "Prove your starting XP, learn, then prove your progress. Cumulative XP delta, proved by zkTLS.",
   robots: { index: false, follow: false },
 };
+
+// A shared invite (?lock=<id>) gets a truthful Open Graph card rendered from the Lock's real on-chain state.
+export async function generateMetadata({ searchParams }: { searchParams: Promise<{ lock?: string }> }): Promise<Metadata> {
+  const { lock } = await searchParams;
+  if (!lock || !/^[1-9]\d{0,29}$/.test(lock)) return base;
+  const image = `/api/og/lock?m=duolingo&id=${lock}`;
+  const title = `Join my Duolingo XP Lock #${lock} - Lock In`;
+  const description = "Prove your XP, stake USDC, finishers split the pool. Settled on Monad.";
+  return {
+    ...base,
+    title,
+    description,
+    openGraph: { title, description, type: "website", url: `/duolingo?lock=${lock}`, images: [{ url: image, width: 1200, height: 630, alt: title }] },
+    twitter: { card: "summary_large_image", title, description, images: [image] },
+  };
+}
 
 export default function DuolingoPage() {
   return (
