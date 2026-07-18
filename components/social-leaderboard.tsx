@@ -12,9 +12,16 @@ type LeaderboardApiResponse = SocialLeaderboardData & {
 };
 
 const FILTERS: { id: LeaderboardFilter; label: string; detail: string }[] = [
-  { id: "overall", label: "Overall", detail: "Any verified day" },
-  { id: "running", label: "Running", detail: "Strava days" },
+  { id: "overall", label: "Overall", detail: "All verified days" },
+  { id: "running", label: "Running", detail: "Strava check-ins" },
+  { id: "learning", label: "Learning", detail: "Duolingo completions" },
 ];
+
+const WEEKLY_SUBLABEL: Record<LeaderboardFilter, string> = {
+  overall: "VERIFIED DAYS",
+  running: "RUNNING DAYS",
+  learning: "LEARNING DAYS",
+};
 
 function compactAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -101,13 +108,14 @@ export function SocialLeaderboard({ full = false }: { full?: boolean }) {
       <div className="social-ranking" id="social-ranking" role="tabpanel" aria-live="polite">
         {!data && !error && <div className="social-state">Reading verified days from Monad…</div>}
         {error && !data && <div className="social-state social-error"><span>{error}</span><button type="button" onClick={() => setRetryKey((value) => value + 1)}>TRY AGAIN</button></div>}
-        {data && entries.length === 0 && <div className="social-state social-empty"><strong>The board is open.</strong><span>Publish the first verified day this week to take #1.</span><Link href="/#play">START A LOCK →</Link></div>}
+        {data && entries.length === 0 && filter === "learning" && <div className="social-state social-empty"><strong>The learning board is open.</strong><span>Complete the first Duolingo Lock this week to take #1.</span><Link href="/#play">START A LOCK →</Link></div>}
+        {data && entries.length === 0 && filter !== "learning" && <div className="social-state social-empty"><strong>The board is open.</strong><span>Publish the first verified day this week to take #1.</span><Link href="/#play">START A LOCK →</Link></div>}
         {entries.map((entry, index) => {
           const isYou = address?.toLowerCase() === entry.account.toLowerCase();
           return <div className={`social-row${isYou ? " social-row-you" : ""}`} key={entry.account}>
             <b className="social-rank">{String(competitionRank(entries, index)).padStart(2, "0")}</b>
             <div className="social-player"><strong>{entry.handle ? `@${entry.handle}` : compactAddress(entry.account)}</strong><span>{isYou ? "YOU · " : ""}{entry.handle ? compactAddress(entry.account) : "LOCK IN PLAYER"}</span></div>
-            <div className="social-week-score"><strong>{entry.weeklyScore}</strong><span>THIS WEEK</span></div>
+            <div className="social-week-score"><strong>{entry.weeklyScore}</strong><span>{WEEKLY_SUBLABEL[filter]}</span></div>
             <div className="social-total-score"><strong>{entry.lockScore}</strong><span>LOCK SCORE</span></div>
           </div>;
         })}

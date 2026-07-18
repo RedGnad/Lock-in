@@ -4,7 +4,7 @@ export const LOCK_SCORE_PER_VERIFIED_DAY = 10;
 export const RUNNING_MISSION_TYPE = 1;
 export const LEARNING_MISSION_TYPE = 2;
 
-export type LeaderboardFilter = "overall" | "running";
+export type LeaderboardFilter = "overall" | "running" | "learning";
 export type ScoreDayEvent = { account: Address | string; utcDay: bigint | number | string };
 export type MissionDayScoreEvent = ScoreDayEvent & { missionType: number };
 export type PlayerHandleEvent = { account: Address | string; handle: string };
@@ -33,6 +33,9 @@ export type SocialLeaderboardData = {
 type BuildLeaderboardInput = {
   scoreEvents: readonly ScoreDayEvent[];
   missionEvents: readonly MissionDayScoreEvent[];
+  // Duolingo completions, one per finished Lock. Each carries the UTC day derived from the canonical
+  // on-chain event timestamp (never a client date), and counts as one verified day like a Strava check-in.
+  completionEvents?: readonly ScoreDayEvent[];
   handleEvents?: readonly PlayerHandleEvent[];
   visibilityEvents?: readonly PlayerVisibilityEvent[];
   now?: Date | number;
@@ -105,9 +108,10 @@ function buildEntries(
  * staked, distance and the number of Locks completed on one day are absent
  * by design: one wallet can earn at most ten points per UTC day in each table.
  */
-export function buildSocialLeaderboards({ scoreEvents, missionEvents, handleEvents = [], visibilityEvents = [], now = Date.now() }: BuildLeaderboardInput): SocialLeaderboardData {
+export function buildSocialLeaderboards({ scoreEvents, missionEvents, completionEvents = [], handleEvents = [], visibilityEvents = [], now = Date.now() }: BuildLeaderboardInput): SocialLeaderboardData {
   const overallDays = new Map<string, Set<bigint>>();
   const runningDays = new Map<string, Set<bigint>>();
+  const learningDays = new Map<string, Set<bigint>>();
   const handles = new Map<string, string>();
   const hiddenProfiles = new Set<string>();
   const accounts = new Map<string, Address>();
@@ -121,6 +125,15 @@ export function buildSocialLeaderboards({ scoreEvents, missionEvents, handleEven
     const key = addressKey(event.account);
     accounts.set(key, event.account as Address);
     if (event.missionType === RUNNING_MISSION_TYPE) addDay(runningDays, key, utcDay(event.utcDay));
+  }
+  // A Duolingo completion is one verified day in Learning, and joins the deduplicated Overall union: a day
+  // with both a Strava check-in and a Duolingo completion is still a single day, so still ten Overall points.
+  for (const event of completionEvents) {
+    const key = addressKey(event.account);
+    accounts.set(key, event.account as Address);
+    const day = utcDay(event.utcDay);
+    addDay(learningDays, key, day);
+    addDay(overallDays, key, day);
   }
   for (const event of handleEvents) {
     const key = addressKey(event.account);
@@ -147,6 +160,7 @@ export function buildSocialLeaderboards({ scoreEvents, missionEvents, handleEven
     leaderboards: {
       overall: buildEntries(overallDays, overallDays, handles, hiddenProfiles, accounts, weekStart),
       running: buildEntries(runningDays, overallDays, handles, hiddenProfiles, accounts, weekStart),
+      learning: buildEntries(learningDays, overallDays, handles, hiddenProfiles, accounts, weekStart),
     },
   };
 }

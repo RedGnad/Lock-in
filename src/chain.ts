@@ -27,6 +27,11 @@ export const duolingoEscrowAddress = process.env.NEXT_PUBLIC_DUOLINGO_ESCROW_ADD
  * this line in the same commit.
  */
 export const escrowDeploymentBlock = 88_203_155n;
+/**
+ * The block the Duolingo escrow (B) was deployed in, per deployments/monad-mainnet-oauth.json. The social
+ * leaderboard scans its CompletionVerified logs from here to build the Learning board and the Overall union.
+ */
+export const duolingoEscrowDeploymentBlock = 88_449_401n;
 
 export function lockInPublicClient() {
   return createPublicClient({

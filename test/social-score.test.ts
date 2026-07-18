@@ -5,6 +5,7 @@ import { buildSocialLeaderboards, utcWeekStartDay, type ScoreDayEvent } from "..
 
 const ALICE = "0x1111111111111111111111111111111111111111" as Address;
 const BOB = "0x2222222222222222222222222222222222222222" as Address;
+const CAROL = "0x3333333333333333333333333333333333333333" as Address;
 const WEEK_NOW = Date.UTC(2026, 6, 15, 12);
 const MONDAY = utcWeekStartDay(WEEK_NOW);
 
@@ -108,4 +109,84 @@ test("moderation hides only the active handle and can restore it without changin
   });
   assert.equal(restored.leaderboards.overall[0].handle, "alice");
   assert.equal(restored.leaderboards.overall[0].weeklyScore, 10);
+});
+
+test("a Duolingo completion appears in Learning and in Overall, not Running", () => {
+  const data = buildSocialLeaderboards({
+    now: WEEK_NOW,
+    scoreEvents: [],
+    missionEvents: [],
+    completionEvents: [{ account: ALICE, utcDay: MONDAY }],
+  });
+  assert.equal(data.leaderboards.learning[0].account, ALICE);
+  assert.equal(data.leaderboards.learning[0].weeklyScore, 10);
+  assert.equal(data.leaderboards.overall[0].account, ALICE);
+  assert.equal(data.leaderboards.overall[0].weeklyScore, 10);
+  assert.deepEqual(data.leaderboards.running, []);
+});
+
+test("two Duolingo completions on one UTC day are still ten points", () => {
+  const data = buildSocialLeaderboards({
+    now: WEEK_NOW,
+    scoreEvents: [],
+    missionEvents: [],
+    completionEvents: [{ account: ALICE, utcDay: MONDAY }, { account: ALICE, utcDay: MONDAY }],
+  });
+  assert.equal(data.leaderboards.learning[0].weeklyScore, 10);
+  assert.equal(data.leaderboards.learning[0].weeklyVerifiedDays, 1);
+  assert.equal(data.leaderboards.overall[0].weeklyScore, 10);
+});
+
+test("a Strava check-in and a Duolingo completion on the same day are ten Overall points", () => {
+  const data = buildSocialLeaderboards({
+    now: WEEK_NOW,
+    scoreEvents: [{ account: ALICE, utcDay: MONDAY }],
+    missionEvents: [{ account: ALICE, missionType: 1, utcDay: MONDAY }],
+    completionEvents: [{ account: ALICE, utcDay: MONDAY }],
+  });
+  assert.equal(data.leaderboards.overall[0].weeklyScore, 10);
+  assert.equal(data.leaderboards.overall[0].weeklyVerifiedDays, 1);
+});
+
+test("a Strava check-in and a Duolingo completion on the same day each show in their own category", () => {
+  const data = buildSocialLeaderboards({
+    now: WEEK_NOW,
+    scoreEvents: [{ account: ALICE, utcDay: MONDAY }],
+    missionEvents: [{ account: ALICE, missionType: 1, utcDay: MONDAY }],
+    completionEvents: [{ account: ALICE, utcDay: MONDAY }],
+  });
+  assert.equal(data.leaderboards.running[0].weeklyScore, 10);
+  assert.equal(data.leaderboards.learning[0].weeklyScore, 10);
+});
+
+test("two distinct verified days are twenty points", () => {
+  const data = buildSocialLeaderboards({
+    now: WEEK_NOW,
+    scoreEvents: [],
+    missionEvents: [],
+    completionEvents: [{ account: ALICE, utcDay: MONDAY }, { account: ALICE, utcDay: MONDAY + 1 }],
+  });
+  assert.equal(data.leaderboards.learning[0].weeklyScore, 20);
+  assert.equal(data.leaderboards.learning[0].weeklyVerifiedDays, 2);
+  assert.equal(data.leaderboards.overall[0].weeklyScore, 20);
+});
+
+test("a Duolingo wallet with no handle keeps its address for the compact display", () => {
+  const data = buildSocialLeaderboards({
+    now: WEEK_NOW,
+    scoreEvents: [],
+    missionEvents: [],
+    completionEvents: [{ account: CAROL, utcDay: MONDAY }],
+  });
+  assert.equal(data.leaderboards.learning[0].handle, null);
+  assert.equal(data.leaderboards.learning[0].account, CAROL);
+});
+
+test("the Learning board is empty when there are no completions", () => {
+  const data = buildSocialLeaderboards({
+    now: WEEK_NOW,
+    scoreEvents: [{ account: ALICE, utcDay: MONDAY }],
+    missionEvents: [{ account: ALICE, missionType: 1, utcDay: MONDAY }],
+  });
+  assert.deepEqual(data.leaderboards.learning, []);
 });
