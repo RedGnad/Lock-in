@@ -629,6 +629,13 @@ footer div { display: flex; gap: 22px; }
 .join-by-id .secondary-button { box-shadow: none; white-space: nowrap; transition: color .15s ease, background .15s ease; }
 .join-by-id .secondary-button:not(:disabled):hover,
 .join-by-id .secondary-button:not(:disabled):active { transform: none; box-shadow: none; }
+.home-duolingo { padding: 0 max(24px, 4vw) 40px; }
+.duo-mission-card { max-width: 1080px; margin: 0 auto; padding: 34px; border: 2px solid var(--ink); background: var(--lime); box-shadow: 7px 7px 0 var(--ink); }
+.duo-mission-card h2 { margin: 10px 0; font-size: clamp(28px, 4vw, 44px); line-height: .95; letter-spacing: -.04em; }
+.duo-mission-card h2 em { font-style: normal; color: var(--acid); }
+.duo-mission-card p { max-width: 620px; margin: 0 0 20px; color: var(--ink); font: 15px/1.5 Georgia, serif; }
+.duo-mission-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+@media (max-width: 640px) { .duo-mission-actions .lock-button, .duo-mission-actions .secondary-button { width: 100%; } }
 .share-control { position: relative; display: inline-block; }
 .share-menu { position: absolute; z-index: 40; top: calc(100% + 8px); right: 0; width: min(300px, 82vw); padding: 8px; display: grid; gap: 4px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 6px 6px 0 var(--ink); }
 .share-item { width: 100%; min-height: 44px; padding: 10px 12px; display: flex; align-items: center; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font: 900 11px/1 Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }
