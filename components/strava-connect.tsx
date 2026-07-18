@@ -89,17 +89,21 @@ export function StravaConnect({ onViewChange, compact = false }: {
     };
   }, [address, readConnection]);
 
-  async function unlockStatus() {
+  // One action instead of a separate "unlock" gate: sign the session, read the status, and only send the
+  // athlete to Strava if they are genuinely not connected. A connected athlete just sees their status, never
+  // a second authorization. This mirrors the Duolingo flow, where the signature is folded into the action.
+  async function continueStrava() {
     if (!address) return setMessage("Connect your wallet first.");
     setBusy(true);
     setMessage(null);
     try {
       await ensureWalletSession(address, (text) => signMessageAsync({ message: text }));
       setWalletSession(true);
-      await readConnection(address);
+      const answer = await stravaConnection(address);
+      setConnection({ wallet: address, connected: answer.connected, athleteId: answer.athleteId });
+      if (!answer.connected) await startStravaAuthorization(address);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not read your Strava status.");
-    } finally {
+      setMessage(error instanceof Error ? error.message : "Could not continue with Strava.");
       setBusy(false);
     }
   }
@@ -162,16 +166,14 @@ export function StravaConnect({ onViewChange, compact = false }: {
 
   const title = view.kind === "strava_connected"
     ? "Strava connected"
-    : view.kind === "wallet_session_required"
-      ? "Strava status locked"
-      : view.kind === "strava_not_connected"
-        ? "Connect Strava"
-        : "Checking Strava…";
+    : view.kind === "wallet_session_required" || view.kind === "strava_not_connected"
+      ? "Connect Strava"
+      : "Checking Strava…";
 
   const detail = view.kind === "strava_connected"
     ? `Athlete ${view.athleteId ?? "linked"}. We read only the run you check in, never your route.`
     : view.kind === "wallet_session_required"
-      ? "Your signed session expired. Sign once to read your status. Your Strava authorization is untouched."
+      ? "One signature to check in your runs. Your Strava authorization is untouched."
       : view.kind === "strava_not_connected"
         ? "One authorization on Strava. After that, checking in is a single tap."
         : "Reading your Strava status…";
@@ -187,8 +189,8 @@ export function StravaConnect({ onViewChange, compact = false }: {
       </div>
 
       {view.kind === "wallet_session_required" && (
-        <button type="button" className="lock-button" disabled={busy} onClick={() => void unlockStatus()}>
-          {busy ? "CHECKING…" : "UNLOCK STRAVA STATUS"}
+        <button type="button" className="lock-button" disabled={busy} onClick={() => void continueStrava()}>
+          {busy ? "CHECKING…" : "CONTINUE"}
         </button>
       )}
 
