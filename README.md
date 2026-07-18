@@ -6,9 +6,9 @@ Monad mainnet, permissionless and impartial.
 
 Lock In runs two missions from one app:
 
-- **Strava run** — daily GPS runs, verified through Strava's official API over your OAuth grant. Scheme
+- **Strava run** - daily GPS runs, verified through Strava's official API over your OAuth grant. Scheme
   `STRAVA_OAUTH_V1`. This is the primary, lowest-friction experience.
-- **Duolingo XP** — a cumulative XP delta between a baseline proof and a final proof, verified with Reclaim
+- **Duolingo XP** - a cumulative XP delta between a baseline proof and a final proof, verified with Reclaim
   **zkTLS** because Duolingo has no suitable public API. Scheme `DUOLINGO_ZKTLS_DELTA_V1`. Labelled `BETA`
   because the Reclaim proof window is more frictional; the stakes and economics are identical to Strava.
 
@@ -49,7 +49,7 @@ data source makes cheating impossible; Lock In never claims otherwise.
 
 ## Settlement
 
-Fixed target, fixed crew, fixed stake (0.1–1 USDC). Registration closes at the published start. Monad gas is
+Fixed target, fixed crew, fixed stake (0.1-1 USDC). Registration closes at the published start. Monad gas is
 separate.
 
 - if some finish, finishers recover their stakes and split the stakes of those who did not;
@@ -76,11 +76,11 @@ are the only common ground.
 | Deployment tx | `0xa3e978e1456a8fe15e06249d4f689b38a5afc454681628feb759ee05900a0a31` | `0xa814b5b32117b827c33faad8c9b60a0cb6b2be83b461cf81a2120cbffcb217a0` |
 | Ownership transfer tx | `0xd15d376cf818fd93a7661fe8e1792593e05ba013eb731b8abb2aba2bd67cd8eb` | `0xc4dcdba32085eba87f5ac6b6ce5a28f6bf425d8c00599c06677a258227096b2f` |
 | Evidence signer | `0x4a06010d269b335c3471dA9AABfc41a56b4ea1f6` | `0x57E81089f6DC6c68291b78F90b626c1AA546eAC7` |
-| Access signer | `0x8a63E4828F3B35C12FC23d644C80DA67aF1EA304` | — (n/a) |
+| Access signer | `0x8a63E4828F3B35C12FC23d644C80DA67aF1EA304` | - (n/a) |
 
-- **Owner:** `0xf1be884698B9Ba4438f529699eC92320427b4dA1` — Safe 2/2 (owners `0x3444…897E6`, `0x79C5…1e45`),
+- **Owner:** `0xf1be884698B9Ba4438f529699eC92320427b4dA1` - Safe 2/2 (owners `0x3444…897E6`, `0x79C5…1e45`),
   owner of both escrows.
-- **Stake token:** `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` — canonical USDC on Monad (6 decimals).
+- **Stake token:** `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` - canonical USDC on Monad (6 decimals).
 - **App:** https://lock-in-liart-theta.vercel.app
 - Escrow B pins its evidence signer in source (`PINNED_DUOLINGO_EVIDENCE_SIGNER`); the release gate
   (`pnpm gate:duolingo`) asserts the deployed signer, code hash, USDC, stake bounds, EIP-712 parity, owner and
@@ -144,13 +144,13 @@ batch), `pnpm production:check`. Owner actions are multisig operations over prin
 
 ## Repository map
 
-- `contracts/LockInEscrow.sol` — Strava escrow: stakes, settlement, claims, nullifiers, pauses.
-- `contracts/LockInDuolingoEscrow.sol` — Duolingo escrow: baseline at create/join, one final, XP-delta finish.
-- `src/duolingo-attestation.ts` — EIP-712 baseline/final attestations, config hash, HMAC identity (pinned to Solidity).
-- `src/duolingo-escrow-{attestation,chain,store,client,config,access}.ts` — the financial evidence signer, on-chain reads, Neon store, client helpers.
-- `app/api/duolingo/escrow/{session,verify}` — open a Reclaim session and mint the attestation for create/join/final.
-- `src/strava-{oauth,token-store,activities}.ts`, `src/completion-attestation.ts`, `app/api/strava/*` — the Strava mission.
-- `docs/duolingo-escrow-security-review.md` — the escrow B trust model and scenario-to-test map.
-- `docs/product-model.md`, `docs/tester-runbook.md` — product and testing operations.
+- `contracts/LockInEscrow.sol` - Strava escrow: stakes, settlement, claims, nullifiers, pauses.
+- `contracts/LockInDuolingoEscrow.sol` - Duolingo escrow: baseline at create/join, one final, XP-delta finish.
+- `src/duolingo-attestation.ts` - EIP-712 baseline/final attestations, config hash, HMAC identity (pinned to Solidity).
+- `src/duolingo-escrow-{attestation,chain,store,client,config,access}.ts` - the financial evidence signer, on-chain reads, Neon store, client helpers.
+- `app/api/duolingo/escrow/{session,verify}` - open a Reclaim session and mint the attestation for create/join/final.
+- `src/strava-{oauth,token-store,activities}.ts`, `src/completion-attestation.ts`, `app/api/strava/*` - the Strava mission.
+- `docs/duolingo-escrow-security-review.md` - the escrow B trust model and scenario-to-test map.
+- `docs/product-model.md`, `docs/tester-runbook.md` - product and testing operations.
 
 Privacy, incident and security contact: **mookipstore@hotmail.com**.

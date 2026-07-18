@@ -87,7 +87,7 @@ export async function GET(request: Request) {
     mission: "Lock In",
     headline: "STAKE ON YOUR GOALS",
     target: "Finishers split the pool",
-    crew: "0.1 – 1 USDC per player",
+    crew: "0.1 - 1 USDC per player",
     pool: "Settled on Monad",
     accent: true,
   };

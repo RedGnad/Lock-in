@@ -9,12 +9,12 @@ type LockPageProps = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: LockPageProps): Promise<Metadata> {
   const { id } = await params;
-  if (!/^\d+$/.test(id) || !escrowAddress) return { title: "Lock not found — Lock In", robots: { index: false, follow: false } };
+  if (!/^\d+$/.test(id) || !escrowAddress) return { title: "Lock not found - Lock In", robots: { index: false, follow: false } };
   try {
     const lock = await lockInPublicClient().readContract({ address: escrowAddress, abi: lockInAbi, functionName: "pacts", args: [BigInt(id)] });
-    if (lock[0] === zeroAddress) return { title: "Lock not found — Lock In", robots: { index: false, follow: false } };
+    if (lock[0] === zeroAddress) return { title: "Lock not found - Lock In", robots: { index: false, follow: false } };
     const mission = missionByType(lock[11]);
-    const title = `${mission.name}: ${lock[8]} ${mission.verb} in ${lock[7]} days — Lock In`;
+    const title = `${mission.name}: ${lock[8]} ${mission.verb} in ${lock[7]} days - Lock In`;
     const description = `Join Lock #${id}: ${formatMissionTarget(lock[11], lock[3])}, complete ${lock[8]} of ${lock[7]} days, with ${Number(lock[2]) / 1_000_000} USDC staked per player.`;
     const url = `/lock/${id}`;
     const image = `/api/og/lock?m=strava&id=${id}`;
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: LockPageProps): Promise<Metad
     };
   } catch {
     const url = `/lock/${id}`;
-    return { title: `Lock #${id} — Lock In`, description: "Join this verified challenge on Monad.", alternates: { canonical: url }, openGraph: { url } };
+    return { title: `Lock #${id} - Lock In`, description: "Join this verified challenge on Monad.", alternates: { canonical: url }, openGraph: { url } };
   }
 }
 

@@ -13,7 +13,7 @@ function profileError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (/user rejected|user denied|rejected the request/i.test(message)) return "Profile update cancelled.";
   if (/HandleAlreadyUsed/i.test(message)) return "That handle is already taken.";
-  if (/InvalidHandle/i.test(message)) return "Use 3–16 lowercase letters, numbers, or underscores, starting with a letter.";
+  if (/InvalidHandle/i.test(message)) return "Use 3-16 lowercase letters, numbers, or underscores, starting with a letter.";
   if (/insufficient funds/i.test(message)) return "You need more MON for network gas.";
   return "The profile update did not complete. Try again after refreshing.";
 }
@@ -59,7 +59,7 @@ export function PlayerProfile() {
     if (!address) return setMessage("Connect your wallet to create a Lock In profile.");
     if (!escrowAddress || !publicClient) return setMessage("Profiles are not configured yet.");
     if (chainId !== monad.id) return setMessage("Switch your wallet to Monad mainnet.");
-    if (!HANDLE_PATTERN.test(normalized)) return setMessage("Use 3–16 lowercase letters, numbers, or underscores, starting with a letter.");
+    if (!HANDLE_PATTERN.test(normalized)) return setMessage("Use 3-16 lowercase letters, numbers, or underscores, starting with a letter.");
     if (normalized === currentHandle) return setMessage("That is already your Lock In handle.");
 
     setBusy(true);
@@ -115,7 +115,7 @@ export function PlayerProfile() {
         <h2 id="player-profile-title">{address ? currentHandle && !profileHidden ? `@${currentHandle}` : profileHidden ? "Handle hidden." : "Claim your name." : "Connect to join the board."}</h2>
         <p>This optional handle is only for Lock In leaderboards. It never changes your Strava name.</p>
       </div>
-      <div className="profile-score"><strong>{address ? lockScore.toString() : "—"}</strong><span>ALL-TIME LOCK SCORE</span></div>
+      <div className="profile-score"><strong>{address ? lockScore.toString() : "-"}</strong><span>ALL-TIME LOCK SCORE</span></div>
       {address && <form className="profile-form" onSubmit={save}>
         <label htmlFor="player-handle">{currentHandle ? "Change handle" : "Choose a handle"}</label>
         <div><span>@</span><input id="player-handle" value={handle} minLength={3} maxLength={16} pattern="[a-z][a-z0-9_]{2,15}" autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="runner_one" disabled={busy} onFocus={() => setEditing(true)} onChange={(event) => { setEditing(true); setHandle(event.target.value.toLowerCase()); setMessage(""); }}/></div>

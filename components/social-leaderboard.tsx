@@ -22,7 +22,7 @@ function compactAddress(address: string) {
 
 function weekLabel(startsAt: string, endsAt: string) {
   const formatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  return `${formatter.format(new Date(startsAt))}–${formatter.format(new Date(new Date(endsAt).getTime() - 1))}`;
+  return `${formatter.format(new Date(startsAt))}-${formatter.format(new Date(new Date(endsAt).getTime() - 1))}`;
 }
 
 function competitionRank(entries: LeaderboardApiResponse["leaderboards"][LeaderboardFilter], index: number) {

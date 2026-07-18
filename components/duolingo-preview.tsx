@@ -5,7 +5,7 @@ import { useAccount, useSignMessage } from "wagmi";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 
 /**
- * Duolingo XP — Live Proof Beta.
+ * Duolingo XP - Live Proof Beta.
  *
  * The athlete proves their starting XP, goes and learns, then proves their final XP. Lock In compares the
  * two and rules on the delta. No stake, no escrow, no USDC: this is the proof engine with a real journey

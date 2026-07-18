@@ -3,7 +3,7 @@ import { PlayerProfile } from "@/components/player-profile";
 import { SocialLeaderboard } from "@/components/social-leaderboard";
 
 export const metadata: Metadata = {
-  title: "Leaderboard — Lock In",
+  title: "Leaderboard - Lock In",
   description: "The weekly Lock In ranking, rebuilt from verified days on Monad.",
   alternates: { canonical: "/leaderboard" },
 };
