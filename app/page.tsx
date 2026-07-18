@@ -27,6 +27,7 @@ export default function Home() {
       <StravaConnect noticeOnly />
       <PactHub />
       <SocialLeaderboard />
+      <div className="mechanic-eyebrow"><div className="eyebrow"><span>02</span> How it works</div></div>
       <section className="mechanic">
         <div><b>01</b><h2>Set it</h2><p>Choose a measurable goal, a deadline, your crew and your stake.</p></div>
         <div><b>02</b><h2>Prove it</h2><p>Verify your runs with Strava or your XP progress with Duolingo.</p></div>

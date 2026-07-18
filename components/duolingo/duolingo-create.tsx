@@ -161,25 +161,34 @@ export function DuolingoCreate({ onCreated, onBackToMission }: {
         {step === 0 && (
           <fieldset className="form-field">
             <legend><b>Set your goal</b><span>Duolingo XP · pick a target, a window, and your crew.</span></legend>
-            <div className="segmented target-options">
-              {XP_TARGETS.map((value) => (
-                <button type="button" key={value} className={targetXp === value ? "active" : ""} aria-pressed={targetXp === value}
-                  disabled={busy} onClick={() => setTargetXp(value)}>{value}<small>XP</small></button>
-              ))}
+            <div className="field-group">
+              <span className="field-cap">Target XP</span>
+              <div className="segmented target-options">
+                {XP_TARGETS.map((value) => (
+                  <button type="button" key={value} className={targetXp === value ? "active" : ""} aria-pressed={targetXp === value}
+                    disabled={busy} onClick={() => setTargetXp(value)}>{value}<small>XP</small></button>
+                ))}
+              </div>
+              <small>New XP to earn before the deadline. A total, not a daily streak.</small>
             </div>
-            <div className="segmented schedule-options">
-              {DURATIONS.map((option) => (
-                <button type="button" key={option.seconds} className={durationSeconds === option.seconds ? "active" : ""}
-                  aria-pressed={durationSeconds === option.seconds} disabled={busy} onClick={() => setDurationSeconds(option.seconds)}>{option.label}</button>
-              ))}
+            <div className="field-group">
+              <span className="field-cap">Window</span>
+              <div className="segmented schedule-options">
+                {DURATIONS.map((option) => (
+                  <button type="button" key={option.seconds} className={durationSeconds === option.seconds ? "active" : ""}
+                    aria-pressed={durationSeconds === option.seconds} disabled={busy} onClick={() => setDurationSeconds(option.seconds)}>{option.label}</button>
+                ))}
+              </div>
             </div>
-            <div className="segmented crew-options" aria-label="Maximum crew size">
-              {CREWS.map((size) => (
-                <button type="button" key={size} className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size}
-                  disabled={busy} onClick={() => setMaxParticipants(size)}>{size}<small>PLAYERS MAX</small></button>
-              ))}
+            <div className="field-group">
+              <span className="field-cap">Crew</span>
+              <div className="segmented crew-options" aria-label="Maximum crew size">
+                {CREWS.map((size) => (
+                  <button type="button" key={size} className={maxParticipants === size ? "active" : ""} aria-pressed={maxParticipants === size}
+                    disabled={busy} onClick={() => setMaxParticipants(size)}>{size}<small>PLAYERS MAX</small></button>
+                ))}
+              </div>
             </div>
-            <small>Earn this much new XP before the deadline. It is a total, not a daily streak.</small>
           </fieldset>
         )}
 

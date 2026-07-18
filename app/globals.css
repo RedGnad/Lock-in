@@ -209,7 +209,13 @@ a { color: inherit; }
 .segmented button:disabled { cursor: not-allowed; opacity: .38; }
 .distance-options, .schedule-options { grid-template-columns: repeat(4, 1fr); }
 .stake-options, .crew-options { grid-template-columns: repeat(3, 1fr); }
-.target-options { margin-bottom: 12px; grid-template-columns: repeat(4, 1fr); }
+.target-options { grid-template-columns: repeat(4, 1fr); }
+
+/* Labelled option groups in the create wizard, so the three segmented rows read as three distinct choices
+   (target / window / crew) instead of one fused grid with misaligned dividers. */
+.field-group { margin-bottom: 18px; display: grid; gap: 8px; }
+.field-group:last-of-type { margin-bottom: 0; }
+.field-cap { font: 950 10px/1 Arial, sans-serif; letter-spacing: .11em; text-transform: uppercase; color: var(--muted); }
 .mission-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .mission-options button { position: relative; min-height: 126px; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 22px; border: 2px solid var(--ink); color: var(--ink); background: var(--paper); box-shadow: 5px 5px 0 var(--ink); cursor: pointer; text-align: left; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease; }
 .mission-options button.active { border-color: var(--acid); color: var(--ink); background: var(--paper); box-shadow: 5px 5px 0 var(--ink); }
@@ -287,6 +293,7 @@ a { color: inherit; }
 .discovery-card > small { font-size: 11px; }
 .discovery-card > small b { float: right; color: var(--acid); }
 
+.mechanic-eyebrow { padding: 44px max(24px, 4vw) 20px; }
 .mechanic { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--ink); }
 .mechanic > div { min-height: 190px; padding: 34px max(24px, 4vw); border-right: 1px solid var(--ink); }
 .mechanic > div:last-child { border-right: 0; }
