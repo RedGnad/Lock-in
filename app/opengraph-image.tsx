@@ -30,7 +30,7 @@ export default function OpenGraphImage() {
         <span style={{ maxWidth: 940, color: "#ff4d00", fontSize: 104, fontWeight: 950, lineHeight: 0.86, letterSpacing: "-0.08em" }}>LOCKED IN.</span>
       </div>
       <div style={{ display: "flex", gap: "42px", fontSize: 18, fontWeight: 800, letterSpacing: "0.06em" }}>
-        <span>VERIFIED ON STRAVA</span><span>PVP PAYOUTS</span><span>SETTLED ON MONAD</span>
+        <span>STRAVA + DUOLINGO</span><span>PVP PAYOUTS</span><span>SETTLED ON MONAD</span>
       </div>
     </div>,
     size,
