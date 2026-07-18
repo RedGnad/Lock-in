@@ -219,11 +219,13 @@ a { color: inherit; }
 .mission-options strong { font-size: 22px; letter-spacing: -.03em; }
 .mission-options span { max-width: 280px; color: inherit; font: 14px/1.4 Georgia, serif; opacity: .75; }
 /* Duolingo sits in the same selector as Strava but links into its own flow. Same card, lime accent. */
-.mission-options .mission-link { min-height: 126px; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 22px; border: 2px solid var(--ink); color: var(--ink); background: var(--lime); box-shadow: 5px 5px 0 var(--ink); text-decoration: none; text-align: left; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.mission-options .mission-link { min-height: 126px; padding: 22px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 22px; border: 2px solid var(--ink); color: var(--ink); background: var(--paper); box-shadow: 5px 5px 0 var(--ink); text-decoration: none; text-align: left; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
 .mission-options .mission-link:hover { border-color: var(--acid); transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); }
 .mission-options .mission-link strong { display: flex; align-items: center; gap: 10px; }
 .mission-options .mission-link > span { max-width: 280px; color: inherit; font: 14px/1.4 Georgia, serif; opacity: .75; }
-.mission-beta { padding: 3px 6px; font: 900 9px/1 Arial, sans-serif; letter-spacing: .1em; color: var(--paper); background: var(--ink); opacity: 1; }
+/* Specific enough to beat the generic `.mission-options span` rule, which otherwise forces color:inherit
+   and opacity .75 onto the badge and makes the BETA label invisible on its dark chip. */
+.mission-options .mission-beta { padding: 3px 6px; font: 900 9px/1 Arial, sans-serif; letter-spacing: .1em; color: var(--paper); background: var(--ink); opacity: 1; max-width: none; }
 .distance-options button, .schedule-options button, .stake-options button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
 .distance-options button small, .schedule-options button small, .stake-options button small { color: inherit; font-size: 10px; letter-spacing: .06em; }
 .pact-summary { margin: 30px 0 20px; padding: 18px 20px; display: flex; justify-content: space-between; gap: 22px; border-left: 4px solid var(--acid); background: var(--paper); }
