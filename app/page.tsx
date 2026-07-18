@@ -4,7 +4,6 @@ import { PactHub } from "@/components/pact-hub";
 import { ReleaseActions } from "@/components/release-actions";
 import { SocialLeaderboard } from "@/components/social-leaderboard";
 import { StravaConnect } from "@/components/strava-connect";
-import { DuolingoMissionCard } from "@/components/duolingo-mission-card";
 
 export default function Home() {
   // On the Duolingo preview deployment the root is the XP flow, not the Strava home.
@@ -26,7 +25,6 @@ export default function Home() {
           The card hides itself until a wallet is connected. */}
       <section className="home-strava"><StravaConnect /></section>
       <PactHub />
-      <DuolingoMissionCard />
       <SocialLeaderboard />
       <section className="mechanic">
         <div><b>01</b><h2>Call it</h2><p>Set the distance, pick the days, bring your crew.</p></div>
