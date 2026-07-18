@@ -25,7 +25,32 @@ const steps = [
   { order: 3, fn: "setCreationPaused", note: "Open creation LAST. Admission is still gated by DUOLINGO_ESCROW_ALLOWED_WALLETS." },
 ] as const;
 
+const setterInput = [{ name: "paused", type: "bool", internalType: "bool" }];
+const tx = (fn: string) => ({
+  to: escrow,
+  value: "0",
+  data: null,
+  contractMethod: { inputs: setterInput, name: fn, payable: false },
+  contractInputsValues: { paused: "false" },
+});
+
 mkdirSync("safe-batches/duolingo", { recursive: true });
+
+// Combined batch: all three pause-opens in ONE atomic multisig transaction, in order.
+const combined = {
+  version: "1.0",
+  chainId: "143",
+  createdAt: Date.now(),
+  meta: {
+    name: "Open Duolingo escrow pauses (completion, joining, creation)",
+    description: `Atomic: setCompletionPaused(false), setJoiningPaused(false), setCreationPaused(false) on ${escrow}. Sign only after 'pnpm gate:duolingo' is green.`,
+    txBuilderVersion: "1.17.1",
+  },
+  transactions: [tx("setCompletionPaused"), tx("setJoiningPaused"), tx("setCreationPaused")],
+};
+writeFileSync("safe-batches/duolingo/0-open-all-pauses.json", `${JSON.stringify(combined, null, 2)}\n`);
+console.log("wrote safe-batches/duolingo/0-open-all-pauses.json (combined, recommended)");
+
 for (const step of steps) {
   const batch = {
     version: "1.0",
