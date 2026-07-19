@@ -1,10 +1,10 @@
-# Canary log — Lock #1
+# Canary log - Lock #1
 
 The real two-wallet canary on escrow A (`0xD37121112F240fE03a18D754B2fdB9dC750034d4`, Monad chain 143).
 No raw Strava identifier, activity id or GPS route is recorded here: those are private, and the point of
 the pseudonymisation is defeated if they are written down beside the wallet.
 
-## D1 — check-in, 17 July 2026
+## D1 - check-in, 17 July 2026
 
 First real check-in of the canary, and the first time the OAuth refresh path ran against a genuinely
 expired access token. Both matter: the refresh was the one part of the loop never exercised before.
@@ -24,7 +24,7 @@ expired access token. Both matter: the refresh was the one part of the loop neve
 - `finisherCount`: 0 (expected until 3/3)
 - the activity nullifier is global and the day bit is set, so this run cannot settle another day or Lock
 
-**OAuth refresh (wallet A, `strava_connections`)** — the loop
+**OAuth refresh (wallet A, `strava_connections`)** - the loop
 `wallet session → existing grant → automatic refresh → Strava read → attestation → submitCompletion`
 - `updated_at`: 00:31:01 → 17:40:00 (row rotated)
 - access token expiry: 06:31:01 (expired) → 23:40:00 (future)
@@ -32,17 +32,34 @@ expired access token. Both matter: the refresh was the one part of the loop neve
 - access token: present, encrypted `v1`, before and after
 - revoked: no · same athlete · no new OAuth row · no Strava re-authorisation
 
-## D2 — pending
-Window: Sat 18 Jul 05:00 → Sun 19 Jul 05:00 Paris.
+## D2 - check-in, 18 July 2026
 
-## D3 — pending
+Second real check-in, same wallet, second distinct UTC day. Confirms the loop repeats and that one day's
+proof cannot be replayed onto another.
+
+**Transaction**
+- hash: `0x57135b6e3531a02f5424d7fc5ae81acfbfc6ac2f8f426001fd762793345d9f0f`
+- explorer: https://monadscan.com/tx/0x57135b6e3531a02f5424d7fc5ae81acfbfc6ac2f8f426001fd762793345d9f0f
+- receipt: success · block 88663733 · gas used 322697
+- `submitCompletion` · pactId 1 · dayIndex 1 (day 2) · wallet A
+- metric accepted: 1086 m (target 1000 m)
+- activity start: 18 Jul 2026 15:13 UTC, inside the D2 window
+
+**On-chain progression**
+- `completionCount(1, A)`: 1 → 2 (2/3)
+- `completionBitmap`: day-2 bit set (day-1 bit still set)
+- `lockScore(A)`: 10 → 20
+- `finisherCount`: 0 (expected until 3/3)
+- a fresh activity nullifier: this is a different run, not a replay of D1
+
+## D3 - pending
 Window: Sun 19 Jul 05:00 → Mon 20 Jul 05:00 Paris.
 
-## Settlement — pending
+## Settlement - pending
 Lock ends Mon 20 Jul 05:00. Submission deadline and first `finalizePact` at Tue 21 Jul 05:00.
 Expected: A reaches 3/3 and is the sole finisher, claims 0.2 USDC; B claims nothing.
 
-## Duolingo Live Proof Beta — first public E2E, 17 July 2026
+## Duolingo Live Proof Beta - first public E2E, 17 July 2026
 
 Run by wallet A on https://lock-in-duolingo-preview.vercel.app/duolingo with a real Duolingo account. No
 raw profile id or proof object recorded here; those stay server-side.

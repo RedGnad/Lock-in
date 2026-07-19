@@ -1,5 +1,11 @@
 # Lock In
 
+> **Spark provenance.** Lock In was started after Spark opened on
+> July 13, 2026 at 13:00 UTC. The V2-V5 labels in this repository are
+> rapid in-hackathon iterations, not pre-existing releases. The earliest
+> public Git commit and both its author and commit dates are documented
+> in [`docs/spark-hackathon-provenance.md`](docs/spark-hackathon-provenance.md).
+
 **Stake on your goals. Finishers split the pool.** Friends stake USDC on a measurable goal, prove their
 progress, and whoever finishes recovers their stake and splits the stakes of whoever quit. Settlement is on
 Monad mainnet, permissionless and impartial.
@@ -88,20 +94,23 @@ are the only common ground.
 
 ## Real proofs
 
-Every hash is verifiable on Monad. Rows marked *canary* are the two-wallet, minimum-stake rehearsal
-(0.1 USDC each, 50 XP, 90 min); they are filled as the canary lands.
+Every hash below is a confirmed, verifiable Monad mainnet transaction.
 
 | Mission | Event | Tx | Notes |
 |---|---|---|---|
 | Strava | Escrow A deploy | `0xa3e978e1456a8fe15e06249d4f689b38a5afc454681628feb759ee05900a0a31` | block 88203155 |
-| Strava | Lock #1 day 1 check-in | `0x1005fbbec2c21d87097e76e40cc7860fadc613f3b544b78a5eead2c21009fbe7` | first verified day, atomic OAuth refresh |
+| Strava | Lock #1 day 1 check-in | `0x1005fbbec2c21d87097e76e40cc7860fadc613f3b544b78a5eead2c21009fbe7` | dayIndex 0, atomic OAuth refresh |
+| Strava | Lock #1 day 2 check-in | `0x57135b6e3531a02f5424d7fc5ae81acfbfc6ac2f8f426001fd762793345d9f0f` | dayIndex 1, same wallet, block 88663733 |
 | Duolingo | Escrow B deploy (paused) | `0xa814b5b32117b827c33faad8c9b60a0cb6b2be83b461cf81a2120cbffcb217a0` | block 88449401 |
 | Duolingo | Ownership → Safe | `0xc4dcdba32085eba87f5ac6b6ce5a28f6bf425d8c00599c06677a258227096b2f` | 3 pauses opened later by Safe |
-| Duolingo | Create (canary) | _pending_ | createPact + baseline |
-| Duolingo | Join (canary) | _pending_ | joinPact + baseline |
-| Duolingo | Final (canary) | _pending_ | submitFinal, target reached |
-| Duolingo | Settle (canary) | _pending_ | finalizePact |
-| Duolingo | Claim (canary) | _pending_ | payout to the finisher |
+| Duolingo | Lock #1 create + baseline | `0xa87bbeb8e612aa4c1b29e538c9ef0f1f9fcdfd1df6bf6c1021a0c47f2daebcee` | createPact, real zkTLS baseline, block 88538934 |
+
+**Duolingo Beta status, stated honestly.** Escrow B is live and a real Lock was created on mainnet with a
+real zkTLS baseline proof (row above). The full two-wallet lifecycle (a second participant joining, a final
+proof clearing the target, settlement and payout) has **not** been exercised end to end on mainnet yet, so
+Duolingo ships as `BETA`. Duolingo Lock #1 stayed at one participant (underfilled), which by the escrow's
+rules means every participant can reclaim their full stake; that refund path is available to its wallet at
+any time. This is a Beta limitation, not a pending or promised proof.
 
 ## Test the product (short)
 
