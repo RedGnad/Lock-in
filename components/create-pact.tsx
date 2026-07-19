@@ -13,19 +13,13 @@ import {
 import { escrowAddress, monad } from "@/src/chain";
 import { addMonadGasBuffer } from "@/src/monad-gas";
 import { MISSIONS, PACT_TEMPLATES, pactTemplate, type MissionId } from "@/src/missions";
+import { scheduledStravaStart } from "@/src/registration-window";
 import { ensureWalletSession } from "@/src/wallet-auth-client";
 import { requestAccessEvidence } from "@/src/access-client";
 import { ActionDialog } from "@/components/action-dialog";
 import { DuolingoCreate } from "@/components/duolingo/duolingo-create";
 
-const JOIN_WINDOW_SECONDS = 2 * 60 * 60;
 type PendingCreate = { account: Address; action: "approval" | "create"; hash: Hash };
-
-function scheduledStart(chainTimestamp: bigint): bigint {
-  const earliest = chainTimestamp + BigInt(JOIN_WINDOW_SECONDS);
-  const quarterHour = 15n * 60n;
-  return ((earliest + quarterHour - 1n) / quarterHour) * quarterHour;
-}
 
 function friendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -174,7 +168,7 @@ export function CreatePact() {
       await ensureWalletSession(address, (message) => signMessageAsync({ message }));
 
       const latestBlock = await publicClient.getBlock({ blockTag: "latest" });
-      const startsAt = scheduledStart(latestBlock.timestamp);
+      const startsAt = scheduledStravaStart(latestBlock.timestamp);
       const configuration = {
         stake: amount,
         dailyTarget,
