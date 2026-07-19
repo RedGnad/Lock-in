@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CreatePact } from "@/components/create-pact";
 import { PactDiscovery } from "@/components/pact-discovery";
 import { useReleaseHealth } from "@/components/use-release-health";
@@ -13,10 +13,17 @@ export function PactHub() {
   const canCreate = health.actions.newPacts;
   const canJoin = health.actions.join;
   const activeView: HubView = view === "create" && canCreate ? "create" : view === "join" && canJoin ? "join" : canCreate ? "create" : "join";
+  const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     function syncHash() {
-      if (window.location.hash === "#join" && canJoin) setView("join");
+      // #create resolves to the create card's own id and scrolls on its own. #join has no matching element,
+      // so the anchor jump does nothing and the tab switches off screen: scroll the hub here instead, after
+      // the panel is rendered, so one click both switches to Join and brings it into view.
+      if (window.location.hash === "#join" && canJoin) {
+        setView("join");
+        requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      }
       if (window.location.hash === "#create" && canCreate) setView("create");
     }
     syncHash();
@@ -47,7 +54,7 @@ export function PactHub() {
   }
 
   return (
-    <section className="pact-hub" id="play" aria-labelledby="pact-hub-title">
+    <section className="pact-hub" id="play" ref={sectionRef} aria-labelledby="pact-hub-title">
       <header className="hub-heading">
         <div><span className="eyebrow">Your crew, your terms</span><h2 id="pact-hub-title">Ready to lock in?</h2></div>
         <p>{health.mode === "open" ? "Create a competitive streak or join one already forming on Monad." : "Choose one of the currently available actions."}</p>

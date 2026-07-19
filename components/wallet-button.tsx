@@ -172,7 +172,11 @@ export function WalletButton() {
   async function connectWallet(connector: (typeof connectors)[number]) {
     setConnectionError("");
     try {
-      await connectAsync({ connector, chainId: monad.id });
+      // Connect only. Do NOT fold a chain switch into connect: passing chainId makes wagmi try to switch
+      // (or add) Monad right after approval, which keeps this dialog open on "Connecting…" for seconds and
+      // can fire a second wallet prompt. Connect resolves fast, the dialog closes, and the "Switch to Monad"
+      // button handles the network afterwards if needed.
+      await connectAsync({ connector });
       setConnectOpen(false);
     } catch (error) {
       setConnectionError(connectionMessage(error));
