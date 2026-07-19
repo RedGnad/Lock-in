@@ -8,6 +8,7 @@ import {
   joinPactArgs,
   parseBaselineEvidence,
   parseFinalEvidence,
+  resolveDuolingoLockLifecycle,
   resolveDuolingoMode,
   submitFinalArgs,
 } from "../src/duolingo-escrow-client.js";
@@ -35,6 +36,44 @@ test("the display mode reflects address, pauses and signer verification", () => 
   assert.equal(resolveDuolingoMode({ hasAddress: true, anyPaused: false }).status, "live-usdc");
   assert.equal(resolveDuolingoMode({ hasAddress: true, anyPaused: false, signerVerified: false }).status, "canary-paused");
   assert.equal(resolveDuolingoMode({ hasAddress: true, anyPaused: false, signerVerified: true }).canTransact, true);
+});
+
+test("Duolingo lifecycle exposes contract-permitted cancellation refunds immediately", () => {
+  const terms = {
+    startsAt: 1_000,
+    durationSeconds: 300,
+    graceSeconds: 60,
+    participantCount: 1,
+    minParticipants: 2,
+    cancelled: false,
+    finalized: false,
+  };
+
+  const registration = resolveDuolingoLockLifecycle({ ...terms, now: 999 });
+  assert.equal(registration.beforeStart, true);
+  assert.equal(registration.underfilled, false);
+  assert.equal(registration.canFinalize, false);
+
+  const underfilled = resolveDuolingoLockLifecycle({ ...terms, now: 1_000 });
+  assert.equal(underfilled.duringChallenge, false);
+  assert.equal(underfilled.underfilled, true);
+  assert.equal(underfilled.canFinalize, true);
+
+  const active = resolveDuolingoLockLifecycle({ ...terms, now: 1_000, participantCount: 2 });
+  assert.equal(active.duringChallenge, true);
+  assert.equal(active.underfilled, false);
+  assert.equal(active.canFinalize, false);
+
+  const cancelled = resolveDuolingoLockLifecycle({ ...terms, now: 999, cancelled: true });
+  assert.equal(cancelled.canFinalize, true);
+
+  const grace = resolveDuolingoLockLifecycle({ ...terms, now: 1_350, participantCount: 2 });
+  assert.equal(grace.pastDeadline, false);
+  assert.equal(grace.canFinalize, false);
+
+  const deadline = resolveDuolingoLockLifecycle({ ...terms, now: 1_360, participantCount: 2 });
+  assert.equal(deadline.pastDeadline, true);
+  assert.equal(deadline.canFinalize, true);
 });
 
 test("baseline and final attestations parse strings into on-chain bigints", () => {

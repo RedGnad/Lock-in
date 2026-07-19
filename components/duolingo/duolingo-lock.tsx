@@ -13,6 +13,7 @@ import {
   joinPactArgs,
   parseBaselineEvidence,
   parseFinalEvidence,
+  resolveDuolingoLockLifecycle,
   submitFinalArgs,
 } from "@/src/duolingo-escrow-client";
 import {
@@ -41,7 +42,7 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
   const now = useNow(15_000);
 
   const [username, setUsername] = useState("");
-  const [busy, setBusy] = useState<"join" | "final" | "settle" | "claim" | null>(null);
+  const [busy, setBusy] = useState<"join" | "final" | "cancel" | "settle" | "claim" | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,9 +72,17 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
       <button className="secondary-button" onClick={onLeave}>BACK</button></div>
   );
 
-  const startsAt = Number(pact.startsAt);
-  const endsAt = startsAt + Number(pact.durationSeconds);
-  const deadline = endsAt + GRACE;
+  const lifecycle = resolveDuolingoLockLifecycle({
+    now,
+    startsAt: Number(pact.startsAt),
+    durationSeconds: Number(pact.durationSeconds),
+    graceSeconds: GRACE,
+    participantCount: pact.participantCount,
+    minParticipants: pact.minParticipants,
+    cancelled: pact.cancelled,
+    finalized: pact.finalized,
+  });
+  const { startsAt, endsAt, deadline, beforeStart, duringChallenge, pastDeadline, underfilled, canFinalize } = lifecycle;
   const pool = pact.stake * BigInt(pact.participantCount);
   const stakeText = `${formatUnits(pact.stake, chain.decimals)} ${chain.symbol}`;
   const invite = typeof window !== "undefined" ? `${window.location.origin}/duolingo?lock=${pactId}` : "";
@@ -147,6 +156,18 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
     } catch (caught) { setStatus(null); setError(friendlyEscrowError(caught)); } finally { setBusy(null); }
   }
 
+  async function cancel() {
+    if (busy || !duolingoEscrowAddress) return;
+    // Like settlement and claims, cancellation remains available when product writes are paused.
+    if (!chain.chainOk) return setError("Switch your wallet to Monad mainnet.");
+    setBusy("cancel"); setError(null);
+    try {
+      setStatus("CANCELLING THE LOCK…");
+      await writeWithGas({ address: duolingoEscrowAddress, abi: escrowAbi, functionName: "cancelPact", args: [id] }, "cancel");
+      setStatus(null); refreshAll();
+    } catch (caught) { setStatus(null); setError(friendlyEscrowError(caught)); } finally { setBusy(null); }
+  }
+
   async function claim() {
     if (busy || !duolingoEscrowAddress) return;
     if (!chain.chainOk) return setError("Switch your wallet to Monad mainnet.");
@@ -158,26 +179,32 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
     } catch (caught) { setStatus(null); setError(friendlyEscrowError(caught)); } finally { setBusy(null); }
   }
 
-  const beforeStart = now < startsAt;
-  const duringChallenge = now >= startsAt && now < endsAt;
-  const pastDeadline = now >= deadline;
   const refundMode = pact.cancelled || pact.finisherCount === 0;
   const eligibleToClaim = pact.finalized && !claimedAlready && (refundMode ? Boolean(joined) : Boolean(completed));
+  const isCreator = Boolean(address && address.toLowerCase() === pact.creator.toLowerCase());
+  const canCancel = beforeStart && isCreator && !pact.cancelled && !pact.finalized;
 
   const durationSecondsNum = Number(pact.durationSeconds);
   const durLabel = durationSecondsNum % 86_400 === 0
     ? `${durationSecondsNum / 86_400} day${durationSecondsNum / 86_400 > 1 ? "s" : ""}`
     : `${Math.round(durationSecondsNum / 60)} min`;
-  const statusPill = pact.cancelled ? "REFUND READY"
-    : pact.finalized ? (refundMode ? "REFUND READY" : "SETTLED")
+  const statusPill = pact.finalized ? (refundMode ? "REFUND READY" : "SETTLED")
+    : pact.cancelled ? "CANCELLED"
+    : underfilled ? "UNDERFILLED"
     : beforeStart ? (pact.participantCount >= pact.maxParticipants ? "FULL" : "REGISTRATION")
     : duringChallenge ? "ACTIVE"
     : pastDeadline ? "SETTLEMENT READY" : "SETTLEMENT PENDING";
-  const heroLine = joined
+  const heroLine = pact.cancelled
+    ? "This Lock was cancelled. Refunds can be enabled now."
+    : underfilled
+      ? "The crew did not fill. Refunds can be enabled now."
+      : joined
     ? (completed ? "Target reached." : "You are locked in.")
     : beforeStart ? `Registration closes ${formatTime(startsAt)}.` : `Program ended ${formatTime(endsAt)}.`;
-  const showUsernameInput = (beforeStart && !joined) || (duringChallenge && joined && !completed);
-  const canJoin = beforeStart && !joined && !pact.cancelled && !pact.finalized && pact.participantCount < pact.maxParticipants;
+  const showUsernameInput = (beforeStart && !joined && !pact.cancelled && !pact.finalized)
+    || (duringChallenge && joined && !completed);
+  const canJoin = beforeStart && !joined && !pact.cancelled && !pact.finalized
+    && pact.participantCount < pact.maxParticipants;
 
   return (
     <div className="pact-lock">
@@ -212,6 +239,12 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
           </button>
         )}
 
+        {canCancel && (
+          <button className="secondary-button" disabled={Boolean(busy)} onClick={() => void cancel()}>
+            {busy === "cancel" ? "CANCELLING…" : "CANCEL BEFORE START"}
+          </button>
+        )}
+
         <div className="duo-step">
           <div className="duo-invite-head">
             <b>{beforeStart ? "Invite your crew" : "Share this Lock"}</b>
@@ -237,10 +270,14 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
             {passed && <p>You earned <b>{passed.earnedXp} XP</b> against a target of {passed.targetXp}.</p>}</div>
         )}
 
-        {now >= endsAt && !pact.finalized && (
-          pastDeadline
-            ? <button className="lock-button" disabled={Boolean(busy)} onClick={() => void settle()}>{busy === "settle" ? "SETTLING…" : "SETTLE LOCK"}</button>
-            : <p className="form-status" role="status">The challenge has ended. Settlement opens at {formatTime(deadline)}.</p>
+        {canFinalize && (
+          <button className="lock-button" disabled={Boolean(busy)} onClick={() => void settle()}>
+            {busy === "settle" ? "SETTLING…" : pact.cancelled || underfilled ? "ENABLE REFUNDS" : "SETTLE LOCK"}
+          </button>
+        )}
+
+        {now >= endsAt && !pact.finalized && !canFinalize && (
+          <p className="form-status" role="status">The challenge has ended. Settlement opens at {formatTime(deadline)}.</p>
         )}
 
         {pact.finalized && (

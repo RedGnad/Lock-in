@@ -44,6 +44,54 @@ export function resolveDuolingoMode(input: {
   return { status: "live-usdc", badge: "BETA · LIVE WITH USDC · 1 USDC MAX", canTransact: true };
 }
 
+export type DuolingoLockLifecycle = Readonly<{
+  startsAt: number;
+  endsAt: number;
+  deadline: number;
+  beforeStart: boolean;
+  duringChallenge: boolean;
+  pastDeadline: boolean;
+  underfilled: boolean;
+  canFinalize: boolean;
+}>;
+
+/** Mirrors the contract's timing gates so refunds are exposed as soon as finalizePact permits them. */
+export function resolveDuolingoLockLifecycle(input: {
+  now: number;
+  startsAt: number;
+  durationSeconds: number;
+  graceSeconds: number;
+  participantCount: number;
+  minParticipants: number;
+  cancelled: boolean;
+  finalized: boolean;
+}): DuolingoLockLifecycle {
+  const endsAt = input.startsAt + input.durationSeconds;
+  const deadline = endsAt + input.graceSeconds;
+  const beforeStart = input.now < input.startsAt;
+  const underfilled = !input.cancelled
+    && !input.finalized
+    && !beforeStart
+    && input.participantCount < input.minParticipants;
+  const duringChallenge = input.now >= input.startsAt
+    && input.now < endsAt
+    && !underfilled
+    && !input.cancelled
+    && !input.finalized;
+  const pastDeadline = input.now >= deadline;
+
+  return {
+    startsAt: input.startsAt,
+    endsAt,
+    deadline,
+    beforeStart,
+    duringChallenge,
+    pastDeadline,
+    underfilled,
+    canFinalize: !input.finalized && (input.cancelled || underfilled || pastDeadline),
+  };
+}
+
 export type BaselineEvidence = Readonly<{
   configHash: Hex;
   identityHash: Hex;
