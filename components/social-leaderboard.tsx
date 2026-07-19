@@ -115,7 +115,7 @@ export function SocialLeaderboard({ full = false }: { full?: boolean }) {
           return <div className={`social-row${isYou ? " social-row-you" : ""}`} key={entry.account}>
             <b className="social-rank">{String(competitionRank(entries, index)).padStart(2, "0")}</b>
             <div className="social-player"><strong>{entry.handle ? `@${entry.handle}` : compactAddress(entry.account)}</strong><span>{isYou ? "YOU · " : ""}{entry.handle ? compactAddress(entry.account) : "LOCK IN PLAYER"}</span></div>
-            <div className="social-week-score"><strong>{entry.weeklyScore}</strong><span>{WEEKLY_SUBLABEL[filter]}</span></div>
+            <div className="social-week-score"><strong>{entry.weeklyVerifiedDays}</strong><span>{WEEKLY_SUBLABEL[filter]}</span></div>
             <div className="social-total-score"><strong>{entry.lockScore}</strong><span>LOCK SCORE</span></div>
           </div>;
         })}
