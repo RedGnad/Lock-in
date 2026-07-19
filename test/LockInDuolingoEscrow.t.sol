@@ -15,8 +15,14 @@ interface VmDuo {
 
 contract MockUsdcDuo is ERC20 {
     constructor() ERC20("USD Coin", "USDC") {}
-    function mint(address to, uint256 amount) external { _mint(to, amount); }
-    function decimals() public pure override returns (uint8) { return 6; }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
 }
 
 contract LockInDuolingoEscrowTest {
@@ -95,7 +101,8 @@ contract LockInDuolingoEscrowTest {
 
         bytes32 nonce = keccak256("multi-finisher");
         bytes32 config = escrow.hashConfiguration(stake, TARGET, DURATION, 2, 3, uint64(START), nonce);
-        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.BaselineEvidence memory b =
+            _baseline(ALICE, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
         VM.prank(ALICE);
         uint256 pactId = escrow.createPact(stake, TARGET, DURATION, 2, 3, uint64(START), nonce, b);
         _joinRaw(pactId, BOB, BOB_ID, stake, EVIDENCE_KEY);
@@ -139,8 +146,9 @@ contract LockInDuolingoEscrowTest {
     function testExactTargetPassesAndShortfallFails() public {
         uint256 pactId = _createAndJoin();
         VM.warp(START + 5 minutes);
-        LockInDuolingoEscrow.FinalEvidence memory short_ =
-            _finalEvidence(pactId, ALICE, ALICE_ID, TARGET, TARGET - 1, uint64(START + 4 minutes), _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.FinalEvidence memory short_ = _finalEvidence(
+            pactId, ALICE, ALICE_ID, TARGET, TARGET - 1, uint64(START + 4 minutes), _nextNullifier(), EVIDENCE_KEY
+        );
         VM.expectRevert(LockInDuolingoEscrow.TargetNotMet.selector);
         VM.prank(ALICE);
         escrow.submitFinal(pactId, short_);
@@ -162,8 +170,9 @@ contract LockInDuolingoEscrowTest {
     function testFinalIdentityMustMatchBaseline() public {
         uint256 pactId = _createAndJoin();
         VM.warp(START + 5 minutes);
-        LockInDuolingoEscrow.FinalEvidence memory e =
-            _finalEvidence(pactId, ALICE, BOB_ID, TARGET, 60, uint64(START + 4 minutes), _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.FinalEvidence memory e = _finalEvidence(
+            pactId, ALICE, BOB_ID, TARGET, 60, uint64(START + 4 minutes), _nextNullifier(), EVIDENCE_KEY
+        );
         VM.expectRevert(LockInDuolingoEscrow.IdentityMismatch.selector);
         VM.prank(ALICE);
         escrow.submitFinal(pactId, e);
@@ -173,7 +182,8 @@ contract LockInDuolingoEscrowTest {
         uint256 pactId = _create(ALICE, ALICE_ID, STAKE);
         // Bob tries to join the same Lock with Alice's Duolingo identity.
         bytes32 config = escrow.pactConfigHash(pactId);
-        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(BOB, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.BaselineEvidence memory b =
+            _baseline(BOB, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.IdentityAlreadyUsed.selector);
         VM.prank(BOB);
         escrow.joinPact(pactId, b);
@@ -209,8 +219,9 @@ contract LockInDuolingoEscrowTest {
         uint256 pactId = _createAndJoin();
         VM.warp(START + 5 minutes);
         _submitFinal(pactId, ALICE, ALICE_ID, TARGET, 60);
-        LockInDuolingoEscrow.FinalEvidence memory e =
-            _finalEvidence(pactId, ALICE, ALICE_ID, TARGET, 70, uint64(START + 5 minutes), _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.FinalEvidence memory e = _finalEvidence(
+            pactId, ALICE, ALICE_ID, TARGET, 70, uint64(START + 5 minutes), _nextNullifier(), EVIDENCE_KEY
+        );
         VM.expectRevert(LockInDuolingoEscrow.AlreadyCompleted.selector);
         VM.prank(ALICE);
         escrow.submitFinal(pactId, e);
@@ -251,7 +262,8 @@ contract LockInDuolingoEscrowTest {
     function testMaxStakeExceededRejected() public {
         bytes32 nonce = keccak256("max-stake-nonce");
         bytes32 config = escrow.hashConfiguration(2_000_000, TARGET, DURATION, 2, 2, uint64(START), nonce);
-        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, keccak256("x"), EVIDENCE_KEY);
+        LockInDuolingoEscrow.BaselineEvidence memory b =
+            _baseline(ALICE, config, ALICE_ID, keccak256("x"), EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.InvalidStake.selector);
         VM.prank(ALICE);
         escrow.createPact(2_000_000, TARGET, DURATION, 2, 2, uint64(START), nonce, b);
@@ -272,7 +284,8 @@ contract LockInDuolingoEscrowTest {
 
     function testZeroCreateNonceRejected() public {
         bytes32 config = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), bytes32(0));
-        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.BaselineEvidence memory b =
+            _baseline(ALICE, config, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.InvalidCreateNonce.selector);
         VM.prank(ALICE);
         escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), bytes32(0), b);
@@ -289,7 +302,8 @@ contract LockInDuolingoEscrowTest {
     function testBaselineForOtherNonceRejected() public {
         bytes32 nonceA = keccak256("nonce-A");
         bytes32 configA = escrow.hashConfiguration(STAKE, TARGET, DURATION, 2, 2, uint64(START), nonceA);
-        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(ALICE, configA, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.BaselineEvidence memory b =
+            _baseline(ALICE, configA, ALICE_ID, _nextNullifier(), EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.InvalidConfigurationHash.selector);
         VM.prank(ALICE);
         escrow.createPact(STAKE, TARGET, DURATION, 2, 2, uint64(START), keccak256("nonce-B"), b);
@@ -302,7 +316,8 @@ contract LockInDuolingoEscrowTest {
         // A second, identical-terms Lock by the same creator gets a different nonce, so a different config.
         uint256 pactTwo = _create(ALICE, ALICE_ID, STAKE);
         bytes32 configOne = escrow.pactConfigHash(pactOne);
-        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(BOB, configOne, BOB_ID, _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.BaselineEvidence memory b =
+            _baseline(BOB, configOne, BOB_ID, _nextNullifier(), EVIDENCE_KEY);
         VM.expectRevert(LockInDuolingoEscrow.InvalidConfigurationHash.selector);
         VM.prank(BOB);
         escrow.joinPact(pactTwo, b);
@@ -347,7 +362,8 @@ contract LockInDuolingoEscrowTest {
     function _create(address who, bytes32 identity, uint96 stake) private returns (uint256 pactId) {
         bytes32 nonce = keccak256(abi.encode("create-nonce", ++nonceSeed));
         bytes32 config = escrow.hashConfiguration(stake, TARGET, DURATION, 2, 2, uint64(START), nonce);
-        LockInDuolingoEscrow.BaselineEvidence memory b = _baseline(who, config, identity, _nextNullifier(), EVIDENCE_KEY);
+        LockInDuolingoEscrow.BaselineEvidence memory b =
+            _baseline(who, config, identity, _nextNullifier(), EVIDENCE_KEY);
         VM.prank(who);
         pactId = escrow.createPact(stake, TARGET, DURATION, 2, 2, uint64(START), nonce, b);
     }
@@ -361,7 +377,14 @@ contract LockInDuolingoEscrowTest {
     }
 
     function _finalEvidence(
-        uint256 pactId, address who, bytes32 identity, uint32 target, uint32 earned, uint64 occurredAt, bytes32 nullifier, uint256 key
+        uint256 pactId,
+        address who,
+        bytes32 identity,
+        uint32 target,
+        uint32 earned,
+        uint64 occurredAt,
+        bytes32 nullifier,
+        uint256 key
     ) private returns (LockInDuolingoEscrow.FinalEvidence memory e) {
         uint64 issuedAt = uint64(VM.getBlockTimestamp());
         e = LockInDuolingoEscrow.FinalEvidence({
@@ -375,7 +398,18 @@ contract LockInDuolingoEscrowTest {
             signature: ""
         });
         bytes32 structHash = keccak256(
-            abi.encode(escrow.FINAL_TYPEHASH(), pactId, who, e.identityHash, e.earnedXp, e.targetXp, e.nullifier, e.occurredAt, e.issuedAt, e.expiresAt)
+            abi.encode(
+                escrow.FINAL_TYPEHASH(),
+                pactId,
+                who,
+                e.identityHash,
+                e.earnedXp,
+                e.targetXp,
+                e.nullifier,
+                e.occurredAt,
+                e.issuedAt,
+                e.expiresAt
+            )
         );
         e.signature = _sign(key, structHash);
     }
@@ -384,14 +418,30 @@ contract LockInDuolingoEscrowTest {
         _submitFinalRaw(pactId, who, identity, target, earned, uint64(VM.getBlockTimestamp()), EVIDENCE_KEY);
     }
 
-    function _submitFinalRaw(uint256 pactId, address who, bytes32 identity, uint32 target, uint32 earned, uint64 occurredAt, uint256 key) private {
+    function _submitFinalRaw(
+        uint256 pactId,
+        address who,
+        bytes32 identity,
+        uint32 target,
+        uint32 earned,
+        uint64 occurredAt,
+        uint256 key
+    ) private {
         _submitFinalRaw2(pactId, who, identity, target, earned, occurredAt, _nextNullifier(), key);
     }
 
     function _submitFinalRaw2(
-        uint256 pactId, address who, bytes32 identity, uint32 target, uint32 earned, uint64 occurredAt, bytes32 nullifier, uint256 key
+        uint256 pactId,
+        address who,
+        bytes32 identity,
+        uint32 target,
+        uint32 earned,
+        uint64 occurredAt,
+        bytes32 nullifier,
+        uint256 key
     ) private {
-        LockInDuolingoEscrow.FinalEvidence memory e = _finalEvidence(pactId, who, identity, target, earned, occurredAt, nullifier, key);
+        LockInDuolingoEscrow.FinalEvidence memory e =
+            _finalEvidence(pactId, who, identity, target, earned, occurredAt, nullifier, key);
         VM.prank(who);
         escrow.submitFinal(pactId, e);
     }
@@ -409,7 +459,9 @@ contract LockInDuolingoEscrowTest {
             expiresAt: issuedAt + 5 minutes,
             signature: ""
         });
-        bytes32 structHash = keccak256(abi.encode(escrow.BASELINE_TYPEHASH(), who, config, identity, nullifier, b.issuedAt, b.expiresAt));
+        bytes32 structHash = keccak256(
+            abi.encode(escrow.BASELINE_TYPEHASH(), who, config, identity, nullifier, b.issuedAt, b.expiresAt)
+        );
         b.signature = _sign(key, structHash);
     }
 

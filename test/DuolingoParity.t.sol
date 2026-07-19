@@ -11,7 +11,10 @@ interface VmParity {
 
 contract MockUsdcParity is ERC20 {
     constructor() ERC20("USD Coin", "USDC") {}
-    function decimals() public pure override returns (uint8) { return 6; }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
 }
 
 /// @dev The Solidity half of the EIP-712 parity pin. The SAME hex is asserted in

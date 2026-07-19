@@ -223,14 +223,8 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     error InvalidHighFive();
     error HighFiveAlreadySent();
 
-    constructor(
-        IERC20 stakeToken_,
-        address evidenceSigner_,
-        address accessSigner_
-    ) EIP712("Lock In", "1") {
-        if (
-            address(stakeToken_) == address(0) || evidenceSigner_ == address(0) || accessSigner_ == address(0)
-        ) {
+    constructor(IERC20 stakeToken_, address evidenceSigner_, address accessSigner_) EIP712("Lock In", "1") {
+        if (address(stakeToken_) == address(0) || evidenceSigner_ == address(0) || accessSigner_ == address(0)) {
             revert InvalidAddress();
         }
         if (IERC20Metadata(address(stakeToken_)).decimals() != 6) revert InvalidTokenDecimals();
@@ -314,10 +308,7 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     }
 
     /// @notice Joins before the published start.
-    function joinPact(
-        uint256 pactId,
-        AccessEvidence calldata access
-    ) external nonReentrant {
+    function joinPact(uint256 pactId, AccessEvidence calldata access) external nonReentrant {
         if (joiningPaused) revert JoiningIsPaused();
         Pact storage pact = _pact(pactId);
         if (pact.cancelled || pact.finalized || block.timestamp >= pact.startsAt) revert JoinClosed();
@@ -332,11 +323,10 @@ contract LockInEscrow is Ownable, ReentrancyGuard, EIP712 {
     }
 
     /// @notice Accepts one policy-checked mission completion for a pact day.
-    function submitCompletion(
-        uint256 pactId,
-        uint8 dayIndex,
-        CompletionEvidence calldata evidence
-    ) external nonReentrant {
+    function submitCompletion(uint256 pactId, uint8 dayIndex, CompletionEvidence calldata evidence)
+        external
+        nonReentrant
+    {
         if (completionPaused) revert CompletionIsPaused();
         Pact storage pact = _pact(pactId);
         if (pact.cancelled || pact.finalized) revert SubmissionClosed();

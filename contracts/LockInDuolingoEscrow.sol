@@ -124,7 +124,9 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
     event IdentityBound(uint256 indexed pactId, address indexed account, bytes32 indexed identityHash);
     event CompletionVerified(uint256 indexed pactId, address indexed account, uint32 targetXp, uint64 occurredAt);
     event PactCancelled(uint256 indexed pactId);
-    event PactFinalized(uint256 indexed pactId, uint256 pool, uint32 eligibleClaimants, uint32 finisherCount, bool cancelled);
+    event PactFinalized(
+        uint256 indexed pactId, uint256 pool, uint32 eligibleClaimants, uint32 finisherCount, bool cancelled
+    );
     event PayoutClaimed(uint256 indexed pactId, address indexed account, uint256 amount);
     event EvidenceSignerUpdated(address indexed previousSigner, address indexed newSigner);
     event CreationPauseUpdated(bool paused);
@@ -198,8 +200,9 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         // backend can key a baseline to exactly one future pact. Zero would collapse that back to terms.
         if (createNonce == bytes32(0)) revert InvalidCreateNonce();
         _validateConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt);
-        bytes32 configHash =
-            _hashConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce);
+        bytes32 configHash = _hashConfiguration(
+            stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce
+        );
         _consumeBaseline(msg.sender, configHash, baseline);
 
         pactId = nextPactId++;
@@ -221,7 +224,16 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         _pullStake(msg.sender, stake);
 
         emit PactCreated(
-            pactId, msg.sender, stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, configHash, pact.missionPolicyHash
+            pactId,
+            msg.sender,
+            stake,
+            targetXp,
+            durationSeconds,
+            minParticipants,
+            maxParticipants,
+            startsAt,
+            configHash,
+            pact.missionPolicyHash
         );
         emit PactJoined(pactId, msg.sender);
     }
@@ -366,7 +378,9 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         uint64 startsAt,
         bytes32 createNonce
     ) external view returns (bytes32) {
-        return _hashConfiguration(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce);
+        return _hashConfiguration(
+            stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce
+        );
     }
 
     function missionPolicyHash() external view returns (bytes32) {
@@ -419,7 +433,13 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         if (usedNullifiers[baseline.nullifier]) revert NullifierAlreadyUsed();
         bytes32 structHash = keccak256(
             abi.encode(
-                BASELINE_TYPEHASH, account, baseline.configHash, baseline.identityHash, baseline.nullifier, baseline.issuedAt, baseline.expiresAt
+                BASELINE_TYPEHASH,
+                account,
+                baseline.configHash,
+                baseline.identityHash,
+                baseline.nullifier,
+                baseline.issuedAt,
+                baseline.expiresAt
             )
         );
         if (ECDSA.recover(_hashTypedDataV4(structHash), baseline.signature) != evidenceSigner) {
@@ -516,7 +536,16 @@ contract LockInDuolingoEscrow is Ownable, ReentrancyGuard, EIP712 {
         bytes32 createNonce
     ) private view returns (bytes32) {
         return keccak256(
-            abi.encode(stake, targetXp, durationSeconds, minParticipants, maxParticipants, startsAt, createNonce, _missionPolicyHash())
+            abi.encode(
+                stake,
+                targetXp,
+                durationSeconds,
+                minParticipants,
+                maxParticipants,
+                startsAt,
+                createNonce,
+                _missionPolicyHash()
+            )
         );
     }
 

@@ -71,18 +71,7 @@ contract LockInEscrowReleaseTest {
         (bool missing,) = address(escrow)
             .call(
                 abi.encodeCall(
-                    escrow.createPact,
-                    (
-                        uint96(ONE_USDC),
-                        1_000,
-                        3,
-                        2,
-                        2,
-                        4,
-                        uint64(START),
-                        uint8(1),
-                        emptyAccess
-                    )
+                    escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), emptyAccess)
                 )
             );
         require(!missing && token.balanceOf(ALICE) == beforeBalance, "missing admission moved funds");
@@ -93,18 +82,7 @@ contract LockInEscrowReleaseTest {
         (bool impersonated,) = address(escrow)
             .call(
                 abi.encodeCall(
-                    escrow.createPact,
-                    (
-                        uint96(ONE_USDC),
-                        1_000,
-                        3,
-                        2,
-                        2,
-                        4,
-                        uint64(START),
-                        uint8(1),
-                        wrongAccount
-                    )
+                    escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), wrongAccount)
                 )
             );
         require(!impersonated, "admission was not wallet bound");
@@ -116,10 +94,7 @@ contract LockInEscrowReleaseTest {
         VM.prank(ALICE);
         (bool replayed,) = address(escrow)
             .call(
-                abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), pass)
-                )
+                abi.encodeCall(escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), pass))
             );
         require(!replayed, "admission nonce replayed");
     }
@@ -131,8 +106,7 @@ contract LockInEscrowReleaseTest {
         (bool signedWrong,) = address(escrow)
             .call(
                 abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), wrongSigner)
+                    escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), wrongSigner)
                 )
             );
         require(!signedWrong, "wrong access signer accepted");
@@ -143,8 +117,7 @@ contract LockInEscrowReleaseTest {
         (bool wrongAction,) = address(escrow)
             .call(
                 abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), joinPass)
+                    escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), joinPass)
                 )
             );
         require(!wrongAction, "wrong access action accepted");
@@ -204,8 +177,18 @@ contract LockInEscrowReleaseTest {
 
         // Nothing but a signed attestation: no proof bundle exists to accompany it any more.
         LockInEscrow.CompletionEvidence memory signed = _completionEvidence(
-            escrow, pactId, ALICE, 0, 1, keccak256("strava:alice"), keccak256("signature-alone"), 1_200,
-            uint64(START + 1 hours), uint64(START + 1 hours), uint64(START + 1 hours + 5 minutes), EVIDENCE_KEY
+            escrow,
+            pactId,
+            ALICE,
+            0,
+            1,
+            keccak256("strava:alice"),
+            keccak256("signature-alone"),
+            1_200,
+            uint64(START + 1 hours),
+            uint64(START + 1 hours),
+            uint64(START + 1 hours + 5 minutes),
+            EVIDENCE_KEY
         );
         VM.prank(ALICE);
         escrow.submitCompletion(pactId, 0, signed);
@@ -214,8 +197,18 @@ contract LockInEscrowReleaseTest {
         // The signature is the ONLY thing standing between an attacker and a completion, so the contract
         // must reject anything not signed by the configured evidence signer.
         LockInEscrow.CompletionEvidence memory forged = _completionEvidence(
-            escrow, pactId, BOB, 0, 1, keccak256("strava:bob"), keccak256("signature-alone-forged"), 1_200,
-            uint64(START + 1 hours), uint64(START + 1 hours), uint64(START + 1 hours + 5 minutes), ACCESS_KEY
+            escrow,
+            pactId,
+            BOB,
+            0,
+            1,
+            keccak256("strava:bob"),
+            keccak256("signature-alone-forged"),
+            1_200,
+            uint64(START + 1 hours),
+            uint64(START + 1 hours),
+            uint64(START + 1 hours + 5 minutes),
+            ACCESS_KEY
         );
         VM.prank(BOB);
         (bool ok, bytes memory data) =
@@ -450,8 +443,7 @@ contract LockInEscrowReleaseTest {
         (bool ok, bytes memory data) = address(escrow)
             .call(
                 abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 5, uint64(START), uint8(1), access)
+                    escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 5, uint64(START), uint8(1), access)
                 )
             );
         _requireSelector(ok, data, LockInEscrow.InvalidConfigurationHash.selector);
@@ -501,8 +493,7 @@ contract LockInEscrowReleaseTest {
         (bool staleOk, bytes memory staleData) = address(escrow)
             .call(
                 abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), staleAccess)
+                    escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), staleAccess)
                 )
             );
         _requireSelector(staleOk, staleData, LockInEscrow.InvalidAttestationWindow.selector);
@@ -652,8 +643,7 @@ contract LockInEscrowReleaseTest {
             address(escrow).call(abi.encodeCall(escrow.submitCompletion, (secondPact, 0, firstProof)));
         _requireSelector(proofOk, proofData, LockInEscrow.InvalidEvidenceSigner.selector);
 
-        LockInEscrow other =
-            new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY));
+        LockInEscrow other = new LockInEscrow(token, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY));
         other.setCreationPaused(false);
         bytes32 configHash =
             other.hashPactConfiguration(uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START + 2 hours), 1);
@@ -675,17 +665,7 @@ contract LockInEscrowReleaseTest {
             .call(
                 abi.encodeCall(
                     other.createPact,
-                    (
-                        uint96(ONE_USDC),
-                        1_000,
-                        3,
-                        2,
-                        2,
-                        4,
-                        uint64(START + 2 hours),
-                        uint8(1),
-                        wrongDomain
-                    )
+                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START + 2 hours), uint8(1), wrongDomain)
                 )
             );
         _requireSelector(domainOk, domainData, LockInEscrow.InvalidAccessSigner.selector);
@@ -699,8 +679,7 @@ contract LockInEscrowReleaseTest {
         (bool accessOk, bytes memory accessData) = address(escrow)
             .call(
                 abi.encodeCall(
-                    escrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), access)
+                    escrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), access)
                 )
             );
         _requireSelector(accessOk, accessData, LockInEscrow.InvalidAccessSigner.selector);
@@ -732,8 +711,7 @@ contract LockInEscrowReleaseTest {
 
     function testFeeOnTransferStakeIsRejectedAtomically() public {
         FeeOnTransferUsdcRelease feeToken = new FeeOnTransferUsdcRelease();
-        LockInEscrow feeEscrow =
-            new LockInEscrow(feeToken, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY));
+        LockInEscrow feeEscrow = new LockInEscrow(feeToken, VM.addr(EVIDENCE_KEY), VM.addr(ACCESS_KEY));
         feeEscrow.setCreationPaused(false);
         feeToken.mint(ALICE, 2 * ONE_USDC);
         VM.prank(ALICE);
@@ -754,8 +732,7 @@ contract LockInEscrowReleaseTest {
         (bool ok, bytes memory data) = address(feeEscrow)
             .call(
                 abi.encodeCall(
-                    feeEscrow.createPact,
-                    (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), access)
+                    feeEscrow.createPact, (uint96(ONE_USDC), 1_000, 3, 2, 2, 4, uint64(START), uint8(1), access)
                 )
             );
         _requireSelector(ok, data, LockInEscrow.UnsupportedStakeToken.selector);
@@ -788,15 +765,7 @@ contract LockInEscrowReleaseTest {
         );
         VM.prank(ALICE);
         pactId = escrow.createPact(
-            stake,
-            1_000,
-            durationDays,
-            requiredCompletions,
-            minParticipants,
-            maxParticipants,
-            startsAt,
-            1,
-            access
+            stake, 1_000, durationDays, requiredCompletions, minParticipants, maxParticipants, startsAt, 1, access
         );
     }
 
@@ -908,8 +877,7 @@ contract LockInEscrowReleaseTest {
             EVIDENCE_KEY
         );
         VM.prank(account);
-        (ok, data) =
-            address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, dayIndex, evidence)));
+        (ok, data) = address(escrow).call(abi.encodeCall(escrow.submitCompletion, (pactId, dayIndex, evidence)));
     }
 
     function _completionEvidence(
@@ -925,10 +893,7 @@ contract LockInEscrowReleaseTest {
         uint64 issuedAt,
         uint64 expiresAt,
         uint256 signerKey
-    )
-        private
-        returns (LockInEscrow.CompletionEvidence memory evidence)
-    {
+    ) private returns (LockInEscrow.CompletionEvidence memory evidence) {
         evidence.missionType = missionType;
         evidence.policyHash = target.missionPolicyHash(missionType);
         evidence.identityHash = identity;

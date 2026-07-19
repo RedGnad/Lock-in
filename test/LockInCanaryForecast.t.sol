@@ -63,19 +63,11 @@ contract LockInCanaryForecastTest {
         (
             address creator,
             uint64 startsAt,
-            uint96 stake,
-            ,
-            uint32 participantCount,
-            ,
-            ,
+            uint96 stake,,
+            uint32 participantCount,,,
             uint8 durationDays,
             uint8 requiredCompletions,
-            uint8 minParticipants,
-            ,
-            ,
-            ,
-            ,
-            ,
+            uint8 minParticipants,,,,,,
             bool finalized,
             bool cancelled
         ) = ESCROW.pacts(PACT_ID);

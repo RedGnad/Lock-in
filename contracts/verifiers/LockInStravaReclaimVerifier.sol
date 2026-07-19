@@ -33,8 +33,7 @@ contract LockInStravaClaimParser {
     bytes32 private constant MARKER_MATCHES_HASH = 0x50c9958ba1f7380373760eec627126eb1498058f65fcaa00b3653fcfb7aac000;
     bytes32 private constant MARKER_REDACTIONS_HASH =
         0x4b7281e7975402537afd79fe785e44f44f269f86538a681dc2e96701abb7b16a;
-    bytes32 private constant ACTIVITY_MATCHES_HASH =
-        0x3c79c61040bd099467dfa869da4c5a6683909e3f5c2ed5da11a81af84b32150d;
+    bytes32 private constant ACTIVITY_MATCHES_HASH = 0x3c79c61040bd099467dfa869da4c5a6683909e3f5c2ed5da11a81af84b32150d;
     bytes32 private constant ACTIVITY_REDACTIONS_HASH =
         0x3310274e2d06c8e19ceffb22908fce62af08b7c05da6638857d80ce411e04b9e;
 
@@ -436,8 +435,7 @@ contract LockInStravaClaimParser {
     function _expectedUrl(uint8 role) private pure returns (string memory) {
         if (role == ROLE_MARKER) return "https://www.strava.com/athlete/training";
         if (role == ROLE_ACTIVITY) {
-            return
-            "https://www.strava.com/athlete/training_activities?keywords=&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
+            return "https://www.strava.com/athlete/training_activities?keywords=&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
         }
         revert InvalidStravaSchema();
     }
@@ -801,8 +799,10 @@ contract LockInStravaReclaimVerifier {
 
         // Both claims must come from the same attested session: same attestationNonce, same attestation
         // timestamp, same proxy egress. The Strava context carries no pcr0, so there is nothing else to fold.
-        if (marker.fields.teeGroupHash != activity.fields.teeGroupHash || marker.fields.geoHash != activity.fields.geoHash)
-        {
+        if (
+            marker.fields.teeGroupHash != activity.fields.teeGroupHash
+                || marker.fields.geoHash != activity.fields.geoHash
+        ) {
             revert InvalidContext();
         }
         // The flags stay out of the trust decision, but a bundle must be homogeneous: one claim

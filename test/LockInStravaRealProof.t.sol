@@ -166,7 +166,9 @@ contract LockInStravaRealProofTest {
         LockInProofTypes.StravaPolicy memory policy = _policy(json);
 
         LockInStravaClaimParser.ContextPolicy memory contextPolicy = LockInStravaClaimParser.ContextPolicy({
-            account: policy.account, message: VM.parseJsonString(json, ".contextMessage"), sessionId: policy.expectedSessionId
+            account: policy.account,
+            message: VM.parseJsonString(json, ".contextMessage"),
+            sessionId: policy.expectedSessionId
         });
 
         LockInStravaClaimParser.ParsedFields memory marker =

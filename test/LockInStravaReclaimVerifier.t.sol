@@ -179,7 +179,8 @@ contract LockInStravaReclaimVerifierTest {
         _assertRejected(proofs, _policy());
 
         proofs = _validProofs(WITNESS_KEY);
-        proofs[1].claimInfo.context = _replaceOnce(proofs[1].claimInfo.context, "\"1784102500000\"", "\"1784102500001\"");
+        proofs[1].claimInfo.context =
+            _replaceOnce(proofs[1].claimInfo.context, "\"1784102500000\"", "\"1784102500001\"");
         proofs[1] = _rebindAndSign(proofs[1], WITNESS_KEY);
         _assertRejected(proofs, _policy());
 
@@ -209,9 +210,7 @@ contract LockInStravaReclaimVerifierTest {
         // The attestation must belong to the initiated Reclaim session.
         proofs = _validProofs(WITNESS_KEY);
         proofs[0].claimInfo.context = _replaceOnce(
-            proofs[0].claimInfo.context,
-            "\"sessionId\":\"session-123\"",
-            "\"sessionId\":\"session-attacker\""
+            proofs[0].claimInfo.context, "\"sessionId\":\"session-123\"", "\"sessionId\":\"session-attacker\""
         );
         proofs[0] = _rebindAndSign(proofs[0], WITNESS_KEY);
         _assertRejected(proofs, _policy());
@@ -233,14 +232,20 @@ contract LockInStravaReclaimVerifierTest {
         _assertRejected(proofs, _policy());
 
         proofs = _validProofs(WITNESS_KEY);
-        proofs[1].claimInfo.context =
-            _replaceOnce(proofs[1].claimInfo.context, "\"reclaimSessionId\":\"session-123\"", "\"reclaimSessionId\":\"session-attacker\"");
+        proofs[1].claimInfo.context = _replaceOnce(
+            proofs[1].claimInfo.context,
+            "\"reclaimSessionId\":\"session-123\"",
+            "\"reclaimSessionId\":\"session-attacker\""
+        );
         proofs[1] = _rebindAndSign(proofs[1], WITNESS_KEY);
         _assertRejected(proofs, _policy());
 
         proofs = _validProofs(WITNESS_KEY);
-        proofs[1].claimInfo.parameters =
-            _replaceOnce(proofs[1].claimInfo.parameters, "\"proxySessionId\":\"session-123\"", "\"proxySessionId\":\"session-attacker\"");
+        proofs[1].claimInfo.parameters = _replaceOnce(
+            proofs[1].claimInfo.parameters,
+            "\"proxySessionId\":\"session-123\"",
+            "\"proxySessionId\":\"session-attacker\""
+        );
         proofs[1] = _rebindAndSign(proofs[1], WITNESS_KEY);
         _assertRejected(proofs, _policy());
 
@@ -265,7 +270,6 @@ contract LockInStravaReclaimVerifierTest {
         proofs = _validProofs(WITNESS_KEY);
         proofs[1] = _changeEverywhere(proofs[1], "\"trainer\":\"false\"", "\"trainer\":\"true\"", WITNESS_KEY);
         _assertRejected(proofs, _policy());
-
     }
 
     /// @dev 7.0.0 removed the title binding: an athlete never retitles a run. The activity title is signed
@@ -374,8 +378,9 @@ contract LockInStravaReclaimVerifierTest {
 
     function testRejectsUnknownDuplicateReorderedAndEscapedSecurityJson() public {
         Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
-        proofs[0].claimInfo.parameters =
-            _replaceOnce(proofs[0].claimInfo.parameters, "{\"additionalClientOptions\"", "{\"alien\":{},\"additionalClientOptions\"");
+        proofs[0].claimInfo.parameters = _replaceOnce(
+            proofs[0].claimInfo.parameters, "{\"additionalClientOptions\"", "{\"alien\":{},\"additionalClientOptions\""
+        );
         proofs[0] = _rebindAndSign(proofs[0], WITNESS_KEY);
         _assertRejected(proofs, _policy());
 
@@ -395,7 +400,11 @@ contract LockInStravaReclaimVerifierTest {
         _assertRejected(proofs, _policy());
 
         proofs = _validProofs(WITNESS_KEY);
-        proofs[0].claimInfo.context = _replaceOnce(proofs[0].claimInfo.context, "\"reclaimSessionId\":\"session-123\"", "\"reclaimSessionId\":\"session\\u002d123\"");
+        proofs[0].claimInfo.context = _replaceOnce(
+            proofs[0].claimInfo.context,
+            "\"reclaimSessionId\":\"session-123\"",
+            "\"reclaimSessionId\":\"session\\u002d123\""
+        );
         proofs[0] = _rebindAndSign(proofs[0], WITNESS_KEY);
         _assertRejected(proofs, _policy());
     }
@@ -418,16 +427,19 @@ contract LockInStravaReclaimVerifierTest {
     ///      values validate, but a missing or non-boolean flag breaks the pinned context shape.
     function testContextFlagsAreParsedButNotGated() public {
         Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
-        proofs[0].claimInfo.context = _replaceOnce(proofs[0].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":false");
+        proofs[0].claimInfo.context =
+            _replaceOnce(proofs[0].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":false");
         proofs[0] = _rebindAndSign(proofs[0], WITNESS_KEY);
-        proofs[1].claimInfo.context = _replaceOnce(proofs[1].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":false");
+        proofs[1].claimInfo.context =
+            _replaceOnce(proofs[1].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":false");
         proofs[1] = _rebindAndSign(proofs[1], WITNESS_KEY);
         LockInProofTypes.StravaEvidence memory evidence =
             verifier.validateSyntheticStravaProofsForTesting(proofs, _policy());
         require(evidence.distanceMeters == 5000, "isAiProof=false changed the verdict");
 
         proofs = _validProofs(WITNESS_KEY);
-        proofs[0].claimInfo.context = _replaceOnce(proofs[0].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":\"true\"");
+        proofs[0].claimInfo.context =
+            _replaceOnce(proofs[0].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":\"true\"");
         proofs[0] = _rebindAndSign(proofs[0], WITNESS_KEY);
         _assertRejected(proofs, _policy());
 
@@ -441,7 +453,8 @@ contract LockInStravaReclaimVerifierTest {
     ///      differently from the other is not a coherent proof set.
     function testRejectsHeterogeneousProvenanceFlags() public {
         Reclaim.Proof[] memory proofs = _validProofs(WITNESS_KEY);
-        proofs[1].claimInfo.context = _replaceOnce(proofs[1].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":false");
+        proofs[1].claimInfo.context =
+            _replaceOnce(proofs[1].claimInfo.context, "\"isAiProof\":true", "\"isAiProof\":false");
         proofs[1] = _rebindAndSign(proofs[1], WITNESS_KEY);
         _assertRejected(proofs, _policy());
 
@@ -551,8 +564,7 @@ contract LockInStravaReclaimVerifierTest {
     function _url(uint8 role) private pure returns (string memory) {
         if (role == 0) return "https://www.strava.com/athlete/training";
         // 7.0.0 reads the athlete's most recent Run: no keyword, no title binding.
-        return
-        "https://www.strava.com/athlete/training_activities?keywords=&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
+        return "https://www.strava.com/athlete/training_activities?keywords=&sport_type=Run&tags=&commute=&private_activities=&trainer=false&gear=&new_activity_only=false";
     }
 
     /// @dev Byte-identical to the published 6.0.0 provider: these slices are what the parser pins.
@@ -563,8 +575,7 @@ contract LockInStravaReclaimVerifierTest {
 
     function _redactions(uint8 role) private pure returns (string memory) {
         if (role == 0) {
-            return
-            "[{\"jsonPath\":\"\",\"regex\":\"\\\",\\\\s*(?<marker>[^\\\"<>\\\\n]+),\\\\s*\",\"xPath\":\"/html[1]/head[1]/script[5]\"}]";
+            return "[{\"jsonPath\":\"\",\"regex\":\"\\\",\\\\s*(?<marker>[^\\\"<>\\\\n]+),\\\\s*\",\"xPath\":\"/html[1]/head[1]/script[5]\"}]";
         }
         return "[{\"jsonPath\":\"$.models[0].id\",\"regex\":\"\\\"id\\\":(?<id>\\\\d+)\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].name\",\"regex\":\"\\\"name\\\":\\\"(?<name>[^\\\"<>\\\\n]+)\\\"\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].sport_type\",\"regex\":\"\\\"sport_type\\\":\\\"(?<type>[A-Za-z0-9_-]+)\\\"\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].start_time\",\"regex\":\"\\\"start_time\\\":\\\"(?<time>[^\\\"<>\\\\n]+)\\\"\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].distance_raw\",\"regex\":\"\\\"distance_raw\\\":(?<raw>\\\\d+)\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].flagged\",\"regex\":\"\\\"flagged\\\":(?<flagged>true|false)\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].moving_time_raw\",\"regex\":\"\\\"moving_time_raw\\\":(?<moving>\\\\d+)\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].elapsed_time_raw\",\"regex\":\"\\\"elapsed_time_raw\\\":(?<elapsed>\\\\d+)\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].elevation_gain_raw\",\"regex\":\"\\\"elevation_gain_raw\\\":(?<elevation>\\\\d+)\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].has_latlng\",\"regex\":\"\\\"has_latlng\\\":(?<latlng>true|false)\",\"xPath\":\"\"},{\"jsonPath\":\"$.models[0].trainer\",\"regex\":\"\\\"trainer\\\":(?<trainer>true|false)\",\"xPath\":\"\"}]";
     }
