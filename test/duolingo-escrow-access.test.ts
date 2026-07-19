@@ -30,6 +30,12 @@ test("a misconfigured allowlist fails closed with a 503, not open", () => {
   assert.equal(statusOf(A, env("not-an-address")), 503);
 });
 
+test("the explicit public marker allows any valid wallet", () => {
+  assert.doesNotThrow(() => assertEscrowWalletAllowed(A, env("*")));
+  assert.doesNotThrow(() => assertEscrowWalletAllowed(OUTSIDER, env(" * ")));
+  assert.equal(statusOf("not-a-wallet", env("*")), 400);
+});
+
 test("an enabled wallet passes, case-insensitively", () => {
   assert.doesNotThrow(() => assertEscrowWalletAllowed(A.toLowerCase(), env(`${A},${B}`)));
   assert.doesNotThrow(() => assertEscrowWalletAllowed(B, env(`${A}, ${B}`)));
