@@ -27,11 +27,11 @@ export default function Home() {
       <StravaConnect noticeOnly />
       <PactHub />
       <SocialLeaderboard />
-      <div className="mechanic-eyebrow"><div className="eyebrow"><span>02</span> How it works</div></div>
+      <div className="mechanic-eyebrow"><div className="eyebrow"><span>04</span> How it works</div></div>
       <section className="mechanic">
-        <div><b>01</b><h2>Set it</h2><p>Choose a measurable goal, a deadline, your crew and your stake.</p></div>
-        <div><b>02</b><h2>Prove it</h2><p>Verify your runs with Strava or your XP progress with Duolingo.</p></div>
-        <div><b>03</b><h2>Settle it</h2><p>Finishers recover their stake and split the pool.</p></div>
+        <div><h2>Set it</h2><p>Choose a measurable goal, a deadline, your crew and your stake.</p></div>
+        <div><h2>Prove it</h2><p>Verify your runs with Strava or your XP progress with Duolingo.</p></div>
+        <div><h2>Settle it</h2><p>Finishers recover their stake and split the pool.</p></div>
       </section>
     </main>
   );

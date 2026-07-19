@@ -35,7 +35,7 @@ export function PactHub() {
     return (
       <section className="pact-hub" id="play" aria-labelledby="pact-hub-title">
         <header className="hub-heading">
-          <div><span className="eyebrow"><span>STATUS</span> New-stake protection</span><h2 id="pact-hub-title">{unavailable ? "Access unavailable" : health.checked ? "New locks are closed" : "Checking access"}</h2></div>
+          <div><span className="eyebrow"><span>02</span> New-stake protection</span><h2 id="pact-hub-title">{unavailable ? "Access unavailable" : health.checked ? "New locks are closed" : "Checking access"}</h2></div>
           <p>{unavailable ? "We could not confirm that new stakes are enabled. Existing locks can still settle or claim." : "Creating and joining are paused. Existing locks can still settle or claim from their lock page."}</p>
         </header>
         <div className="hub-closed" role="status">
@@ -49,7 +49,7 @@ export function PactHub() {
   return (
     <section className="pact-hub" id="play" aria-labelledby="pact-hub-title">
       <header className="hub-heading">
-        <div><span className="eyebrow"><span>PLAY</span> Your crew, your terms</span><h2 id="pact-hub-title">Ready to lock in?</h2></div>
+        <div><span className="eyebrow"><span>02</span> Your crew, your terms</span><h2 id="pact-hub-title">Ready to lock in?</h2></div>
         <p>{health.mode === "open" ? "Create a competitive streak or join one already forming on Monad." : "Choose one of the currently available actions."}</p>
       </header>
       <div className={`hub-tabs${canCreate && canJoin ? "" : " single"}`} role="tablist" aria-label="Choose how to start">
