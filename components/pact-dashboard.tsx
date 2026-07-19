@@ -396,18 +396,17 @@ export function PactDashboard({ id }: { id: string }) {
     : active ? `${targetLabel} before the window closes.`
     : status;
 
-  // The social moment is the goal reached, not the number of the last check-in. @monad is only tagged on the
-  // real wins (target met), never on every single run.
-  const stakeText = pact ? Number(pact[2]) / 1_000_000 : 0;
+  // Human copy, not a system log, and never repeats what the dynamic card already shows (pool, distance,
+  // crew). The Web Intent appends the URL separately. @monad is tagged only on the real wins.
   const runsLeft = Math.max(0, requiredCompletions - completed);
   const shareText = pact
     ? registration
-      ? `I put ${stakeText} USDC behind a ${mission.name} goal. Join my Lock.`
-      : targetReached
-        ? `I said I would run for ${durationDays} days.\n\nAll ${requiredCompletions} runs verified. Lock complete. 🔒\n\nBuilt on @monad`
-        : completed > 0
-          ? `${completed} of ${requiredCompletions} runs verified. ${runsLeft === 1 ? "One" : runsLeft} to go. 🔒\n\nLocked in on Monad.`
-          : `Locked in on Monad. ${requiredCompletions} runs in ${durationDays} days. 🔒`
+      ? `I put USDC behind a ${durationDays}-day run goal.\n\nWho's locking in with me?`
+      : pact[15]
+        ? `Goal complete. Lock settled.\n\nI kept my word on @monad.`
+        : targetReached
+          ? `${requiredCompletions} runs in ${durationDays} days. Kept my word.\n\nLocked in on @monad.`
+          : `${completed} of ${requiredCompletions} runs done. ${runsLeft} to go.\n\nStill locked in.`
     : "Join my Lock In challenge on Monad.";
 
   return (
