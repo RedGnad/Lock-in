@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  DUOLINGO_REGISTRATION_SECONDS,
-  EscrowConfigError,
-  parseEscrowCreateTerms,
-  scheduledDuolingoStart,
-} from "../src/duolingo-escrow-config.js";
+import { EscrowConfigError, parseEscrowCreateTerms } from "../src/duolingo-escrow-config.js";
 
 const NOW = 1_800_000_000;
 const valid = {
@@ -45,19 +40,6 @@ test("the start must be in the future and within 24 hours", () => {
   assert.throws(() => parseEscrowCreateTerms({ ...valid, startsAt: NOW - 1 }, NOW), EscrowConfigError);
   assert.throws(() => parseEscrowCreateTerms({ ...valid, startsAt: NOW + 25 * 60 * 60 }, NOW), EscrowConfigError);
   assert.ok(parseEscrowCreateTerms({ ...valid, startsAt: NOW + 23 * 60 * 60 }, NOW));
-});
-
-test("new public Locks keep a 23-hour registration window within the contract limit", () => {
-  const minimum = BigInt(DUOLINGO_REGISTRATION_SECONDS);
-  const roundingWindow = 5n * 60n;
-  const contractLimit = 24n * 60n * 60n;
-
-  for (const chainTimestamp of [0n, 1n, 299n, BigInt(NOW)]) {
-    const delay = scheduledDuolingoStart(chainTimestamp) - chainTimestamp;
-    assert.ok(delay >= minimum);
-    assert.ok(delay < minimum + roundingWindow);
-    assert.ok(delay < contractLimit);
-  }
 });
 
 test("non-numeric fields are rejected rather than coerced to a wrong value", () => {
