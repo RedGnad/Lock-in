@@ -404,9 +404,9 @@ export function PactDashboard({ id }: { id: string }) {
     ? registration
       ? `I put ${stakeText} USDC behind a ${mission.name} goal. Join my Lock.`
       : targetReached
-        ? `I said I would run for ${durationDays} days.\n\n${requiredCompletions}/${requiredCompletions} runs verified. Lock complete. 🔒\n\nBuilt on @monad`
+        ? `I said I would run for ${durationDays} days.\n\nAll ${requiredCompletions} runs verified. Lock complete. 🔒\n\nBuilt on @monad`
         : completed > 0
-          ? `${completed}/${requiredCompletions} runs verified. ${runsLeft === 1 ? "One" : runsLeft} to go. 🔒\n\nLocked in on Monad.`
+          ? `${completed} of ${requiredCompletions} runs verified. ${runsLeft === 1 ? "One" : runsLeft} to go. 🔒\n\nLocked in on Monad.`
           : `Locked in on Monad. ${requiredCompletions} runs in ${durationDays} days. 🔒`
     : "Join my Lock In challenge on Monad.";
 
