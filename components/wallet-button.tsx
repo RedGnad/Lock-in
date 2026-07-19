@@ -63,6 +63,8 @@ export function WalletButton() {
   const [availableConnectorUids, setAvailableConnectorUids] = useState<readonly string[]>([]);
   const [walletScanDone, setWalletScanDone] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const connectBusyRef = useRef(false);
   const root = useRef<HTMLDivElement>(null);
   const connectTrigger = useRef<HTMLButtonElement>(null);
   const connectDialog = useRef<HTMLDivElement>(null);
@@ -74,6 +76,16 @@ export function WalletButton() {
     const named = detected.filter((connector) => connector.id !== "injected");
     return named.length > 0 ? named : detected;
   }, [availableConnectorUids, connectors]);
+
+  // Once a wallet is actually connected, release the lock and close the chooser for good. Never re-open it
+  // or re-call connectAsync on our own: any further connect must be a deliberate user click.
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    connectBusyRef.current = false;
+    setConnecting(false);
+    setConnectOpen(false);
+    setConnectionError("");
+  }, [isConnected, address]);
 
   useEffect(() => {
     function close(event: MouseEvent) {
@@ -165,21 +177,33 @@ export function WalletButton() {
   }, [connectOpen]);
 
   function openWalletChooser() {
+    if (connectBusyRef.current || connecting || isPending) return;
+    setConnectionError("");
     setMenuOpen(false);
     setConnectOpen(true);
   }
 
   async function connectWallet(connector: (typeof connectors)[number]) {
+    // Synchronous lock BEFORE any await or React rerender: two clicks that arrive in the same tick would
+    // otherwise both fire connectAsync (two eth_requestAccounts, two native popups). A disabled attribute is
+    // not enough because it only takes effect on the next render.
+    if (connectBusyRef.current) return;
+    connectBusyRef.current = true;
+    setConnecting(true);
     setConnectionError("");
+    // Close the chooser immediately so a stale dialog cannot be clicked again.
+    setConnectOpen(false);
+
     try {
       // Connect only. Do NOT fold a chain switch into connect: passing chainId makes wagmi try to switch
-      // (or add) Monad right after approval, which keeps this dialog open on "Connecting…" for seconds and
-      // can fire a second wallet prompt. Connect resolves fast, the dialog closes, and the "Switch to Monad"
-      // button handles the network afterwards if needed.
+      // (or add) Monad right after approval and can fire a second wallet prompt. The "Switch to Monad" button
+      // handles the network afterwards if needed.
       await connectAsync({ connector });
-      setConnectOpen(false);
     } catch (error) {
       setConnectionError(connectionMessage(error));
+    } finally {
+      connectBusyRef.current = false;
+      setConnecting(false);
     }
   }
 
@@ -230,13 +254,13 @@ export function WalletButton() {
               type="button"
               className="wallet-option"
               data-wallet={connector.id}
-              disabled={isPending}
+              disabled={connecting || isPending || connectBusyRef.current}
               onClick={() => void connectWallet(connector)}
               key={connector.uid}
             >
               <span className="wallet-option-mark" aria-hidden="true">{walletMark(connector.id)}</span>
               <span className="wallet-option-copy">
-                <strong>{isPending ? "Connecting…" : walletLabel(connector.id, connector.name)}</strong>
+                <strong>{connecting || isPending ? "Connecting…" : walletLabel(connector.id, connector.name)}</strong>
                 <small>Detected in this browser</small>
               </span>
               <span className="wallet-option-arrow" aria-hidden="true">→</span>
@@ -270,19 +294,21 @@ export function WalletButton() {
 
   if (!isConnected || !address) {
     return (
-      <>
+      <div className="wallet-control">
         <button
           ref={connectTrigger}
           className="wallet-button"
           type="button"
+          disabled={connecting || isPending}
           onClick={openWalletChooser}
           aria-haspopup="dialog"
           aria-expanded={connectOpen}
         >
-          Connect wallet
+          {connecting || isPending ? "Connecting…" : "Connect wallet"}
         </button>
+        {connectionError && !connectOpen && <p className="wallet-switch-note" role="alert">{connectionError}</p>}
         {chooser}
-      </>
+      </div>
     );
   }
   if (chainId !== monad.id) {
