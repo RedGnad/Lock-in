@@ -15,7 +15,7 @@ export default function Home() {
         <div className="hero-copy">
           <div className="eyebrow">Accountability that pays</div>
           <h1>Your word.<br/><em>Locked in.</em></h1>
-          <p>Challenge your friends to improve. Stake up to 1 USDC each. Finishers split the pool funded by those who quit.</p>
+          <p>Challenge your friends to run or learn. Stake up to 1 USDC each. Finishers split the pool funded by those who quit.</p>
           <ReleaseActions />
         </div>
         <div className="hero-mark" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="lock-core"><span>NO</span><strong>EXCUSES</strong></div></div>
