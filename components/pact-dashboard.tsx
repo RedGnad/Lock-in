@@ -93,8 +93,10 @@ export function PactDashboard({ id }: { id: string }) {
   const inviteCode = pactId > 0n ? encodeLockInviteCode(pactId) : "";
   const [inviteUrl, setInviteUrl] = useState("");
   useEffect(() => {
-    if (inviteCode) setInviteUrl(`${window.location.origin}/l/${inviteCode}`);
-  }, [inviteCode]);
+    // Share the canonical Lock URL, which carries the summary_large_image metadata, so the big card is
+    // reliable in the exact URL that lands in the post. /l/<code> only redirects and has no metadata.
+    if (pactId > 0n) setInviteUrl(`${window.location.origin}/lock/${pactId}`);
+  }, [pactId]);
   const contract = escrowAddress || zeroAddress;
   const [message, setMessage] = useState("");
   const [txHash, setTxHash] = useState<Hash | null>(null);
@@ -394,10 +396,18 @@ export function PactDashboard({ id }: { id: string }) {
     : active ? `${targetLabel} before the window closes.`
     : status;
 
+  // The social moment is the goal reached, not the number of the last check-in. @monad is only tagged on the
+  // real wins (target met), never on every single run.
+  const stakeText = pact ? Number(pact[2]) / 1_000_000 : 0;
+  const runsLeft = Math.max(0, requiredCompletions - completed);
   const shareText = pact
     ? registration
-      ? `I put ${Number(pact[2]) / 1_000_000} USDC behind a ${mission.name} goal. Join my Lock.`
-      : `Day ${completed} verified. ${completed}/${requiredCompletions} on my Lock In challenge on Monad.`
+      ? `I put ${stakeText} USDC behind a ${mission.name} goal. Join my Lock.`
+      : targetReached
+        ? `I said I would run for ${durationDays} days.\n\n${requiredCompletions}/${requiredCompletions} runs verified. Lock complete. 🔒\n\nBuilt on @monad`
+        : completed > 0
+          ? `${completed}/${requiredCompletions} runs verified. ${runsLeft === 1 ? "One" : runsLeft} to go. 🔒\n\nLocked in on Monad.`
+          : `Locked in on Monad. ${requiredCompletions} runs in ${durationDays} days. 🔒`
     : "Join my Lock In challenge on Monad.";
 
   return (
