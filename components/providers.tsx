@@ -11,8 +11,8 @@ const config = createConfig({
   connectors: [
     injected({ target: "phantom" }),
     injected({ target: "metaMask" }),
-    injected(),
   ],
+  multiInjectedProviderDiscovery: false,
   transports: { [monad.id]: http(monad.rpcUrls.default.http[0]) },
   ssr: true,
 });

@@ -16,19 +16,32 @@ export function PactHub() {
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    let scrollFrame: number | null = null;
+
     function syncHash() {
-      // #create resolves to the create card's own id and scrolls on its own. #join has no matching element,
-      // so the anchor jump does nothing and the tab switches off screen: scroll the hub here instead, after
-      // the panel is rendered, so one click both switches to Join and brings it into view.
-      if (window.location.hash === "#join" && canJoin) {
-        setView("join");
-        requestAnimationFrame(() => sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-      }
-      if (window.location.hash === "#create" && canCreate) setView("create");
+      const next = window.location.hash === "#create" && canCreate
+        ? "create"
+        : window.location.hash === "#join" && canJoin
+          ? "join"
+          : null;
+      if (!next) return;
+
+      setView(next);
+      if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame);
+      scrollFrame = window.requestAnimationFrame(() => {
+        sectionRef.current?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "start",
+        });
+        scrollFrame = null;
+      });
     }
     syncHash();
     window.addEventListener("hashchange", syncHash);
-    return () => window.removeEventListener("hashchange", syncHash);
+    return () => {
+      window.removeEventListener("hashchange", syncHash);
+      if (scrollFrame !== null) window.cancelAnimationFrame(scrollFrame);
+    };
   }, [canCreate, canJoin]);
 
   function choose(next: HubView) {

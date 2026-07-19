@@ -144,7 +144,7 @@ export function DuolingoCreate({ onCreated, onBackToMission }: {
   const goalReady = Boolean(targetXp && durationSeconds && maxParticipants);
 
   return (
-    <section className="create-card" id="create">
+    <section className="create-card">
       <div className="create-heading">
         <div><span className="card-kicker">DUOLINGO XP · BETA</span><h2>Build your lock</h2></div>
         <span className="step-count">{step + 2} / 3</span>

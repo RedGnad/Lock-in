@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { monad } from "@/src/chain";
 
-const supportedConnectorIds = new Set(["phantom", "metaMask", "injected"]);
+const CONNECT_TIMEOUT_MS = 45_000;
+const supportedConnectorIds = new Set(["phantom", "metaMask"]);
 
 function short(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -34,8 +35,31 @@ function walletMark(id: string): string {
   return "W";
 }
 
+function walletErrorDetails(error: unknown): { code?: number; message: string } {
+  const messages: string[] = [];
+  const seen = new Set<unknown>();
+  let current = error;
+  let code: number | undefined;
+
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const candidate = current as { cause?: unknown; code?: unknown; details?: unknown; message?: unknown; shortMessage?: unknown };
+    if (code === undefined && typeof candidate.code === "number") code = candidate.code;
+    for (const value of [candidate.shortMessage, candidate.details, candidate.message]) {
+      if (typeof value === "string" && !messages.includes(value)) messages.push(value);
+    }
+    current = candidate.cause;
+  }
+
+  if (messages.length === 0) messages.push(String(error));
+  return { code, message: messages.join(" ") };
+}
+
 function connectionMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
+  const { code, message } = walletErrorDetails(error);
+  if (code === -32002 || /already (?:open|pending)|request.*(?:already|still).*pending|resource unavailable/i.test(message)) {
+    return "A wallet request is already open. Complete or close it before trying again.";
+  }
   if (/reject|denied|cancel/i.test(message)) return "Connection cancelled in your wallet.";
   if (/provider|not found|unavailable/i.test(message)) return "That wallet is no longer available in this browser.";
   return "Could not connect. Check your wallet and try again.";
@@ -53,8 +77,8 @@ function switchMessage(error: unknown): string {
 }
 
 export function WalletButton() {
-  const { address, chainId, isConnected } = useAccount();
-  const { connectors, connectAsync, isPending } = useConnect();
+  const { address, chainId, isConnected, status: accountStatus } = useAccount();
+  const { connectors, connectAsync } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: isSwitching, error: switchError, reset: resetSwitchError } = useSwitchChain();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -65,27 +89,42 @@ export function WalletButton() {
   const [connectionError, setConnectionError] = useState("");
   const [connecting, setConnecting] = useState(false);
   const connectBusyRef = useRef(false);
+  const connectAttemptRef = useRef(0);
+  const connectTimeoutRef = useRef<number | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const connectTrigger = useRef<HTMLButtonElement>(null);
   const connectDialog = useRef<HTMLDivElement>(null);
 
   const availableConnectors = useMemo(() => {
-    const detected = connectors.filter((connector) => (
+    return connectors.filter((connector) => (
       supportedConnectorIds.has(connector.id) && availableConnectorUids.includes(connector.uid)
     ));
-    const named = detected.filter((connector) => connector.id !== "injected");
-    return named.length > 0 ? named : detected;
   }, [availableConnectorUids, connectors]);
+
+  const releaseConnectLock = useCallback((attempt?: number) => {
+    if (attempt !== undefined && attempt !== connectAttemptRef.current) return false;
+    connectAttemptRef.current += 1;
+    if (connectTimeoutRef.current !== null) {
+      window.clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+    connectBusyRef.current = false;
+    setConnecting(false);
+    return true;
+  }, []);
 
   // Once a wallet is actually connected, release the lock and close the chooser for good. Never re-open it
   // or re-call connectAsync on our own: any further connect must be a deliberate user click.
   useEffect(() => {
-    if (!isConnected || !address) return;
-    connectBusyRef.current = false;
-    setConnecting(false);
+    if (accountStatus !== "connected" || !isConnected || !address) return;
+    releaseConnectLock();
     setConnectOpen(false);
     setConnectionError("");
-  }, [isConnected, address]);
+  }, [accountStatus, address, isConnected, releaseConnectLock]);
+
+  useEffect(() => () => {
+    if (connectTimeoutRef.current !== null) window.clearTimeout(connectTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     function close(event: MouseEvent) {
@@ -177,7 +216,7 @@ export function WalletButton() {
   }, [connectOpen]);
 
   function openWalletChooser() {
-    if (connectBusyRef.current || connecting || isPending) return;
+    if (connectBusyRef.current || connecting || accountStatus === "reconnecting") return;
     setConnectionError("");
     setMenuOpen(false);
     setConnectOpen(true);
@@ -188,11 +227,18 @@ export function WalletButton() {
     // otherwise both fire connectAsync (two eth_requestAccounts, two native popups). A disabled attribute is
     // not enough because it only takes effect on the next render.
     if (connectBusyRef.current) return;
+    const attempt = connectAttemptRef.current + 1;
+    connectAttemptRef.current = attempt;
     connectBusyRef.current = true;
     setConnecting(true);
     setConnectionError("");
     // Close the chooser immediately so a stale dialog cannot be clicked again.
     setConnectOpen(false);
+    connectTimeoutRef.current = window.setTimeout(() => {
+      if (attempt !== connectAttemptRef.current) return;
+      setConnectionError("Wallet connection timed out. Complete or close any open wallet request before trying again.");
+      releaseConnectLock(attempt);
+    }, CONNECT_TIMEOUT_MS);
 
     try {
       // Connect only. Do NOT fold a chain switch into connect: passing chainId makes wagmi try to switch
@@ -200,10 +246,9 @@ export function WalletButton() {
       // handles the network afterwards if needed.
       await connectAsync({ connector });
     } catch (error) {
+      if (attempt !== connectAttemptRef.current) return;
       setConnectionError(connectionMessage(error));
-    } finally {
-      connectBusyRef.current = false;
-      setConnecting(false);
+      releaseConnectLock(attempt);
     }
   }
 
@@ -254,13 +299,13 @@ export function WalletButton() {
               type="button"
               className="wallet-option"
               data-wallet={connector.id}
-              disabled={connecting || isPending || connectBusyRef.current}
+              disabled={connecting || connectBusyRef.current}
               onClick={() => void connectWallet(connector)}
               key={connector.uid}
             >
               <span className="wallet-option-mark" aria-hidden="true">{walletMark(connector.id)}</span>
               <span className="wallet-option-copy">
-                <strong>{connecting || isPending ? "Connecting…" : walletLabel(connector.id, connector.name)}</strong>
+                <strong>{connecting ? "Connecting…" : walletLabel(connector.id, connector.name)}</strong>
                 <small>Detected in this browser</small>
               </span>
               <span className="wallet-option-arrow" aria-hidden="true">→</span>
@@ -299,12 +344,12 @@ export function WalletButton() {
           ref={connectTrigger}
           className="wallet-button"
           type="button"
-          disabled={connecting || isPending}
+          disabled={connecting || accountStatus === "reconnecting"}
           onClick={openWalletChooser}
           aria-haspopup="dialog"
           aria-expanded={connectOpen}
         >
-          {connecting || isPending ? "Connecting…" : "Connect wallet"}
+          {connecting || accountStatus === "reconnecting" ? "Connecting…" : "Connect wallet"}
         </button>
         {connectionError && !connectOpen && <p className="wallet-switch-note" role="alert">{connectionError}</p>}
         {chooser}

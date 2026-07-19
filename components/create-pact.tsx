@@ -234,7 +234,7 @@ export function CreatePact() {
   }
 
   return (
-    <section className="create-card" id="create">
+    <section className="create-card">
       <div className="create-heading"><div><span className="card-kicker">CREATE A CHALLENGE</span><h2>Build your lock</h2></div><span className="step-count">{step + 1} / 3</span></div>
       <div className="step-track" aria-label={`Step ${step + 1} of 3`}>{[0, 1, 2].map((index) => <button type="button" key={index} className={index <= step ? "active" : ""} disabled={index > step} onClick={() => setStep(index)} aria-label={`Go to step ${index + 1}`} aria-current={index === step ? "step" : undefined}/>)}</div>
       <div className="form-stage">

@@ -160,7 +160,7 @@ export function PactDiscovery() {
   const failed = Boolean(nextPact.error || pactReads.error || (someReadFailed && openPacts.length === 0));
 
   return (
-    <section className="pact-discovery" id="join" aria-labelledby="pact-discovery-title">
+    <section className="pact-discovery" aria-labelledby="pact-discovery-title">
       <div className="discovery-heading">
         <div>
           <span className="card-kicker">OPEN LOCKS</span>
