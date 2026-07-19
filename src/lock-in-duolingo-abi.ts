@@ -24,6 +24,25 @@ export const duoPactComponents = [
   { name: "cancelled", type: "bool" },
 ] as const;
 
+export type DuoPactTuple = Readonly<{
+  creator: `0x${string}`;
+  startsAt: bigint;
+  durationSeconds: number;
+  stake: bigint;
+  targetXp: number;
+  participantCount: number;
+  finisherCount: number;
+  claimsRemaining: number;
+  minParticipants: number;
+  maxParticipants: number;
+  completionPauseGenerationAtCreation: bigint;
+  missionPolicyHash: `0x${string}`;
+  configHash: `0x${string}`;
+  remainingPool: bigint;
+  finalized: boolean;
+  cancelled: boolean;
+}>;
+
 const baselineEvidenceComponents = [
   { name: "configHash", type: "bytes32" },
   { name: "identityHash", type: "bytes32" },
@@ -46,6 +65,7 @@ const finalEvidenceComponents = [
 
 export const lockInDuolingoAbi = [
   // --- views ---
+  { type: "function", name: "nextPactId", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { type: "function", name: "stakeToken", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "MIN_STAKE", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { type: "function", name: "MAX_STAKE", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
