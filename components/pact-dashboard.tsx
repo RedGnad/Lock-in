@@ -22,6 +22,7 @@ import { ActionDialog } from "@/components/action-dialog";
 import { PactCrew } from "@/components/pact-crew";
 import { StravaConnect } from "@/components/strava-connect";
 import { ShareSheet } from "@/components/share-sheet";
+import { SuccessOverlay } from "@/components/success-overlay";
 import type { StravaView } from "@/src/strava-connection-view";
 
 type ProductActions = { join: boolean; checkIns: boolean };
@@ -70,7 +71,7 @@ function friendlyError(error: unknown) {
   if (/BaselineIsPaused|CompletionIsPaused/i.test(message)) return "Verification is paused for safety.";
   if (/CompletionOutsideDay/i.test(message)) return "This verification window is closed.";
   if (/DayAlreadyCompleted/i.test(message)) return "This day is already verified.";
-  if (/InvalidMetric/i.test(message)) return "The verified activity did not reach the daily target or reused prior progress.";
+  if (/InvalidMetric/i.test(message)) return "The verified activity did not reach the run target or reused prior progress.";
   if (/UnderfilledPact/i.test(message)) return "The lock did not reach its minimum crew.";
   if (/FinalizationTooEarly/i.test(message)) return "This lock cannot settle yet.";
   if (/NotEligible/i.test(message)) return "You did not reach the completion target.";
@@ -108,6 +109,7 @@ export function PactDashboard({ id }: { id: string }) {
   const [joinReviewOpen, setJoinReviewOpen] = useState(false);
   const [actions, setActions] = useState<ProductActions>({ join: false, checkIns: false });
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1_000));
+  const [celebrate, setCelebrate] = useState<{ title: string; detail?: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -312,6 +314,11 @@ export function PactDashboard({ id }: { id: string }) {
         args: [pactId, dayIndex, { ...evidence, signature }],
       }, "verification");
       setMessage(`DAY ${dayIndex + 1} VERIFIED ✓`);
+      const required = pact ? pact[8] : 0;
+      const doneNow = required ? Math.min(completed + 1, required) : completed + 1;
+      setCelebrate(required > 0 && doneNow >= required
+        ? { title: "Target met", detail: `You completed all ${required} required runs. The Lock stays open for the rest of the crew.` }
+        : { title: `Day ${dayIndex + 1} verified`, detail: required ? `${doneNow} of ${required} runs done.` : undefined });
     } catch (error) {
       setMessage(friendlyError(error));
     } finally {
@@ -403,9 +410,9 @@ export function PactDashboard({ id }: { id: string }) {
 
       <section className={`pact-now ${registration ? "forming" : active || proofGraceOpen ? "active" : ""}`}>
         <div>
-          <span>{registration ? "CREW CHECK" : active && currentDay >= 0 ? `TODAY · DAY ${currentDay + 1}` : proofGraceOpen ? "24-HOUR RUN PROOF GRACE" : "LOCK STATUS"}</span>
+          <span>{registration ? "CREW CHECK" : targetReached ? "TARGET MET" : active && currentDay >= 0 ? `TODAY · DAY ${currentDay + 1}` : proofGraceOpen ? "24-HOUR RUN PROOF GRACE" : "LOCK STATUS"}</span>
           <h2>{roomHeading}</h2>
-          {registration ? <p>{full ? "This lock is full." : `Registration closes ${formatDate(startsAt)}.`}</p> : (active || proofGraceOpen) && !actions.checkIns ? <p>Verification is currently paused. Lock refund rules still apply.</p> : active ? <p>Verify through {mission.name} before {formatDate(startsAt + BigInt((currentDay + 1) * 86_400))}.</p> : proofGraceOpen ? <p>Only a run completed on the final lock day counts. Proof closes {formatDate(submissionDeadline)}.</p> : graceOpen ? <p>The lock can settle after {formatDate(submissionDeadline)}.</p> : <p>{pact[15] && pact[16] ? "Refunds are ready." : pact[15] ? "Payouts are ready." : `Program ended ${formatDate(endsAt)}.`}</p>}
+          {registration ? <p>{full ? "This lock is full." : `Registration closes ${formatDate(startsAt)}.`}</p> : targetReached ? <p>You completed {completed} of {requiredCompletions} required runs. The Lock stays open for the rest of the crew until the schedule ends.</p> : (active || proofGraceOpen) && !actions.checkIns ? <p>Verification is currently paused. Lock refund rules still apply.</p> : active ? <p>Verify through {mission.name} before {formatDate(startsAt + BigInt((currentDay + 1) * 86_400))}.</p> : proofGraceOpen ? <p>Only a run completed on the final lock day counts. Proof closes {formatDate(submissionDeadline)}.</p> : graceOpen ? <p>The lock can settle after {formatDate(submissionDeadline)}.</p> : <p>{pact[15] && pact[16] ? "Refunds are ready." : pact[15] ? "Payouts are ready." : `Program ended ${formatDate(endsAt)}.`}</p>}
         </div>
         <div className="pact-now-actions">
           {registration && isJoined && !full && <ShareSheet url={inviteUrl} text={shareText} title={`Lock In · ${inviteCode}`} />}
@@ -456,6 +463,7 @@ export function PactDashboard({ id }: { id: string }) {
         <p>Real USDC and gas are used on Monad mainnet. If the lock stays below two players, your stake is refundable.</p>
         <Link className="dialog-link" href="/rules">Read the rules ↗</Link>
       </ActionDialog>
+      {celebrate && <SuccessOverlay title={celebrate.title} detail={celebrate.detail} onClose={() => setCelebrate(null)} />}
     </main>
   );
 }

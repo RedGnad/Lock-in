@@ -59,6 +59,19 @@ a { color: inherit; }
 .wallet-button.connected span { margin-left: 5px; color: var(--lime); }
 .wallet-menu { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: 210px; padding: 7px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 5px 5px 0 var(--ink); }
 .wallet-switch-note { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: max-content; max-width: 260px; margin: 0; padding: 9px 11px; border: 2px solid var(--ink); background: var(--surface); color: var(--ink); font: 700 11px/1.35 Arial, sans-serif; box-shadow: 5px 5px 0 var(--acid); }
+
+/* Celebratory confirmation at the win moments. Feedback only; auto-dismisses. */
+.success-overlay { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; background: rgba(16, 16, 15, .62); animation: successFade .22s ease both; }
+.success-burst { display: grid; justify-items: center; gap: 14px; max-width: 420px; padding: 40px 44px; text-align: center; border: 2px solid var(--ink); background: var(--surface); box-shadow: 13px 13px 0 var(--acid); animation: successPop .42s cubic-bezier(.2, .8, .2, 1) both; }
+.success-mark { display: grid; place-items: center; width: 78px; height: 78px; border-radius: 50%; background: var(--lime); color: var(--ink); font-size: 42px; font-weight: 900; line-height: 1; animation: successMark .5s .08s both cubic-bezier(.2, 1.5, .3, 1); }
+.success-burst strong { font-size: clamp(28px, 5vw, 44px); line-height: .95; letter-spacing: -.045em; text-transform: uppercase; }
+.success-burst p { margin: 0; color: var(--muted); font: 15px/1.45 Georgia, serif; }
+.success-dismiss { margin-top: 6px; padding: 9px 22px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); cursor: pointer; font: 950 10px/1 Arial, sans-serif; letter-spacing: .12em; }
+.success-dismiss:hover { background: var(--acid); border-color: var(--acid); }
+@keyframes successFade { from { opacity: 0; } }
+@keyframes successPop { from { opacity: 0; transform: translateY(14px) scale(.93); } }
+@keyframes successMark { from { transform: scale(0); } }
+@media (prefers-reduced-motion: reduce) { .success-overlay, .success-burst, .success-mark { animation: none; } }
 .wallet-menu button, .wallet-menu a { width: 100%; min-height: 38px; padding: 9px 10px; display: flex; align-items: center; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; cursor: pointer; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-decoration: none; }
 .wallet-menu button:last-child { border-bottom: 0; color: var(--acid); }
 .wallet-menu button:hover, .wallet-menu a:hover { background: #e9e5db; }

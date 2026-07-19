@@ -49,10 +49,10 @@ export type PactTemplate = {
  * each stake.
  */
 export const PACT_TEMPLATES: readonly PactTemplate[] = [
-  { id: "quickfire", name: "Quickfire", durationDays: 3, requiredCompletions: 2, description: "Two wins in three days." },
-  { id: "momentum", name: "Momentum", durationDays: 7, requiredCompletions: 4, description: "Four wins in a week." },
-  { id: "discipline", name: "Discipline", durationDays: 15, requiredCompletions: 8, description: "Eight wins in a fortnight." },
-  { id: "long-game", name: "Long Game", durationDays: 30, requiredCompletions: 15, description: "Fifteen wins in a month." },
+  { id: "quickfire", name: "Quickfire", durationDays: 3, requiredCompletions: 2, description: "Two runs in three days." },
+  { id: "momentum", name: "Momentum", durationDays: 7, requiredCompletions: 4, description: "Four runs in a week." },
+  { id: "discipline", name: "Discipline", durationDays: 15, requiredCompletions: 8, description: "Eight runs in a fortnight." },
+  { id: "long-game", name: "Long Game", durationDays: 30, requiredCompletions: 15, description: "Fifteen runs in a month." },
 ] as const;
 
 export function pactTemplate(durationDays: number): PactTemplate {

@@ -7,6 +7,7 @@ import { useAccount, useReadContract, useSignMessage } from "wagmi";
 import { erc20Abi } from "@/src/lock-in-abi";
 import { duolingoEscrowAddress } from "@/src/chain";
 import { ShareSheet } from "@/components/share-sheet";
+import { SuccessOverlay } from "@/components/success-overlay";
 import {
   attestationIsFresh,
   joinPactArgs,
@@ -46,6 +47,7 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
   const [error, setError] = useState<string | null>(null);
   const [rateLimited, setRateLimited] = useState(false);
   const [passed, setPassed] = useState<{ earnedXp: number; targetXp: number } | null>(null);
+  const [celebrate, setCelebrate] = useState<{ title: string; detail?: string } | null>(null);
 
   const id = /^[1-9]\d{0,29}$/.test(pactId) ? BigInt(pactId) : 0n;
   const enabled = Boolean(duolingoEscrowAddress) && id > 0n;
@@ -112,7 +114,10 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
         const evidence = parseFinalEvidence(result.attestation);
         if (!attestationIsFresh(evidence.expiresAt)) throw new Error("Your proof expired. Verify your final XP again.");
         await writeWithGas({ address: duolingoEscrowAddress, abi: escrowAbi, functionName: "submitFinal", args: submitFinalArgs(id, evidence) }, "final");
-        setPassed({ earnedXp: result.earnedXp ?? evidence.earnedXp, targetXp: result.targetXp ?? evidence.targetXp });
+        const earned = result.earnedXp ?? evidence.earnedXp;
+        const target = result.targetXp ?? evidence.targetXp;
+        setPassed({ earnedXp: earned, targetXp: target });
+        setCelebrate({ title: "Target reached", detail: `You earned ${earned} XP of ${target}.` });
       }
       setStatus(null);
       refreshAll();
@@ -266,6 +271,7 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
       </div></details>
 
       <button className="secondary-button" disabled={Boolean(busy)} onClick={onLeave}>BACK</button>
+      {celebrate && <SuccessOverlay title={celebrate.title} detail={celebrate.detail} onClose={() => setCelebrate(null)} />}
     </div>
   );
 }
