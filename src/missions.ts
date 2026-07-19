@@ -55,6 +55,10 @@ export const PACT_TEMPLATES: readonly PactTemplate[] = [
   { id: "long-game", name: "Long Game", durationDays: 30, requiredCompletions: 15, description: "Fifteen runs in a month." },
 ] as const;
 
+export const RELEASE_TEMPLATES: ReadonlyMap<number, number> = new Map(
+  PACT_TEMPLATES.map(({ durationDays, requiredCompletions }) => [durationDays, requiredCompletions]),
+);
+
 export function pactTemplate(durationDays: number): PactTemplate {
   const template = PACT_TEMPLATES.find((item) => item.durationDays === durationDays);
   if (!template) throw new Error("Unsupported pact template");

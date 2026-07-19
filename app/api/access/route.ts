@@ -11,6 +11,7 @@ import {
 } from "@/src/access-attestation";
 import { escrowAddress, lockInPublicClient } from "@/src/chain";
 import { lockInAbi } from "@/src/lock-in-abi";
+import { RELEASE_TEMPLATES } from "@/src/missions";
 import { hashPactConfiguration, type PactConfiguration } from "@/src/pact-configuration";
 import { isProofActionEnabled, readProductFlagState } from "@/src/product-flags";
 import { checkRateLimit, rateLimitResponseHeaders } from "@/src/rate-limit";
@@ -39,7 +40,6 @@ type AccessBody = {
   };
 };
 
-const RELEASE_TEMPLATES = new Map([[3, 3], [7, 5], [14, 10], [30, 20]]);
 const RELEASE_STAKES = new Set([100_000n, 500_000n, 1_000_000n]);
 const RELEASE_CAPACITIES = new Set([2, 4, 8]);
 const STRAVA_TARGETS = new Set([1_000, 3_000, 5_000, 10_000]);
@@ -54,7 +54,7 @@ function atomicValue(value: unknown, label: string): bigint {
   return BigInt(value);
 }
 
-function releaseConfiguration(body: AccessBody["configuration"], chainNow: bigint): PactConfiguration {
+export function releaseConfiguration(body: AccessBody["configuration"], chainNow: bigint): PactConfiguration {
   if (!body) throw new Error("Lock configuration is required");
   const configuration: PactConfiguration = {
     stake: atomicValue(body.stake, "stake"),
