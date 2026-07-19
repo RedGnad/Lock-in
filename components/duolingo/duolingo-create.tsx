@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { formatUnits, parseEventLogs, type PublicClient } from "viem";
+import { formatUnits, parseEventLogs } from "viem";
 import { useAccount, useSignMessage } from "wagmi";
 import { erc20Abi } from "@/src/lock-in-abi";
 import { duolingoEscrowAddress } from "@/src/chain";
+import { scheduledDuolingoStart } from "@/src/duolingo-escrow-config";
 import {
   attestationIsFresh,
   createPactArgs,
@@ -31,14 +32,6 @@ const DURATIONS = [
   { label: "7 days", seconds: 7 * 24 * 60 * 60 },
 ] as const;
 const CREWS = [2, 4, 8] as const;
-const JOIN_WINDOW = 30n * 60n;
-
-async function scheduledStart(client: PublicClient): Promise<bigint> {
-  const block = await client.getBlock({ blockTag: "latest" });
-  const five = 5n * 60n;
-  const earliest = block.timestamp + JOIN_WINDOW;
-  return ((earliest + five - 1n) / five) * five;
-}
 
 /**
  * Native Duolingo creation, inside the shared "Build your lock" wizard. Mission is step 1 (chosen by the
@@ -87,7 +80,8 @@ export function DuolingoCreate({ onCreated, onBackToMission }: {
     const portal = window.open("", "_blank");
     let staked = false;
     try {
-      const startsAt = await scheduledStart(publicClient);
+      const block = await publicClient.getBlock({ blockTag: "latest" });
+      const startsAt = scheduledDuolingoStart(block.timestamp);
       const terms = {
         stake: amount.toString(),
         targetXp,

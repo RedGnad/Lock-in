@@ -16,6 +16,14 @@ export const ESCROW_LIMITS = {
   maxStartDelaySeconds: 24 * 60 * 60,
 } as const;
 
+export const DUOLINGO_REGISTRATION_SECONDS = 23 * 60 * 60;
+
+export function scheduledDuolingoStart(chainTimestamp: bigint): bigint {
+  const fiveMinutes = 5n * 60n;
+  const earliest = chainTimestamp + BigInt(DUOLINGO_REGISTRATION_SECONDS);
+  return ((earliest + fiveMinutes - 1n) / fiveMinutes) * fiveMinutes;
+}
+
 export type EscrowCreateTerms = Readonly<{
   stake: bigint;
   targetXp: number;
