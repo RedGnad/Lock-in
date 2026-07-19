@@ -181,7 +181,7 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
 
   return (
     <div className="pact-lock">
-      <div className="pact-topline"><Link href="/">← Home</Link><span>DUOLINGO XP / #{pactId}</span><ShareSheet url={invite} text={`I put ${formatUnits(pact.stake, chain.decimals)} USDC behind a ${pact.targetXp} XP Duolingo goal. Join my Lock.`} title={`Lock In · Duolingo #${pactId}`} /></div>
+      <div className="pact-topline"><Link href="/">← Home</Link><span>DUOLINGO XP / #{pactId}</span></div>
 
       <section className="pact-hero">
         <div><div className="live-pill"><i /> {statusPill}</div><h1>+{pact.targetXp} XP<br/><em>in {durLabel}</em></h1><p>{heroLine}</p></div>
@@ -212,16 +212,16 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
           </button>
         )}
 
-        {beforeStart && (
-          <div className="duo-step">
-            <div className="duo-invite-head">
-              <b>Invite your crew</b>
-              <ShareSheet url={invite} text={`I put ${formatUnits(pact.stake, chain.decimals)} USDC behind a ${pact.targetXp} XP Duolingo goal. Join my Lock.`} title={`Lock In · Duolingo #${pactId}`} />
-            </div>
+        <div className="duo-step">
+          <div className="duo-invite-head">
+            <b>{beforeStart ? "Invite your crew" : "Share this Lock"}</b>
+            <ShareSheet url={invite} text={`I put ${formatUnits(pact.stake, chain.decimals)} USDC behind a ${pact.targetXp} XP Duolingo goal. Join my Lock.`} title={`Lock In · Duolingo #${pactId}`} />
+          </div>
+          {beforeStart && <>
             <input className="invite-link" readOnly value={invite} onFocus={(event) => event.currentTarget.select()} />
             <small>They open this link, prove their starting XP, and stake the same {stakeText}.</small>
-          </div>
-        )}
+          </>}
+        </div>
 
         {duringChallenge && joined && !completed && (
           <>
