@@ -58,6 +58,7 @@ a { color: inherit; }
 .wallet-control { position: relative; }
 .wallet-button.connected span { margin-left: 5px; color: var(--lime); }
 .wallet-menu { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: 210px; padding: 7px; border: 2px solid var(--ink); background: var(--surface); box-shadow: 5px 5px 0 var(--ink); }
+.wallet-switch-note { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; width: max-content; max-width: 260px; margin: 0; padding: 9px 11px; border: 2px solid var(--ink); background: var(--surface); color: var(--ink); font: 700 11px/1.35 Arial, sans-serif; box-shadow: 5px 5px 0 var(--acid); }
 .wallet-menu button, .wallet-menu a { width: 100%; min-height: 38px; padding: 9px 10px; display: flex; align-items: center; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; cursor: pointer; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-decoration: none; }
 .wallet-menu button:last-child { border-bottom: 0; color: var(--acid); }
 .wallet-menu button:hover, .wallet-menu a:hover { background: #e9e5db; }

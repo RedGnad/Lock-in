@@ -90,7 +90,7 @@ export function SocialLeaderboard({ full = false }: { full?: boolean }) {
     <section className={`social-leaderboard${full ? " social-leaderboard-full" : ""}`} aria-labelledby={full ? "full-leaderboard-title" : "home-leaderboard-title"}>
       <header className="social-heading">
         <div>
-          {full ? <span className="social-kicker">THE LOCK BOARD · LIVE ON MONAD</span> : <span className="eyebrow"><span>03</span> The Lock Board</span>}
+          <span className="social-kicker">THE LOCK BOARD · LIVE ON MONAD</span>
           <h2 id={full ? "full-leaderboard-title" : "home-leaderboard-title"}>Proof earns rank.</h2>
         </div>
         <p>Ten points per verified UTC day. A bigger stake, extra distance, or multiple Locks cannot multiply a day&apos;s score.</p>

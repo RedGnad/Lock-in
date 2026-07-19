@@ -41,11 +41,22 @@ function connectionMessage(error: unknown): string {
   return "Could not connect. Check your wallet and try again.";
 }
 
+// Same shape as connectionMessage: the wallet either declined the switch/add, or it cannot do it
+// programmatically at all. wagmi adds Monad automatically (wallet_addEthereumChain) from the chain metadata
+// when the wallet does not know chain 143, so the athlete never has to paste an RPC by hand.
+function switchMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/reject|denied|cancel|4001|request.*rejected/i.test(message)) {
+    return "Network change cancelled. Switch to Monad to continue.";
+  }
+  return "Your wallet could not switch networks automatically. Open Monad in your wallet, then try again.";
+}
+
 export function WalletButton() {
   const { address, chainId, isConnected } = useAccount();
   const { connectors, connectAsync, isPending } = useConnect();
   const { disconnect } = useDisconnect();
-  const { switchChain } = useSwitchChain();
+  const { switchChainAsync, isPending: isSwitching, error: switchError, reset: resetSwitchError } = useSwitchChain();
   const [menuOpen, setMenuOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -168,6 +179,17 @@ export function WalletButton() {
     }
   }
 
+  async function switchToMonad() {
+    resetSwitchError();
+    try {
+      // wagmi switches to chain 143, or asks the wallet to add Monad first if it does not know it. The
+      // wallet shows its own native confirmation; nothing changes networks without the athlete's approval.
+      await switchChainAsync({ chainId: monad.id });
+    } catch {
+      // Rendered from switchError below; a rejection is not fatal, the athlete stays connected.
+    }
+  }
+
   async function copyAddress() {
     await navigator.clipboard.writeText(address!);
     setCopied(true);
@@ -260,7 +282,14 @@ export function WalletButton() {
     );
   }
   if (chainId !== monad.id) {
-    return <button className="wallet-button warning" type="button" onClick={() => switchChain({ chainId: monad.id })}>Switch to Monad</button>;
+    return (
+      <div className="wallet-control" ref={root}>
+        <button className="wallet-button warning" type="button" disabled={isSwitching} onClick={() => void switchToMonad()}>
+          {isSwitching ? "Check your wallet…" : "Switch to Monad"}
+        </button>
+        {switchError && <p className="wallet-switch-note" role="alert">{switchMessage(switchError)}</p>}
+      </div>
+    );
   }
 
   return (

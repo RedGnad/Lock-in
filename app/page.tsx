@@ -13,7 +13,7 @@ export default function Home() {
     <main>
       <section className="hero">
         <div className="hero-copy">
-          <div className="eyebrow"><span>01</span> Accountability that pays</div>
+          <div className="eyebrow">Accountability that pays</div>
           <h1>Your word.<br/><em>Locked in.</em></h1>
           <p>Challenge your friends to improve. Stake up to 1 USDC each. Finishers split the pool funded by those who quit.</p>
           <ReleaseActions />
@@ -27,11 +27,11 @@ export default function Home() {
       <StravaConnect noticeOnly />
       <PactHub />
       <SocialLeaderboard />
-      <div className="mechanic-eyebrow"><div className="eyebrow"><span>04</span> How it works</div></div>
+      <div className="mechanic-eyebrow"><div className="eyebrow">How it works</div></div>
       <section className="mechanic">
-        <div><h2>Set it</h2><p>Choose a measurable goal, a deadline, your crew and your stake.</p></div>
-        <div><h2>Prove it</h2><p>Verify your runs with Strava or your XP progress with Duolingo.</p></div>
-        <div><h2>Settle it</h2><p>Finishers recover their stake and split the pool.</p></div>
+        <div><b>01</b><h2>Set it</h2><p>Choose a measurable goal, a deadline, your crew and your stake.</p></div>
+        <div><b>02</b><h2>Prove it</h2><p>Verify your runs with Strava or your XP progress with Duolingo.</p></div>
+        <div><b>03</b><h2>Settle it</h2><p>Finishers recover their stake and split the pool.</p></div>
       </section>
     </main>
   );

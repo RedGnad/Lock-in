@@ -132,6 +132,8 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
 
   async function settle() {
     if (busy || !duolingoEscrowAddress) return;
+    // Settlement stays permissionless during pauses, but never on the wrong chain: require Monad first.
+    if (!chain.chainOk) return setError("Switch your wallet to Monad mainnet.");
     setBusy("settle"); setError(null);
     try {
       setStatus("SETTLING THE LOCK…");
@@ -142,6 +144,7 @@ export function DuolingoLock({ pactId, onLeave }: { pactId: string; onLeave: () 
 
   async function claim() {
     if (busy || !duolingoEscrowAddress) return;
+    if (!chain.chainOk) return setError("Switch your wallet to Monad mainnet.");
     setBusy("claim"); setError(null);
     try {
       setStatus("CLAIMING…");
